@@ -53,8 +53,8 @@ glibc 2.17 or 2.28) is on the roadmap but not in v1 — see
 
 - **PHP 8.4.3** (NTS, CLI + FPM SAPIs)
 - **xdebug 3.4.0** as a loadable Zend extension (`lib/extensions/no-debug-non-zts-20240924/xdebug.so`)
-- 36 PHP extensions: ctype, curl, date, dom, fileinfo, filter, gd (jpeg/png/webp/freetype),
-  hash, intl (ICU), json, libxml, mbstring (oniguruma), mysqli, mysqlnd, openssl,
+- 37 PHP extensions: ctype, curl, date, dom, fileinfo, filter, gd (jpeg/png/webp/freetype),
+  hash, iconv, intl (ICU), json, libxml, mbstring (oniguruma), mysqli, mysqlnd, openssl,
   pcre, pdo_sqlite, pdo_mysql, phar, posix, reflection, session, simplexml, sodium,
   spl, sqlite3, tokenizer, xml, xmlreader, xmlwriter, zip, zlib, opcache (zend_extension)
 - 15 bundled C libraries: zlib 1.3.1, openssl 3.5.6, libxml2 2.13.5, sqlite 3.47.2,
@@ -182,8 +182,6 @@ The tarball can't ship until all five pass:
 
 ## v1 limitations
 
-- **No iconv extension** — PHP's iconv configure runtime test fails in the Nix
-  build sandbox. UTF-8 use cases work via mbstring.
 - **`phpinfo()` Configuration File Path display** still shows the build-time
   path (cosmetic; the actual ini search resolves correctly via `bin/php --ini`).
 - **No CA bundle baked in** — built with `--without-ca-bundle --with-ca-fallback`.
