@@ -2,8 +2,8 @@
 
 A relocatable, dynamically-linked PHP build with bundled C dependencies and
 [`$ORIGIN`-based RPATHs](https://man7.org/linux/man-pages/man8/ld.so.8.html).
-Produces a portable `.tar.zst` consumable on any glibc Linux host. Modeled
-on [`python-build-standalone`](https://github.com/astral-sh/python-build-standalone)
+Produces a portable `.tar.zst` consumable on a recent glibc Linux host.
+Modeled on [`python-build-standalone`](https://github.com/astral-sh/python-build-standalone)
 (PBS) — the substrate for [uv](https://github.com/astral-sh/uv)'s Python
 installs — but for PHP.
 
@@ -24,8 +24,30 @@ result/
 └── php-8.4.3-x86_64-unknown-linux-gnu.json       # metadata (ABI, versions, hash)
 ```
 
-Extract it anywhere, run `bin/php`. Drops in cleanly on Debian, Ubuntu,
-RHEL, Alpine-with-glibc-compat, NixOS, etc. — anywhere with glibc 2.34+.
+Extract it anywhere, run `bin/php`.
+
+### Host requirements
+
+The binary is dynamically linked against a recent glibc. Specifically:
+
+- **Glibc 2.38 or newer** — verified with `objdump -T bin/php`, the highest
+  required symbol version is `GLIBC_2.38`. That's
+  [Debian 13](https://packages.debian.org/trixie/libc6) (trixie, glibc 2.41),
+  [Ubuntu 24.04](https://packages.ubuntu.com/noble/libc6) (noble, 2.39),
+  Fedora 39+, Arch (rolling). It does **not** work on Debian 12, Ubuntu 22.04,
+  RHEL 9, or anything else still on glibc ≤ 2.37.
+- **glibc-based distro** — not musl. Alpine, void-musl, etc. need a
+  glibc compatibility layer (e.g. `gcompat`).
+- **System dynamic loader at `/lib64/ld-linux-x86-64.so.2`** — every
+  mainstream glibc distro has this. The exception is **NixOS**, where the
+  loader lives in `/nix/store/<hash>-glibc/lib/`. NixOS users need
+  [`programs.nix-ld.enable = true`](https://nixos.wiki/wiki/Nix-ld) (or
+  `steam-run`, `nix-alien`, or rebuilding the tarball with patchelf to point
+  at the local loader). Same constraint PBS hits on NixOS.
+
+Lifting the glibc-2.38 floor toward something manylinux-style (build against
+glibc 2.17 or 2.28) is on the roadmap but not in v1 — see
+[v1 limitations](#v1-limitations).
 
 ### Bundled
 
@@ -41,8 +63,8 @@ RHEL, Alpine-with-glibc-compat, NixOS, etc. — anywhere with glibc 2.34+.
 
 ### Consumer-side dependency surface
 
-Just **glibc 2.34+** and the standard LSB set (libc, libdl, libm, libpthread,
-librt, libutil) — same policy as PBS's
+Just glibc (2.38+) and the standard LSB set in `DT_NEEDED` (libc, libdl,
+libm, libpthread, librt, libutil) — same policy as PBS's
 [validator](https://github.com/astral-sh/python-build-standalone/blob/main/src/validation.rs).
 No bundled libstdc++ / libgcc_s; those are statically linked into PHP itself.
 
@@ -167,8 +189,14 @@ The tarball can't ship until all five pass:
 - **No CA bundle baked in** — built with `--without-ca-bundle --with-ca-fallback`.
   Code that needs explicit trust roots passes `CURLOPT_CAINFO` or sets
   `openssl.cafile` ini.
-- **Glibc 2.34+ only** — built against modern Nixpkgs glibc. No manylinux-style
-  old-glibc compat target yet.
+- **Glibc 2.38+ only** — the binary's highest `DT_NEEDED` symbol version
+  is `GLIBC_2.38`. Older distros (Debian 12, Ubuntu 22.04, RHEL 9) won't
+  load it. A manylinux-style old-glibc target (build against glibc 2.17
+  or 2.28 via either a pinned old-Nixpkgs revision or `zig cc -target
+  x86_64-linux-gnu.2.28`) is on the roadmap.
+- **NixOS doesn't work out of the box** — interpreter is hardcoded to
+  `/lib64/ld-linux-x86-64.so.2`, which doesn't exist on NixOS. Use
+  `nix-ld`, `steam-run`, or rerun patchelf locally.
 - **x86_64-linux-gnu only** — no musl, no aarch64, no macOS yet.
 
 ## Project tree
