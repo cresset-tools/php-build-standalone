@@ -1,0 +1,84 @@
+# Build the PHP tarball on every push and PR. On version tags
+# (refs/tags/v*), additionally publish the .tar.zst + .json as a GitHub
+# release asset.
+#
+# A full clean build takes ~15 minutes because we compile 16 C
+# dependencies plus PHP plus xdebug from source. We use the Magic Nix
+# Cache action to cache /nix/store between runs — incremental builds
+# (e.g. when only README changes) finish in seconds because every
+# derivation is content-addressed and replayed from cache.
+
+name: build
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build-tarball:
+    name: build x86_64-linux tarball
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@main
+
+      - name: Cache /nix/store
+        uses: DeterminateSystems/magic-nix-cache-action@main
+
+      - name: Build the tarball
+        run: nix build .#tarball --print-build-logs
+
+      - name: Smoke-test the artifact
+        # Extract to a fresh prefix and verify the basics: PHP runs,
+        # all expected extensions load, xdebug loads, and runtime path
+        # resolution tracks the install root.
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/smoke
+          tar --use-compress-program=unzstd \
+              -xf result/php-*.tar.zst -C /tmp/smoke
+          PHP=/tmp/smoke/install/bin/php
+          echo "::group::php -v"
+          "$PHP" -v
+          echo "::endgroup::"
+          echo "::group::php -m"
+          "$PHP" -m
+          echo "::endgroup::"
+          echo "::group::expect xdebug loadable"
+          "$PHP" -dzend_extension=xdebug -r 'echo "xdebug ", phpversion("xdebug"), "\n";'
+          echo "::endgroup::"
+          echo "::group::expect intl currency formatting"
+          "$PHP" -r 'echo NumberFormatter::create("en_US", NumberFormatter::CURRENCY)->formatCurrency(1234.56, "USD"), "\n";'
+          echo "::endgroup::"
+          echo "::group::expect relocation tracks /proc/self/exe"
+          mv /tmp/smoke/install /tmp/smoke/relocated
+          ext_dir=$(/tmp/smoke/relocated/bin/php -r 'echo ini_get("extension_dir");')
+          case "$ext_dir" in
+            /tmp/smoke/relocated/lib/extensions/*) echo "ok: $ext_dir" ;;
+            *) echo "FAIL: extension_dir=$ext_dir did not track relocation"; exit 1 ;;
+          esac
+          echo "::endgroup::"
+
+      - name: Upload tarball as workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: php-tarball-x86_64-linux-gnu
+          path: |
+            result/php-*.tar.zst
+            result/php-*.json
+          if-no-files-found: error
+
+      - name: Attach to GitHub Release (tags only)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            result/php-*.tar.zst
+            result/php-*.json
+          fail_on_unmatched_files: true
