@@ -1,0 +1,4 @@
+# Nix build output symlinks. `nix build` creates ./result, ./result-1,
+# ./result-2 etc. — they point into /nix/store and shouldn't be tracked.
+/result
+/result-*

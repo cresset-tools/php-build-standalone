@@ -1,0 +1,55 @@
+# Relocate sapi/fpm/fpm/fpm_conf.c: fix php-fpm config expansion and default
+# config-file path to use the runtime install root instead of build-time macros.
+#
+# Two sites:
+#   1. PHP_PREFIX fallback: when no --prefix is given to php-fpm, use the
+#      runtime install root (from /proc/self/exe) rather than the Nix store
+#      PHP_PREFIX. This is used to expand $prefix variables in pool configs.
+#   2. PHP_SYSCONFDIR fallback: when no -y config file is supplied, probe
+#      <install_root>/etc/php-fpm.conf before falling back to PHP_SYSCONFDIR
+#      (which points at the Nix store). Matches where the tarball ships its
+#      default config.
+#
+# Both sites fall back gracefully if /proc/self/exe is unreadable.
+--- a/sapi/fpm/fpm/fpm_conf.c	2026-05-05 18:45:40.052717332 +0000
++++ b/sapi/fpm/fpm/fpm_conf.c	2026-05-05 18:46:42.254603506 +0000
+@@ -24,6 +24,7 @@
+ #include "php_syslog.h"
+ 
+ #include "fpm.h"
++#include "../../../main/pbs_relocate.h"
+ #include "fpm_conf.h"
+ #include "fpm_stdio.h"
+ #include "fpm_worker_pool.h"
+@@ -798,7 +799,13 @@
+ 
+ 	/* if the global prefix is not set */
+ 	if (prefix == NULL) {
+-		prefix = default_prefix ? default_prefix : PHP_PREFIX;
++		/* PBS: prefer the runtime install root over build-time PHP_PREFIX. */
++		static char pbs_prefix_buf[MAXPATHLEN] = {0};
++		if (pbs_prefix_buf[0] == 0) {
++			(void)pbs_install_root(pbs_prefix_buf, sizeof(pbs_prefix_buf));
++		}
++		prefix = default_prefix ? default_prefix
++		       : (pbs_prefix_buf[0] ? pbs_prefix_buf : PHP_PREFIX);
+ 	}
+ 
+ 	if (expand) {
+@@ -1852,7 +1859,15 @@
+ 		char *tmp;
+ 
+ 		if (fpm_globals.prefix == NULL) {
+-			spprintf(&tmp, 0, "%s/php-fpm.conf", PHP_SYSCONFDIR);
++			{
++				/* PBS: prefer <install_root>/etc/php-fpm.conf. */
++				char pbs_root[MAXPATHLEN];
++				if (pbs_install_root(pbs_root, sizeof(pbs_root))) {
++					spprintf(&tmp, 0, "%s/etc/php-fpm.conf", pbs_root);
++				} else {
++					spprintf(&tmp, 0, "%s/php-fpm.conf", PHP_SYSCONFDIR);
++				}
++			}
+ 		} else {
+ 			spprintf(&tmp, 0, "%s/etc/php-fpm.conf", fpm_globals.prefix);
+ 		}

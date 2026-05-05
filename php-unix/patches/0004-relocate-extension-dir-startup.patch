@@ -1,0 +1,48 @@
+# Relocate main/main.c: override extension_dir at startup to point at the
+# runtime install root instead of the build-time PHP_EXTENSION_DIR macro.
+#
+# The override fires right after zend_register_standard_ini_entries() and only
+# activates when the live extension_dir value still equals the compiled-in
+# PHP_EXTENSION_DIR — meaning neither php.ini nor a command-line -d flag has
+# overridden it.  This preserves user configuration while ensuring a relocated
+# tarball resolves extensions from <install_root>/lib/extensions/... rather
+# than the Nix store path baked in at build time.
+--- a/main/main.c	2026-05-05 18:45:40.048255740 +0000
++++ b/main/main.c	2026-05-05 18:46:20.034794700 +0000
+@@ -45,6 +45,7 @@
+ #include "php_ini.h"
+ #include "php_globals.h"
+ #include "php_main.h"
++#include "pbs_relocate.h"
+ #include "php_syslog.h"
+ #include "fopen_wrappers.h"
+ #include "ext/standard/php_standard.h"
+@@ -2228,6 +2229,28 @@
+ 	/* Register Zend ini entries */
+ 	zend_register_standard_ini_entries();
+ 
++	/* PBS: relocation override for extension_dir.
++	 * Take the suffix after the build-time prefix from PHP_EXTENSION_DIR
++	 * (typically "/lib/extensions/no-debug-non-zts-<API>") and rebase it
++	 * on the runtime install root. Skips if php.ini already overrode. */
++	{
++		char pbs_root[MAXPATHLEN];
++		if (pbs_install_root(pbs_root, sizeof(pbs_root))) {
++			const char *suffix = strstr(PHP_EXTENSION_DIR, "/lib/extensions/");
++			if (suffix) {
++				zend_string *key = zend_string_init("extension_dir", sizeof("extension_dir")-1, 0);
++				zend_string *cur = zend_ini_get_value(key);
++				if (cur && strcmp(ZSTR_VAL(cur), PHP_EXTENSION_DIR) == 0) {
++					char pbs_ext[MAXPATHLEN];
++					snprintf(pbs_ext, sizeof(pbs_ext), "%s%s", pbs_root, suffix);
++					zend_alter_ini_entry_chars(key, pbs_ext, strlen(pbs_ext),
++					                            PHP_INI_SYSTEM, PHP_INI_STAGE_STARTUP);
++				}
++				zend_string_release(key);
++			}
++		}
++	}
++
+ #ifdef ZEND_WIN32
+ 	/* Until the current ini values was setup, the current cp is 65001.
+ 		If the actual ini values are different, some stuff needs to be updated.

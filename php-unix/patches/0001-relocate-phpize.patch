@@ -1,0 +1,49 @@
+# Relocate scripts/phpize.in: replace build-time @prefix@ / @libdir@ /
+# @includedir@ / @datarootdir@ / @exec_prefix@ / @SED@ substitutions with
+# runtime path computation from $0.
+#
+# Without this patch, configure bakes the Nix store path into phpize, so
+# any relocated tarball produces a phpize that points at a non-existent
+# /nix/store/... prefix — breaking `pecl install` and extension builds.
+#
+# Three changes:
+#   1. Variable block: compute prefix at runtime from $0 instead of @prefix@.
+#   2. phpize_replace_prefix(): remove the sed -e "s#@prefix@#..." step;
+#      phpize.m4 contains no @prefix@ placeholders in modern PHP, and the
+#      configure-substituted sed command would leak the Nix store path.
+#   3. SED="@SED@" → SED=sed: use PATH-discovered sed at runtime.
+--- a/scripts/phpize.in
++++ b/scripts/phpize.in
+@@ -1,13 +1,14 @@
+ #!/bin/sh
+
+ # Variable declaration
+-prefix='@prefix@'
+-datarootdir='@datarootdir@'
+-exec_prefix="`eval echo @exec_prefix@`"
+-phpdir="`eval echo @libdir@`/build"
+-includedir="`eval echo @includedir@`/php"
++# PBS: compute prefix at runtime from $0; tarball is relocatable.
++prefix=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
++datarootdir="$prefix/share"
++exec_prefix="$prefix"
++phpdir="$prefix/lib/build"
++includedir="$prefix/include/php"
+ builddir="`pwd`"
+-SED="@SED@"
++SED=sed
+
+ FILES_BUILD="php.m4 shtool libtool.m4 ax_check_compile_flag.m4 ax_gcc_func_attribute.m4 php_cxx_compile_stdcxx.m4 pkg.m4 \
+     config.guess config.sub ltmain.sh Makefile.global gen_stub.php"
+@@ -154,9 +155,8 @@
+
+ phpize_replace_prefix()
+ {
+-  $SED \
+-  -e "s#@prefix@#$prefix#" \
+-  < "$phpdir/phpize.m4" > configure.ac
++  # PBS: phpize.m4 has no @prefix@ placeholders in modern PHP; just copy.
++  cp "$phpdir/phpize.m4" configure.ac
+ }
+
+ phpize_autotools()
