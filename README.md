@@ -28,16 +28,16 @@ Extract it anywhere, run `bin/php`.
 
 ### Host requirements
 
-The binary is dynamically linked against a recent glibc. Specifically:
+The binary is dynamically linked against an old glibc. Specifically:
 
-- **Glibc 2.38 or newer** — verified with `objdump -T bin/php`, the highest
-  required symbol version is `GLIBC_2.38`. That's
-  [Debian 13](https://packages.debian.org/trixie/libc6) (trixie, glibc 2.41),
-  [Ubuntu 24.04](https://packages.ubuntu.com/noble/libc6) (noble, 2.39),
-  Fedora 39+, Arch (rolling). It does **not** work on Debian 12, Ubuntu 22.04,
-  RHEL 9, or anything else still on glibc ≤ 2.37.
-- **glibc-based distro** — not musl. Alpine, void-musl, etc. need a
-  glibc compatibility layer (e.g. `gcompat`).
+- **Glibc 2.17 or newer** — verified with `objdump -T bin/php`, the highest
+  required symbol version is `GLIBC_2.17`. That's the
+  [manylinux2014](https://peps.python.org/pep-0599/) / RHEL 7 baseline:
+  CentOS 7, Rocky 8/9, Debian 9+ (stretch), Ubuntu 18.04+, Fedora,
+  Arch — verified across 14 distros in [`tests/`](tests/). The `tests/run-matrix.sh`
+  harness extracts the tarball once and mounts it read-only into each container.
+- **glibc-based distro** — not musl. Alpine fails at the loader gate as
+  designed; void-musl etc. need a glibc shim (e.g. `gcompat`).
 - **System dynamic loader at `/lib64/ld-linux-x86-64.so.2`** — every
   mainstream glibc distro has this. The exception is **NixOS**, where the
   loader lives in `/nix/store/<hash>-glibc/lib/`. NixOS users need
@@ -45,25 +45,26 @@ The binary is dynamically linked against a recent glibc. Specifically:
   `steam-run`, `nix-alien`, or rebuilding the tarball with patchelf to point
   at the local loader). Same constraint PBS hits on NixOS.
 
-Lifting the glibc-2.38 floor toward something manylinux-style (build against
-glibc 2.17 or 2.28) is on the roadmap but not in v1 — see
-[v1 limitations](#v1-limitations).
+The 2.17 floor comes from a clang-18 + CentOS 7 sysroot toolchain (PBS-style
+"modern compiler against old sysroot") — see [How it works](#how-it-works).
 
 ### Bundled
 
 - **PHP 8.4.3** (NTS, CLI + FPM SAPIs)
 - **xdebug 3.4.0** as a loadable Zend extension (`lib/extensions/no-debug-non-zts-20240924/xdebug.so`)
-- 37 PHP extensions: ctype, curl, date, dom, fileinfo, filter, gd (jpeg/png/webp/freetype),
+- 38 PHP extensions: ctype, curl, date, dom, fileinfo, filter, gd (jpeg/png/webp/freetype),
   hash, iconv, intl (ICU), json, libxml, mbstring (oniguruma), mysqli, mysqlnd, openssl,
-  pcre, pdo_sqlite, pdo_mysql, phar, posix, reflection, session, simplexml, sodium,
-  spl, sqlite3, tokenizer, xml, xmlreader, xmlwriter, zip, zlib, opcache (zend_extension)
-- 15 bundled C libraries: zlib 1.3.1, openssl 3.5.6, libxml2 2.13.5, sqlite 3.47.2,
+  pcre, pdo_sqlite, pdo_mysql, phar, posix, readline (libedit), reflection, session,
+  simplexml, sodium, spl, sqlite3, tokenizer, xml, xmlreader, xmlwriter, zip, zlib,
+  opcache (zend_extension)
+- 17 bundled C libraries: zlib 1.3.1, openssl 3.5.6, libxml2 2.13.5, sqlite 3.47.2,
   oniguruma 6.9.10, libsodium 1.0.20, bzip2 1.0.8, libpng 1.6.44, libjpeg-turbo 3.0.4,
-  libwebp 1.4.0, freetype 2.13.3, nghttp2 1.64.0, libzip 1.10.1, ICU 75.1, libcurl 8.11.0
+  libwebp 1.4.0, freetype 2.13.3, nghttp2 1.64.0, libzip 1.10.1, ICU 75.1, libcurl 8.11.0,
+  ncurses 6.5, libedit 20240808-3.1
 
 ### Consumer-side dependency surface
 
-Just glibc (2.38+) and the standard LSB set in `DT_NEEDED` (libc, libdl,
+Just glibc (2.17+) and the standard LSB set in `DT_NEEDED` (libc, libdl,
 libm, libpthread, librt, libutil) — same policy as PBS's
 [validator](https://github.com/astral-sh/python-build-standalone/blob/main/src/validation.rs).
 No bundled libstdc++ / libgcc_s; those are statically linked into PHP itself.
@@ -110,18 +111,24 @@ and is loadable via `extension=` in php.ini.
 ## How it works
 
 PHP-build-standalone uses Nix as a **toolchain provider only** — pinned
-gcc / autotools / cmake / etc. via a `flake.nix` — but the output is a
+clang / lld / autotools / cmake via a `flake.nix` — but the output is a
 plain `.tar.zst` that doesn't need Nix to consume.
+
+The compiler is a wrapped `llvmPackages_18.clang-unwrapped` driving against
+a CentOS 7 sysroot (glibc 2.17, devtoolset-11 libstdc++/libgcc), assembled
+from RPMs in `php-unix/sysroot.nix`. This is the PBS trick: modern compiler,
+old C runtime — so the resulting binaries link against modern bundled deps
+but only require GLIBC_2.17 from the host.
 
 ```
    ┌──────────────────────────────────────────────────────────┐
    │  flake.nix (pinned via flake.lock)                       │
-   │    pkgs.stdenvNoCC + gcc-unwrapped + binutils-unwrapped  │
+   │    stdenvNoCC + clang-18 wrapper + CentOS 7 sysroot      │
    └──────────────────────────────────────────────────────────┘
                             │
                             ▼
    ┌──────────────────────────────────────────────────────────┐
-   │  Per-dep derivations (15 of them, each in own /nix/store)│
+   │  Per-dep derivations (17 of them, each in own /nix/store)│
    │    build-<dep>.sh + <dep>.nix → .so files in $out/lib/   │
    └──────────────────────────────────────────────────────────┘
                             │
@@ -187,11 +194,6 @@ The tarball can't ship until all five pass:
 - **No CA bundle baked in** — built with `--without-ca-bundle --with-ca-fallback`.
   Code that needs explicit trust roots passes `CURLOPT_CAINFO` or sets
   `openssl.cafile` ini.
-- **Glibc 2.38+ only** — the binary's highest `DT_NEEDED` symbol version
-  is `GLIBC_2.38`. Older distros (Debian 12, Ubuntu 22.04, RHEL 9) won't
-  load it. A manylinux-style old-glibc target (build against glibc 2.17
-  or 2.28 via either a pinned old-Nixpkgs revision or `zig cc -target
-  x86_64-linux-gnu.2.28`) is on the roadmap.
 - **NixOS doesn't work out of the box** — interpreter is hardcoded to
   `/lib64/ld-linux-x86-64.so.2`, which doesn't exist on NixOS. Use
   `nix-ld`, `steam-run`, or rerun patchelf locally.
@@ -204,6 +206,8 @@ flake.nix                      flake outputs: tarball, tree, php, xdebug, each d
 flake.lock                     pinned nixpkgs revision
 php-unix/
   sources.nix                  per-dep {url, sha256, version}
+  sysroot.nix                  CentOS 7 RPM-based glibc-2.17 sysroot
+  clang-toolchain.nix          wrapped clang-18 + lld targeting the sysroot
   toolchain.nix                pkgs in nativeBuildInputs
   setup-env.sh                 sourced by every build-*.sh
   mkDep.nix                    derivation factory
@@ -216,6 +220,10 @@ php-unix/
   tree.nix                     merges per-dep $outs, runs finalize.sh
   finalize.sh                  strip → patchelf → detoxify → audit
   tarball.nix                  tar + zstd + JSON metadata
+tests/
+  distros.txt                  expected pass/fail per distro image
+  run-matrix.sh                extract once, mount RO into each container
+  smoke.sh                     POSIX-sh per-container smoke gates
 ```
 
 ## Acknowledgments
