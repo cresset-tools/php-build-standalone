@@ -226,7 +226,8 @@ The tarball can't ship until all five pass:
 - **NixOS doesn't work out of the box** — interpreter is hardcoded to
   `/lib64/ld-linux-x86-64.so.2`, which doesn't exist on NixOS. Use
   `nix-ld`, `steam-run`, or rerun patchelf locally.
-- **x86_64-linux-gnu only** — no musl, no aarch64, no macOS yet.
+- **No musl, no aarch64-linux** — Alpine fails at the loader gate as
+  designed. macOS (`aarch64-apple-darwin`) is built in CI alongside Linux.
 
 ## Project tree
 

@@ -19,10 +19,10 @@
     in {
       packages = forEach (system:
         if isDarwin system then
-          # ───────────────────────────── Darwin spike ─────────────────────────────
-          # First-target-of-opportunity: zlib only, end-to-end through the
-          # Darwin toolchain + finalize. Once this builds and passes the
-          # audit gates, the rest of the deps follow the same pattern.
+          # ───────────────────────────── Darwin ─────────────────────────────
+          # Full per-PHP-version fan-out mirroring the Linux side: all 18
+          # bundled deps + PHP + xdebug + tarball, finalized via the Darwin
+          # toolchain (install_name_tool / @rpath rewrites in finalize.sh).
           let
             pkgs = import nixpkgs { inherit system; };
             sources = import ./php-unix/sources.nix;
