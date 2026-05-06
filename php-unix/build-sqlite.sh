@@ -49,7 +49,7 @@ cd "$src_dir"
   --disable-tcl \
   --disable-editline
 
-make -j"$PBS_NPROC"
+make -j"$NIX_BUILD_CORES"
 make install
 
 # Drop the sqlite3 CLI binary — PHP doesn't need it and shipping CLIs

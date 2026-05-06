@@ -72,7 +72,7 @@ cd "$src_dir"
   "--with-terminfo-dirs=/etc/terminfo:/lib/terminfo:/usr/share/terminfo" \
   "--with-fallbacks=linux,xterm,xterm-256color,vt100,screen,tmux"
 
-make -j"$PBS_NPROC"
+make -j"$NIX_BUILD_CORES"
 
 # `make install` in the misc/ subdir tries to run tic (the terminfo
 # compiler) to build the full terminfo database and write it to the paths
@@ -91,27 +91,13 @@ rm -f "$PBS_DEPS/lib"/lib*.a
 rm -rf "$PBS_DEPS/share/man"
 rm -rf "$PBS_DEPS/share/tabset"
 
-# Compat symlinks so libedit's configure finds the widec libs under their
-# unsuffixed names. The soversioning convention differs between platforms:
-# Linux uses libfoo.so.6 (suffix-after-extension), Darwin uses
-# libfoo.6.dylib (suffix-before-extension).
-for lib in ncurses tinfo form menu panel; do
-  case "$OSTYPE" in
-    darwin*)
-      base="$PBS_DEPS/lib/lib${lib}w.dylib"
-      [ -L "$base" ] || [ -f "$base" ] || continue
-      ln -sf "lib${lib}w.dylib" "$PBS_DEPS/lib/lib${lib}.dylib"
-      if [ -e "$PBS_DEPS/lib/lib${lib}w.6.dylib" ]; then
-        ln -sf "lib${lib}w.6.dylib" "$PBS_DEPS/lib/lib${lib}.6.dylib"
-      fi
-      ;;
-    *)
-      [ -L "$PBS_DEPS/lib/lib${lib}w.so" ] || continue
-      ln -sf "lib${lib}w.so" "$PBS_DEPS/lib/lib${lib}.so"
-      ln -sf "lib${lib}w.so.6" "$PBS_DEPS/lib/lib${lib}.so.6"
-      ;;
-  esac
-done
+# Compat symlinks so libedit's configure finds the widec libs under
+# their unsuffixed names. Soversioning convention differs by platform
+# (Linux: libfoo.so.<major>; Darwin: libfoo.<major>.dylib), so the
+# right snippet is selected on the Nix side and threaded in via
+# $PBS_NCURSES_SYMLINKS.
+: "${PBS_NCURSES_SYMLINKS:?set by ncurses.nix}"
+source "$PBS_NCURSES_SYMLINKS"
 
 # Header compat: ncurses --enable-widec installs headers under include/ncursesw/
 # but libedit looks in include/ directly for ncurses.h / curses.h / termcap.h.

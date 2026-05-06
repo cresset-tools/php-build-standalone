@@ -29,7 +29,7 @@ cd "$src_dir"
   --enable-shared \
   --enable-lib-only
 
-make -j"$PBS_NPROC"
+make -j"$NIX_BUILD_CORES"
 make install
 
 rm -rf "$PBS_DEPS/bin"

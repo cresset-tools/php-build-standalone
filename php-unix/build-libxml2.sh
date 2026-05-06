@@ -46,7 +46,7 @@ cd "$src_dir"
 # them trips a binutils-2.22+ linker quirk (libtool's xmlcatalog/xmllint
 # rules don't propagate -lm/-lz transitively through positional libxml2.so
 # arg, link fails with bogus undefined references to log10/fmod/gzread).
-make -j"$PBS_NPROC" libxml2.la
+make -j"$NIX_BUILD_CORES" libxml2.la
 
 # Install only what PHP and downstream extension builds will look for:
 #   - libxml2.so* / libxml2.dylib* via libtool (handles symlinks + .la)

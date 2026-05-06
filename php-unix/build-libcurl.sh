@@ -80,8 +80,8 @@ env "$PBS_RPATH_VAR=${PBS_DEPS_LDPATH:-}" \
 # can't resolve (no /usr/bin/env). PHP's curl extension consumes
 # libcurl + headers + curl.pc — never the man pages — so skipping docs
 # is the right trade-off.
-make -j"$PBS_NPROC" -C lib
-make -j"$PBS_NPROC" -C include
+make -j"$NIX_BUILD_CORES" -C lib
+make -j"$NIX_BUILD_CORES" -C include
 make -C lib install
 make -C include install
 # Install the .pc files for downstream pkg-config consumers.

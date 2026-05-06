@@ -36,7 +36,7 @@ cd "$src_dir"
   --disable-gif \
   --disable-wic
 
-make -j"$PBS_NPROC"
+make -j"$NIX_BUILD_CORES"
 make install
 
 # Drop CLI tools (cwebp, dwebp, etc.) and docs/man pages.

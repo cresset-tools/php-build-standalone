@@ -37,7 +37,7 @@ cd "$src_dir"
   --disable-static \
   --enable-shared
 
-make -j"$PBS_NPROC"
+make -j"$NIX_BUILD_CORES"
 make install
 
 # Drop the helper executables: libpng-config and png-fix-itxt embed the

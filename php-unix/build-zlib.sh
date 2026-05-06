@@ -4,8 +4,8 @@
 # auto-detects ELF vs Mach-O output from $CC + uname.
 #
 # Inherits CC, CFLAGS, LDFLAGS, AR/RANLIB and PBS_* paths from the
-# platform setup-env (setup-env.sh on Linux, setup-env-darwin.sh on
-# macOS — both export PBS_LIB_EXT and PBS_NPROC).
+# platform setup-env (setup-env-linux.sh / setup-env-darwin.sh).
+# NIX_BUILD_CORES comes from the Nix sandbox itself, not setup-env.
 
 set -euo pipefail
 
@@ -28,7 +28,7 @@ cd "$src_dir"
 # a libz.a we don't need; explicitly disable below by removing it post-make.
 ./configure --prefix="$PBS_DEPS" --libdir="$PBS_DEPS/lib" --shared
 
-make -j"$PBS_NPROC"
+make -j"$NIX_BUILD_CORES"
 make install
 
 # zlib installs both libz.a and libz.so/dylib by default; we only ship shared.

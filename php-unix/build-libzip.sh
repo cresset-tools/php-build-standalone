@@ -58,7 +58,7 @@ cmake -G "Unix Makefiles" \
   -DOPENSSL_ROOT_DIR="$PBS_DEP_OPENSSL" \
   ..
 
-make -j"$PBS_NPROC"
+make -j"$NIX_BUILD_CORES"
 make install
 
 rm -rf "$PBS_DEPS/bin"

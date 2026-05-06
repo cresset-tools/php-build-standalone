@@ -3,21 +3,29 @@
 # Each dep is a stdenvNoCC derivation that:
 #   - Fetches its source via fetchurl (FOD, sha256-pinned in sources.nix)
 #   - Brings in the toolchain.nix package set
-#   - Sources setup-env.sh for CFLAGS/LDFLAGS
+#   - Sources setup-env.sh for CFLAGS/LDFLAGS (one file, branches on $OSTYPE)
 #   - Auto-appends -I${dep}/include and -L${dep}/lib for each dep input
 #   - Exports PBS_DEP_<NAME>=<store-path> for build scripts that need explicit
 #     paths (e.g. openssl's `./Configure ... -L$PBS_DEP_ZLIB/lib`)
 #   - Calls the per-dep build-<name>.sh script unchanged
+#   - Runs an optional postBuildHook (used by Darwin to normalize
+#     install_names on the just-installed dylibs)
 #
 # Inputs:
-#   name         — short key matching sources.<name> (e.g. "zlib", "openssl")
-#   buildScript  — path to the per-dep shell script (e.g. ./build-zlib.sh)
-#   deps         — list of other pbs-* derivations this dep needs at build time
-#   extraEnv     — attrset of additional env vars to export before the script
-#   extraInputs  — additional nativeBuildInputs (nasm, perl, etc.)
-#   src          — optional override; defaults to fetchurl of sources.<name>.
-#                  Pass explicitly for entries that live in the phpVersions /
-#                  xdebugVersions maps rather than the flat sources attrset.
+#   name           — short key matching sources.<name>
+#   buildScript    — path to the per-dep shell script
+#   deps           — list of pbs-* derivations this dep needs at build time
+#   extraEnv       — attrset of additional env vars to export before the script
+#   extraInputs    — additional nativeBuildInputs (nasm, perl, etc.)
+#   src            — optional override; defaults to fetchurl of sources.<name>
+#   preBuildHook   — bash snippet to run BEFORE the build script
+#   postBuildHook  — bash snippet to run AFTER the build script
+#
+# Platform branching (Linux vs Darwin) lives in three places:
+#   - toolchain pkg list (toolchain.nix vs toolchain-pkgs-darwin.nix)
+#   - PBS_SYSROOT export (Linux only)
+#   - postBuildHook default (Darwin gets the install_name normalization;
+#     Linux gets an empty default)
 { pkgs, sources, toolchain }:
 { name
 , buildScript ? ./. + "/build-${name}.sh"
@@ -26,40 +34,96 @@
 , extraInputs ? []
 , version ? sources.${name}.version
 , src ? pkgs.fetchurl { url = sources.${name}.url; sha256 = sources.${name}.sha256; }
+, preBuildHook ? ""
+, postBuildHook ? null  # null → use platform default; "" → opt out
 }:
 let
-  upper = pkgs.lib.toUpper name;
-  toolchainPkgs = import ./toolchain.nix { inherit pkgs toolchain; };
+  inherit (pkgs) lib stdenv;
+  darwin = stdenv.isDarwin;
 
-  # `name` may contain dashes (e.g. libxml2 → fine, but pdo-sqlite would
-  # need normalizing for env vars). Normalize: dashes → underscores, then
-  # uppercase. We don't have any dashed names yet but be future-proof.
-  envName = pkgs.lib.toUpper (pkgs.lib.replaceStrings [ "-" ] [ "_" ] name);
+  toolchainPkgs =
+    if darwin
+    then import ./toolchain-pkgs-darwin.nix { inherit pkgs toolchain; }
+    else import ./toolchain.nix             { inherit pkgs toolchain; };
 
-  exportDeps = pkgs.lib.concatMapStringsSep "\n    " (dep: ''
-    export PBS_DEP_${pkgs.lib.toUpper (pkgs.lib.replaceStrings [ "-" ] [ "_" ] (pkgs.lib.removePrefix "pbs-" dep.pname))}="${dep}"'') deps;
+  setupEnv = if darwin then ./setup-env-darwin.sh else ./setup-env-linux.sh;
 
-  appendDepFlags = pkgs.lib.concatMapStringsSep "\n    " (dep: ''
+  envName = lib.toUpper (lib.replaceStrings [ "-" ] [ "_" ] name);
+
+  exportDeps = lib.concatMapStringsSep "\n    " (dep: ''
+    export PBS_DEP_${lib.toUpper (lib.replaceStrings [ "-" ] [ "_" ] (lib.removePrefix "pbs-" dep.pname))}="${dep}"'') deps;
+
+  # Linux: also accumulate PBS_DEPS_LDPATH so per-dep scripts (curl,
+  # PHP) can opt into a runtime LD_LIBRARY_PATH for the duration of a
+  # configure step. Darwin doesn't use this — its in-build executions
+  # rely on absolute install_names baked in by mkDep's postBuildHook.
+  appendDepFlags = lib.concatMapStringsSep "\n    " (dep: ''
     export CFLAGS="$CFLAGS -I${dep}/include"
     export CPPFLAGS="$CPPFLAGS -I${dep}/include"
     export LDFLAGS="$LDFLAGS -L${dep}/lib"
-    # Also expose under PBS_DEPS_LDPATH so per-dep build scripts can
-    # opt in to setting LD_LIBRARY_PATH for the duration of a configure
-    # step (curl is the canonical case — it compiles AND runs a sanity
-    # binary that needs to find libssl/libz at runtime). We do NOT set
-    # LD_LIBRARY_PATH globally because doing so causes cmake's own
-    # libcurl (linked against nixpkgs's OpenSSL with engines enabled)
-    # to pick up our bundled libcrypto.so.3 (built with no-engine) and
-    # fail with "undefined symbol: ENGINE_init".
     export PBS_DEPS_LDPATH="${dep}/lib''${PBS_DEPS_LDPATH:+:$PBS_DEPS_LDPATH}"'') deps;
 
-  # Use antiquotation rather than `toString` so Nix path values get
-  # imported into the store and we get the proper /nix/store/... reference.
-  # (toString on a Nix path gives the literal on-disk source path which
-  # isn't a build input, so the script wouldn't actually be present in
-  # the sandbox.)
-  exportExtra = pkgs.lib.concatStringsSep "\n    "
-    (pkgs.lib.mapAttrsToList (k: v: ''export ${k}="${v}"'') extraEnv);
+  exportExtra = lib.concatStringsSep "\n    "
+    (lib.mapAttrsToList (k: v: ''export ${k}="${v}"'') extraEnv);
+
+  # Darwin's default postBuildHook: normalize install_names on every
+  # dylib we just installed.
+  #
+  # Why: some upstreams (ICU autotools, our hand-rolled bzip2) emit
+  # dylibs whose LC_ID_DYLIB is just the basename. That works for
+  # finalize-darwin (which rewrites to @rpath) but NOT for build-time
+  # link probes that dlopen through dyld — macOS strips DYLD_* across
+  # exec chains, so a bare-name install_name is unreachable inside the
+  # sandbox. Rewriting each dylib's install_name to its absolute build-
+  # time path means dyld resolves siblings via /nix/store/... during
+  # subsequent deps' configure/build probes, and finalize-darwin still
+  # gets the final word at tarball time.
+  defaultDarwinPostBuild = ''
+    if [ -d "$PBS_DEPS/lib" ]; then
+      for f in "$PBS_DEPS/lib"/*.dylib; do
+        [ -L "$f" ] && continue
+        [ -f "$f" ] || continue
+        /usr/bin/file -b "$f" 2>/dev/null | grep -q '^Mach-O' || continue
+        /usr/bin/install_name_tool -id "$f" "$f" 2>/dev/null || true
+        # Sibling cross-references: ICU's libicuuc links libicudata via
+        # bare name, etc. Rewrite each to its absolute build-time path
+        # so dyld finds them during the next dep's pharcmd-style step.
+        while IFS= read -r dep; do
+          [ -n "$dep" ] || continue
+          case "$dep" in
+            "/usr/lib/"*|"/System/"*|"@"*) continue ;;
+          esac
+          base="$(basename "$dep")"
+          if [ -f "$PBS_DEPS/lib/$base" ]; then
+            /usr/bin/install_name_tool -change "$dep" "$PBS_DEPS/lib/$base" "$f" 2>/dev/null || true
+          fi
+        done < <(/usr/bin/otool -L "$f" 2>/dev/null | awk 'NR>1 {print $1}')
+      done
+    fi
+  '';
+
+  resolvedPostBuildHook =
+    if postBuildHook != null
+    then postBuildHook
+    else if darwin
+         then defaultDarwinPostBuild
+         else "";
+
+  # Linux exports PBS_SYSROOT (used by build-php.sh's libstdc++.a path);
+  # Darwin has no sysroot.
+  exportSysroot = lib.optionalString (!darwin) ''
+    export PBS_SYSROOT="${toolchain.passthru.sysroot}"
+  '';
+
+  # Pure-data platform constants. Live here rather than in setup-env-*.sh
+  # because they're string constants, not logic — keeping them on the
+  # Nix side means setup-env-linux.sh / setup-env-darwin.sh contain only
+  # the bits that genuinely differ between platforms (LDFLAGS quirks,
+  # pbs_audit_lib body, sysroot wiring).
+  exportPlatformVars = ''
+    export PBS_LIB_EXT=${if darwin then "dylib" else "so"}
+    export PBS_RPATH_VAR=${if darwin then "DYLD_LIBRARY_PATH" else "LD_LIBRARY_PATH"}
+  '';
 in
 pkgs.stdenvNoCC.mkDerivation {
   pname = "pbs-${name}";
@@ -70,50 +134,39 @@ pkgs.stdenvNoCC.mkDerivation {
   dontUnpack = true;
   dontConfigure = true;
   dontInstall = true;
-  # nixpkgs default fixupPhase does three things we don't want:
-  #   - patchShebangsAuto rewrites `#!/bin/sh` to `/nix/store/.../bash` —
-  #     fatal for phpize/php-config which must remain /bin/sh-portable.
-  #   - patchelf --shrink-rpath silently flips DT_RPATH back to DT_RUNPATH
-  #     (since modern patchelf-shrink emits whichever tag is canonical for
-  #     the toolchain). tree.nix's finalize.sh is the single source of
-  #     truth for RPATH; let it have the final word.
-  #   - strip is redundant; finalize.sh re-strips after the merge.
+  # nixpkgs default fixupPhase would patchShebangsAuto (fatal for
+  # phpize/php-config), shrink RPATHs (re-flips DT_RPATH↔DT_RUNPATH),
+  # and re-strip after our finalize already did. tree.nix's finalize
+  # is the single source of truth.
   dontFixup = true;
 
   buildPhase = ''
     runHook preBuild
 
-    # Toolchain paths consumed by setup-env.sh. PBS_TOOLCHAIN holds the
-    # wrapped clang+lld+sysroot-aware CC; PBS_SYSROOT exposes the
-    # CentOS 7 / glibc 2.17 sysroot tree for the rare build script that
-    # needs to thread an explicit path (e.g. positional libstdc++.a).
     export PBS_TOOLCHAIN="${toolchain}"
-    export PBS_SYSROOT="${toolchain.passthru.sysroot}"
+    ${exportSysroot}
 
-    # Per-dep contract: PBS_SRC_<NAME> = source tarball, PBS_VER_<NAME> = version.
     export PBS_SRC_${envName}="$src"
     export PBS_VER_${envName}="${version}"
 
-    # Working dirs.
     export PBS_SOURCES="$NIX_BUILD_TOP/sources"
     export PBS_DEPS="$out"
     mkdir -p "$PBS_SOURCES" "$PBS_DEPS"
 
-    # Other deps' install paths, exposed by short name.
     ${exportDeps}
 
-    # Now bring in the toolchain flags. Sourced AFTER PBS_GLIBC_LIB et al
-    # are exported (setup-env.sh asserts on them).
-    source ${./setup-env.sh}
+    ${exportPlatformVars}
+    source ${setupEnv}
 
-    # Append dep-specific include/lib search paths AFTER setup-env.sh, so
-    # we extend (not replace) its CFLAGS/LDFLAGS.
     ${appendDepFlags}
 
-    # Per-dep extra env (e.g. specific configure flags via env vars).
     ${exportExtra}
 
+    ${preBuildHook}
+
     bash ${buildScript}
+
+    ${resolvedPostBuildHook}
 
     runHook postBuild
   '';

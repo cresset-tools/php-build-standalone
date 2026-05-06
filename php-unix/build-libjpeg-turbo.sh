@@ -54,7 +54,7 @@ cmake -G "Unix Makefiles" \
   -DWITH_SIMD=OFF \
   ..
 
-make -j"$PBS_NPROC"
+make -j"$NIX_BUILD_CORES"
 make install
 
 # Drop the CLI tools (cjpeg, djpeg, jpegtran, rdjpgcom, wrjpgcom). They

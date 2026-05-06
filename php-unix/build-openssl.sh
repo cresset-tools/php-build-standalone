@@ -38,13 +38,10 @@ cd "$src_dir"
 #   no-engine        — engines are deprecated since OpenSSL 3.0 (replaced
 #                      by providers); PHP's openssl ext doesn't use them.
 # Invoke via `perl` rather than `./Configure` directly so we don't depend
-# on /usr/bin/env in the build sandbox.
-case "$OSTYPE" in
-  darwin*) openssl_target=darwin64-arm64-cc ;;
-  *)       openssl_target=linux-x86_64 ;;
-esac
+# on /usr/bin/env in the build sandbox. PBS_OPENSSL_TARGET set by openssl.nix.
+: "${PBS_OPENSSL_TARGET:?set by openssl.nix}"
 
-perl Configure "$openssl_target" \
+perl Configure "$PBS_OPENSSL_TARGET" \
   --prefix="$PBS_DEPS" \
   --openssldir=/etc/ssl \
   --libdir=lib \
@@ -52,7 +49,7 @@ perl Configure "$openssl_target" \
   -I"$PBS_DEP_ZLIB/include" \
   -L"$PBS_DEP_ZLIB/lib"
 
-make -j"$PBS_NPROC"
+make -j"$NIX_BUILD_CORES"
 make install_sw
 
 # Trim the install:

@@ -29,7 +29,7 @@ cd "$src_dir"
   --disable-static \
   --enable-shared
 
-make -j"$PBS_NPROC"
+make -j"$NIX_BUILD_CORES"
 make install
 
 lib="$PBS_DEPS/lib/libsodium.${PBS_LIB_EXT}"

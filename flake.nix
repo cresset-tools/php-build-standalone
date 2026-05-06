@@ -38,12 +38,10 @@
             else pkgs.callPackage ./php-unix/clang-toolchain.nix { inherit sysroot; };
 
           # mkDep is the derivation factory used by every per-dep wrapper.
-          # The Linux + Darwin variants differ in toolchain pkg list,
-          # sysroot wiring, and post-build install_name normalization
-          # (Darwin only). Each wrapper takes `mkDep` as a function arg.
-          mkDep = if darwin
-            then pkgs.callPackage ./php-unix/mkDep-darwin.nix { inherit sources toolchain; }
-            else pkgs.callPackage ./php-unix/mkDep.nix         { inherit sources toolchain; };
+          # Single file, branches internally on stdenv.isDarwin to pick
+          # toolchain pkg list, sysroot exports, and the post-build
+          # install_name normalization hook.
+          mkDep = pkgs.callPackage ./php-unix/mkDep.nix { inherit sources toolchain; };
 
           # Bundled-dep derivations. Built once and shared across all PHP
           # variants — each builds one C library into its own /nix/store path.

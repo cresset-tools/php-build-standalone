@@ -1,14 +1,13 @@
-# Aggregator derivation. Takes a list of per-dep derivations (zlib, openssl,
-# ...), merges their lib/, include/, share/ trees into a single $out, runs
-# finalize.sh (Linux: patchelf, .la purge, strip, audit gates) or
-# finalize-darwin.sh (Darwin: install_name_tool, codesign, audit gates).
-#
-# $out IS the install tree — `nix shell .#tree` and run `bin/php` works
-# directly. The tarball is packaged from $out by tarball.nix.
+# Aggregator derivation. Takes a list of per-dep derivations (zlib,
+# openssl, ...), merges their lib/, include/, share/ trees into a single
+# $out, runs the platform finalize driver (finalize-linux.sh: patchelf
+# + audit gates; finalize-darwin.sh: install_name_tool + codesign +
+# audit gates). Both drivers source finalize-common.sh for the shared
+# .la / .pc / text-file detoxification phases.
 { pkgs, deps, toolchain, phpVersion ? "0.0.0-unknown" }:
 let
   inherit (pkgs) stdenv lib;
-  finalizer = if stdenv.isDarwin then ./finalize-darwin.sh else ./finalize.sh;
+  finalizer = if stdenv.isDarwin then ./finalize-darwin.sh else ./finalize-linux.sh;
 in
 pkgs.stdenvNoCC.mkDerivation {
   pname = "pbs-tree";
@@ -36,6 +35,7 @@ pkgs.stdenvNoCC.mkDerivation {
     runHook preBuild
 
     export PBS_INSTALL="$out"
+    export PBS_FINALIZE_COMMON="${./finalize-common.sh}"
     mkdir -p "$PBS_INSTALL"
 
     # Merge each dep's tree into $out. cp -a preserves the symlink chains

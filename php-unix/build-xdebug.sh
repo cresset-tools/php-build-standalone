@@ -36,7 +36,7 @@ cd "$src_dir"
 ./configure \
   --with-php-config="$PBS_DEP_PHP/bin/php-config"
 
-make -j"$PBS_NPROC"
+make -j"$NIX_BUILD_CORES"
 
 # `make install` puts xdebug.so into php-config's reported extension_dir.
 # At this stage php-config returns the build-time PBS_DEP_PHP-rooted path

@@ -39,12 +39,29 @@ mkDep {
     # major-minor numbers (e.g. 81 = PHP 8.1) bounding the version range
     # the patch applies to. See prepare-php.sh for the full convention.
     PBS_VER_PHP_MAJORMINOR = lib.versions.majorMinor phpSpec.version;
+
+    # Platform-divergent build-php.sh snippets, picked here on the Nix
+    # side so the script itself stays OS-agnostic.
+    PBS_PHP_PRE_CONFIGURE = if stdenv.isDarwin
+      then ./build-php-pre-configure-darwin.sh
+      else ./build-php-pre-configure-linux.sh;
+    PBS_PHP_POST_INSTALL = if stdenv.isDarwin
+      then ./build-php-post-install-darwin.sh
+      else ./build-php-post-install-noop.sh;
+    PBS_PHP_AUDIT_EXTRA = if stdenv.isDarwin
+      then ./build-php-audit-extra-noop.sh
+      else ./build-php-audit-extra-linux.sh;
+    # Linux's iconv comes from glibc — no path. Darwin uses our bundled
+    # GNU libiconv since apple-sdk strips the system iconv headers.
+    PBS_PHP_ICONV_ARG = if stdenv.isDarwin
+      then "--with-iconv=${libiconv}"
+      else "--with-iconv";
   } // lib.optionalAttrs stdenv.isDarwin {
     # nixpkgs darwin.libresolv provides build-time -L/<store>/lib +
     # libresolv.dylib for ld to satisfy `-lresolv` (used by ext/standard/dns).
-    # build-php.sh rewrites the resulting LC_LOAD_DYLIB to
-    # /usr/lib/libresolv.9.dylib post-link so the tarball references the
-    # consumer's system libresolv instead of /nix/store.
+    # build-php-post-install-darwin.sh rewrites the resulting LC_LOAD_DYLIB
+    # to /usr/lib/libresolv.9.dylib so the tarball references the consumer's
+    # system libresolv instead of /nix/store.
     PBS_DEP_LIBRESOLV_DIR = pkgs.darwin.libresolv;
     # The matching dev output ships <resolv.h>, <arpa/nameser.h>, <dns.h>,
     # etc. — the legacy networking headers stripped from nixpkgs's

@@ -46,7 +46,7 @@ cd "$src_dir"
   --with-harfbuzz=no \
   --with-brotli=no
 
-make -j"$PBS_NPROC"
+make -j"$NIX_BUILD_CORES"
 make install
 
 # Drop helper binaries (freetype-config etc): they bake in build-time
