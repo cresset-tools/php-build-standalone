@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Build libjpeg-turbo as a shared library into ${PBS_DEPS}.
-# PHP's gd extension links against libjpeg.so for JPEG decode/encode.
+# PHP's gd extension links against libjpeg for JPEG decode/encode.
 #
-# Inherits CC, CFLAGS, LDFLAGS from setup-env.sh. No other deps.
+# Inherits CC, CFLAGS, LDFLAGS from setup-env(.sh|-darwin.sh). No deps.
 #
 # libjpeg-turbo 3.x switched from autotools to CMake, so this script
 # follows the cmake out-of-tree pattern rather than the ./configure
@@ -29,29 +29,32 @@ cd "$src_dir"
 #       traditional libjpeg API, and tjbench bakes the build directory
 #       into its RPATH which finalize.sh would then have to rewrite.
 #   WITH_SIMD=OFF — SIMD acceleration on x86_64 needs NASM (or yasm)
-#       at build time; the PBS toolchain (toolchain.nix) doesn't
-#       include either. Trading some encode/decode speed for a smaller
-#       toolchain surface; can be flipped on later by adding nasm to
-#       extraInputs.
+#       at build time; the PBS toolchain doesn't include either.
+#       Trading some encode/decode speed for a smaller toolchain
+#       surface; can be flipped on later by adding nasm to extraInputs.
 #   CMAKE_INSTALL_LIBDIR=$PBS_DEPS/lib — force flat lib/, otherwise
 #       cmake's GNUInstallDirs picks lib64/ on x86_64 which doesn't
 #       match where the PHP build looks.
 #   CMAKE_BUILD_TYPE=Release — without this, cmake defaults to an
 #       empty build type which means no -O flag at all (CFLAGS from
 #       setup-env.sh has -O2, but cmake may strip it).
+#   CMAKE_OSX_DEPLOYMENT_TARGET — only meaningful on Darwin; harmless
+#       on Linux where MACOSX_DEPLOYMENT_TARGET is unset and the var
+#       expands to empty.
 mkdir -p build
 cd build
 cmake -G "Unix Makefiles" \
   -DCMAKE_INSTALL_PREFIX="$PBS_DEPS" \
   -DCMAKE_INSTALL_LIBDIR="$PBS_DEPS/lib" \
   -DCMAKE_BUILD_TYPE=Release \
+  -DCMAKE_OSX_DEPLOYMENT_TARGET="${MACOSX_DEPLOYMENT_TARGET:-}" \
   -DENABLE_STATIC=OFF \
   -DENABLE_SHARED=ON \
   -DWITH_TURBOJPEG=OFF \
   -DWITH_SIMD=OFF \
   ..
 
-make -j"$(nproc)"
+make -j"$PBS_NPROC"
 make install
 
 # Drop the CLI tools (cjpeg, djpeg, jpegtran, rdjpgcom, wrjpgcom). They
@@ -65,16 +68,7 @@ rm -rf "$PBS_DEPS/bin"
 # files are dead weight + a /nix/store-leak source. Drop them.
 rm -rf "$PBS_DEPS/lib/cmake"
 
-# Sanity: shared lib must exist with a clean NEEDED list (no /nix/store
-# leakage).
-lib="$PBS_DEPS/lib/libjpeg.so"
-real_lib="$(readlink -f "$lib")"
-echo
-echo "--- libjpeg-turbo NEEDED audit ---"
-needed=$(readelf -d "$real_lib" | grep NEEDED || true)
-echo "$needed"
-if echo "$needed" | grep -q '/nix/store'; then
-  echo "FATAL: libjpeg has /nix/store path in DT_NEEDED" >&2
-  exit 1
-fi
+lib="$PBS_DEPS/lib/libjpeg.${PBS_LIB_EXT}"
+[ -e "$lib" ] || { echo "FATAL: $lib not produced" >&2; exit 1; }
+pbs_audit_lib "$lib" libjpeg-turbo
 echo "libjpeg-turbo OK"

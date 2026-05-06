@@ -1,8 +1,11 @@
 #!/usr/bin/env bash
 # Build zlib as a shared library into ${PBS_DEPS}. zlib's configure is
-# hand-rolled (not autoconf) but it does honor CFLAGS/LDFLAGS/CC.
+# hand-rolled (not autoconf) but it does honor CFLAGS/LDFLAGS/CC, and
+# auto-detects ELF vs Mach-O output from $CC + uname.
 #
-# Inherits CC, CFLAGS, LDFLAGS, AR/RANLIB and PBS_* paths from build-deps.sh.
+# Inherits CC, CFLAGS, LDFLAGS, AR/RANLIB and PBS_* paths from the
+# platform setup-env (setup-env.sh on Linux, setup-env-darwin.sh on
+# macOS — both export PBS_LIB_EXT and PBS_NPROC).
 
 set -euo pipefail
 
@@ -25,19 +28,18 @@ cd "$src_dir"
 # a libz.a we don't need; explicitly disable below by removing it post-make.
 ./configure --prefix="$PBS_DEPS" --libdir="$PBS_DEPS/lib" --shared
 
-make -j"$(nproc)"
+make -j"$PBS_NPROC"
 make install
 
-# zlib installs both libz.a and libz.so by default; we only ship shared.
+# zlib installs both libz.a and libz.so/dylib by default; we only ship shared.
 rm -f "$PBS_DEPS/lib/libz.a"
 
-# Sanity: the just-built libz.so must exist. RPATH is set in finalize.sh,
-# not here, so we don't audit it at this stage.
-lib="$PBS_DEPS/lib/libz.so"
+# Sanity: the just-built libz must exist. RPATH/install_name is set in
+# finalize.sh, not here.
+lib="$PBS_DEPS/lib/libz.${PBS_LIB_EXT}"
 if [ ! -L "$lib" ] && [ ! -f "$lib" ]; then
   echo "FATAL: $lib not produced" >&2
   exit 1
 fi
-echo "--- zlib NEEDED audit ---"
-readelf -d "$(readlink -f "$lib")" | grep -E 'NEEDED' || true
+pbs_audit_lib "$lib" zlib
 echo "zlib OK"

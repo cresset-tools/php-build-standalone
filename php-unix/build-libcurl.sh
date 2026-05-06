@@ -3,8 +3,8 @@
 #
 # Inherits CC, CFLAGS, LDFLAGS, plus PBS_DEP_OPENSSL, PBS_DEP_ZLIB, and
 # PBS_DEP_NGHTTP2 pointing at the respective dep derivations' $out
-# (auto-appended -I/-L by mkDep.nix). PHP's curl extension links against
-# libcurl.so at runtime; we deliberately do not ship the curl CLI binary.
+# (auto-appended -I/-L by mkDep). PHP's curl extension links against
+# libcurl at runtime; we deliberately do not ship the curl CLI binary.
 
 set -euo pipefail
 
@@ -28,43 +28,28 @@ cd "$src_dir"
 #   --with-nghttp2=$DEP        — HTTP/2 support against the bundled nghttp2.
 #   --with-zlib=$DEP           — gzip/deflate Content-Encoding support.
 #
-#   --without-libpsl           — Public Suffix List; would otherwise pull in
-#                                a system libpsl. Cookie-domain checks fall
-#                                back to the legacy heuristic.
-#   --without-libidn2          — IDN support; rare in PHP usage.
-#   --without-librtmp          — RTMP streaming protocol; unused by PHP apps.
-#   --without-libssh2          — SSH/SCP/SFTP; PHP code that needs SFTP
-#                                tends to use phpseclib instead.
-#   --without-brotli           — extra optional dep we don't bundle.
-#   --without-zstd             — extra optional dep we don't bundle.
-#   --without-libgsasl         — SASL auth; rare in PHP usage.
-#   --without-ngtcp2 --without-quiche
-#                              — HTTP/3 (QUIC) backends. Both pull in extra
-#                                deps; PHP curl users almost never use HTTP/3
-#                                directly. Easy to add later if demand arises.
+#   --without-libpsl/libidn2/librtmp/libssh2/brotli/zstd/libgsasl/ngtcp2/quiche
+#                              — drop optional features that would either
+#                                pull in a system lib or extra bundled deps.
+#                                PHP curl extension surface doesn't expose
+#                                them in any common usage.
+#   --disable-ldap/-ldaps/-rtsp — protocols PHP doesn't use.
+#   --without-ca-bundle / --without-ca-path / --with-ca-fallback
+#                              — don't bake a build-time CA path; let curl
+#                                walk its built-in fallback list at runtime.
+#                                PHP code that needs explicit trust roots
+#                                passes CURLOPT_CAINFO.
+#   --disable-static / --enable-shared — shared only.
 #
-#   --disable-ldap             — LDAP/LDAPS would need libldap.
-#   --disable-ldaps
-#   --disable-rtsp             — RTSP protocol; unused.
-#
-#   --without-ca-bundle        — don't hardcode a CA bundle path at build
-#   --without-ca-path            time (the bundled-Nix-store path would be
-#                                meaningless on the user's machine).
-#   --with-ca-fallback         — instead, let curl walk its built-in fallback
-#                                list at runtime (/etc/ssl/certs etc). PHP
-#                                code that needs explicit trust roots passes
-#                                CURLOPT_CAINFO.
-#
-#   --disable-static / --enable-shared
-#                              — shared only; matches the rest of the tree.
 # curl's configure compiles AND runs a sanity-check binary to verify that
-# the libs it just link-tested are also runtime-loadable. Without
-# LD_LIBRARY_PATH pointing at our bundled libssl/libcrypto/libnghttp2/libz
-# at that moment, the test binary fails to dlopen them and configure
-# aborts with "run-time libs availability... failed". We set this only
-# for the configure invocation — exporting it globally would cause
-# cmake's own libcurl in other deps' builds to pick up the wrong libs.
-LD_LIBRARY_PATH="${PBS_DEPS_LDPATH:-}" \
+# the libs it just link-tested are also runtime-loadable. Without a runtime
+# library-search-path pointing at our bundled libssl/libcrypto/libnghttp2/
+# libz, the test binary fails to dlopen them and configure aborts with
+# "run-time libs availability... failed". We set PBS_RPATH_VAR
+# (LD_LIBRARY_PATH on Linux, DYLD_LIBRARY_PATH on Darwin) only for the
+# configure invocation — exporting it globally would cause cmake's own
+# libcurl in other deps' builds to pick up the wrong libs.
+env "$PBS_RPATH_VAR=${PBS_DEPS_LDPATH:-}" \
 ./configure \
   --prefix="$PBS_DEPS" \
   --libdir="$PBS_DEPS/lib" \
@@ -93,13 +78,13 @@ LD_LIBRARY_PATH="${PBS_DEPS_LDPATH:-}" \
 # uses scripts/cd2nroff to convert .md sources to nroff(7) man pages,
 # and that script has `#!/usr/bin/env perl` which the Nix build sandbox
 # can't resolve (no /usr/bin/env). PHP's curl extension consumes
-# libcurl.so + headers + curl.pc — never the man pages — so skipping
-# docs is the right trade-off.
-make -j"$(nproc)" -C lib
-make -j"$(nproc)" -C include
+# libcurl + headers + curl.pc — never the man pages — so skipping docs
+# is the right trade-off.
+make -j"$PBS_NPROC" -C lib
+make -j"$PBS_NPROC" -C include
 make -C lib install
 make -C include install
-# Install the .pc files for downstream pkg-config consumers
+# Install the .pc files for downstream pkg-config consumers.
 make install-pkgconfigDATA 2>/dev/null || \
   make -C . install-data-am 2>/dev/null || \
   cp libcurl.pc "$PBS_DEPS/lib/pkgconfig/" 2>/dev/null || true
@@ -108,15 +93,7 @@ make install-pkgconfigDATA 2>/dev/null || \
 # the CLI would otherwise need its own RPATH/finalize handling.
 rm -rf "$PBS_DEPS/bin"
 
-# Sanity: shared lib must exist with a clean NEEDED list (no /nix/store).
-lib="$PBS_DEPS/lib/libcurl.so"
-real_lib="$(readlink -f "$lib")"
-echo
-echo "--- libcurl NEEDED audit ---"
-needed=$(readelf -d "$real_lib" | grep NEEDED || true)
-echo "$needed"
-if echo "$needed" | grep -q '/nix/store'; then
-  echo "FATAL: libcurl has /nix/store path in DT_NEEDED" >&2
-  exit 1
-fi
+lib="$PBS_DEPS/lib/libcurl.${PBS_LIB_EXT}"
+[ -e "$lib" ] || { echo "FATAL: $lib not produced" >&2; exit 1; }
+pbs_audit_lib "$lib" libcurl
 echo "libcurl OK"

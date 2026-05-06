@@ -2,10 +2,10 @@
 # Build libpng as a shared library into ${PBS_DEPS}, against the bundled zlib.
 #
 # Inherits CC, CFLAGS, LDFLAGS, plus PBS_DEP_ZLIB pointing at the zlib
-# derivation's $out (auto-appended -I/-L by mkDep.nix).
+# derivation's $out (auto-appended -I/-L by mkDep).
 #
-# Output of interest: $PBS_DEPS/lib/libpng16.so* (versioned soname; the
-# unversioned libpng.so is just a symlink installed alongside).
+# Output of interest: $PBS_DEPS/lib/libpng16.{so,dylib}* (versioned
+# soname; the unversioned libpng.so/.dylib is just a symlink).
 
 set -euo pipefail
 
@@ -23,7 +23,7 @@ cd "$src_dir"
 
 # Configure flags rationale:
 #   --with-zlib-prefix=$DEP — libpng's configure looks for zlib.h /
-#                             -lz under this prefix. mkDep.nix already
+#                             -lz under this prefix. mkDep already
 #                             appended -I/-L for the zlib dep, but
 #                             libpng's configure also runs an explicit
 #                             link-test using this prefix var, so set
@@ -37,26 +37,16 @@ cd "$src_dir"
   --disable-static \
   --enable-shared
 
-make -j"$(nproc)"
+make -j"$PBS_NPROC"
 make install
 
 # Drop the helper executables: libpng-config and png-fix-itxt embed the
 # build-time $out path as text, which would normally fail the /nix/store
 # text-file audit applied by tree finalization. PHP's gd build doesn't
-# need these helpers (it uses pkg-config + headers). Same pattern as
-# openssl / sqlite / oniguruma in this tree.
+# need these helpers (it uses pkg-config + headers).
 rm -rf "$PBS_DEPS/bin"
 
-# Sanity: shared lib must exist with a clean NEEDED list (no /nix/store
-# leakage from the build-time toolchain).
-lib="$PBS_DEPS/lib/libpng16.so"
-real_lib="$(readlink -f "$lib")"
-echo
-echo "--- libpng NEEDED audit ---"
-needed=$(readelf -d "$real_lib" | grep NEEDED || true)
-echo "$needed"
-if echo "$needed" | grep -q '/nix/store'; then
-  echo "FATAL: libpng has /nix/store path in DT_NEEDED" >&2
-  exit 1
-fi
+lib="$PBS_DEPS/lib/libpng16.${PBS_LIB_EXT}"
+[ -e "$lib" ] || { echo "FATAL: $lib not produced" >&2; exit 1; }
+pbs_audit_lib "$lib" libpng
 echo "libpng OK"

@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # Build SQLite as a shared library into ${PBS_DEPS}.
 #
-# Inherits CC, CFLAGS, LDFLAGS from setup-env.sh. No dep inputs — SQLite
-# is a leaf in our dep graph (it links only libm + libc). PHP's pdo_sqlite
-# extension consumes libsqlite3.so + headers + sqlite3.pc out of $PBS_DEPS.
+# Inherits CC, CFLAGS, LDFLAGS from setup-env(.sh|-darwin.sh). No dep
+# inputs — SQLite is a leaf in our dep graph (it links only libm + libc).
+# PHP's pdo_sqlite extension consumes libsqlite3.so/.dylib + headers +
+# sqlite3.pc out of $PBS_DEPS.
 
 set -euo pipefail
 
@@ -23,9 +24,10 @@ src_dir=$(echo "$PBS_SOURCES"/sqlite-autoconf-*)
 cd "$src_dir"
 
 # Configure flags rationale:
-#   --disable-static / --enable-shared — we ship .so only; pdo_sqlite is
-#                           a dynamically-loaded PHP extension that links
-#                           against the bundled shared libsqlite3.
+#   --disable-static / --enable-shared — we ship .so/.dylib only;
+#                           pdo_sqlite is a dynamically-loaded PHP
+#                           extension that links against the bundled
+#                           shared libsqlite3.
 #   --disable-readline    — no readline dep in our toolchain; the sqlite3
 #                           CLI shell would pull libreadline in. The shell
 #                           itself isn't shipped (PHP only needs the lib),
@@ -47,22 +49,14 @@ cd "$src_dir"
   --disable-tcl \
   --disable-editline
 
-make -j"$(nproc)"
+make -j"$PBS_NPROC"
 make install
 
 # Drop the sqlite3 CLI binary — PHP doesn't need it and shipping CLIs
 # bloats the tarball. (Same pattern as openssl, which deletes its bin/.)
 rm -rf "$PBS_DEPS/bin"
 
-# Sanity: shared lib must exist with a clean NEEDED list.
-lib="$PBS_DEPS/lib/libsqlite3.so"
-real_lib="$(readlink -f "$lib")"
-echo
-echo "--- sqlite NEEDED audit ---"
-needed=$(readelf -d "$real_lib" | grep NEEDED || true)
-echo "$needed"
-if echo "$needed" | grep -q '/nix/store'; then
-  echo "FATAL: libsqlite3 has /nix/store path in DT_NEEDED" >&2
-  exit 1
-fi
+lib="$PBS_DEPS/lib/libsqlite3.${PBS_LIB_EXT}"
+[ -e "$lib" ] || { echo "FATAL: $lib not produced" >&2; exit 1; }
+pbs_audit_lib "$lib" sqlite
 echo "sqlite OK"

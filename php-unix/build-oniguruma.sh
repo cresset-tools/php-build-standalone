@@ -1,11 +1,10 @@
 #!/usr/bin/env bash
 # Build Oniguruma (libonig) as a shared library into ${PBS_DEPS}.
 #
-# PHP's mbstring extension links against libonig.so for its mb_ereg /
-# mb_split family of regex functions. We ship a bundled copy so the
-# tarball doesn't depend on the host's libonig.
+# PHP's mbstring extension links against libonig for its mb_ereg /
+# mb_split family of regex functions.
 #
-# Inherits CC, CFLAGS, LDFLAGS from setup-env.sh.
+# Inherits CC, CFLAGS, LDFLAGS from setup-env(.sh|-darwin.sh).
 
 set -euo pipefail
 
@@ -16,25 +15,20 @@ set -euo pipefail
 
 # Upstream tarball extracts as onig-<version>/, NOT oniguruma-<version>/.
 # Our internal dep key is "oniguruma" (matches the PHP-side --with-onig
-# convention and is more discoverable than "onig"), but the tarball name
-# follows upstream's onig-* convention. Keep the two distinct.
+# convention), but the tarball name follows upstream's onig-* convention.
 src_dir="$PBS_SOURCES/onig-${PBS_VER_ONIGURUMA}"
 rm -rf "$src_dir"
 mkdir -p "$PBS_SOURCES"
 tar -xf "$PBS_SRC_ONIGURUMA" -C "$PBS_SOURCES"
 cd "$src_dir"
 
-# Plain autotools build. Oniguruma has no external runtime deps beyond
-# libc, so there's nothing to point configure at.
-#   --disable-static / --enable-shared — shared only, matching the rest
-#                                        of the PBS-style tree.
 ./configure \
   --prefix="$PBS_DEPS" \
   --libdir="$PBS_DEPS/lib" \
   --disable-static \
   --enable-shared
 
-make -j"$(nproc)"
+make -j"$PBS_NPROC"
 make install
 
 # Drop bin/onig-config — it's a config-helper script with the build-time
@@ -43,16 +37,7 @@ make install
 # rather than this script.
 rm -rf "$PBS_DEPS/bin"
 
-# Sanity: shared lib must exist with a clean NEEDED list (no /nix/store
-# leakage from the cc-wrapper-free toolchain).
-lib="$PBS_DEPS/lib/libonig.so"
-real_lib="$(readlink -f "$lib")"
-echo
-echo "--- oniguruma NEEDED audit ---"
-needed=$(readelf -d "$real_lib" | grep NEEDED || true)
-echo "$needed"
-if echo "$needed" | grep -q '/nix/store'; then
-  echo "FATAL: libonig has /nix/store path in DT_NEEDED" >&2
-  exit 1
-fi
+lib="$PBS_DEPS/lib/libonig.${PBS_LIB_EXT}"
+[ -e "$lib" ] || { echo "FATAL: $lib not produced" >&2; exit 1; }
+pbs_audit_lib "$lib" oniguruma
 echo "oniguruma OK"

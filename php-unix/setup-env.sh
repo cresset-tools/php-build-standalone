@@ -1,23 +1,55 @@
-# Sourced by every per-dep build script. Sets the compile/link flags
-# used across all bundled-dep builds.
+# Sourced by every per-dep build script on Linux (the Darwin counterpart
+# is setup-env-darwin.sh in this same directory). Sets the compile/link
+# flags used across all bundled-dep builds.
 #
-# We use clang from a custom toolchain wrapper (php-unix/clang-toolchain.nix),
-# pointed at a CentOS 7 / glibc 2.17 sysroot (php-unix/sysroot.nix). The
-# wrapper bakes --sysroot, -B, -L, -nostdinc, -static-libgcc, the
-# dynamic-linker path, and libstdc++ search paths into every CC
-# invocation. Same load-bearing trick as python-build-standalone:
-# modern compiler against an old sysroot, producing binaries with a
-# glibc symbol floor at 2.17 (in practice ~2.14 for most code).
+# We use clang from a custom toolchain wrapper (clang-toolchain.nix),
+# pointed at a CentOS 7 / glibc 2.17 sysroot (sysroot.nix). The wrapper
+# bakes --sysroot, -B, -L, -nostdinc, -static-libgcc, the dynamic-linker
+# path, and libstdc++ search paths into every CC invocation. Same
+# load-bearing trick as python-build-standalone: modern compiler against
+# an old sysroot, producing binaries with a glibc symbol floor at 2.17
+# (in practice ~2.14 for most code).
 #
 # Inputs (must be exported by the derivation calling this):
-#   PBS_TOOLCHAIN — $out of php-unix/clang-toolchain.nix.
+#   PBS_TOOLCHAIN — $out of clang-toolchain.nix.
 #                   Contains bin/cc, bin/c++, bin/ld, etc.
-#   PBS_SYSROOT   — $out of php-unix/sysroot.nix. Used by the few
+#   PBS_SYSROOT   — $out of sysroot.nix. Used by the few
 #                   places we still need to thread an explicit path
 #                   (e.g. positional libstdc++.a in PHP's link line).
 
 : "${PBS_TOOLCHAIN:?must be set by the derivation}"
 : "${PBS_SYSROOT:?must be set by the derivation}"
+
+# Platform-abstraction vars + helper consumed by build-*.sh scripts so
+# per-dep scripts don't need to branch on $OSTYPE.
+# setup-env-darwin.sh exports the matching Darwin values.
+export PBS_LIB_EXT=so
+export PBS_RPATH_VAR=LD_LIBRARY_PATH
+export PBS_NPROC="$(nproc)"
+
+# Dump the dynamic-linker audit info for a freshly-built shared library
+# and fail if the binary leaks any /nix/store path through DT_NEEDED.
+# Darwin's setup-env-darwin.sh reimplements this with otool -L (and no
+# leak check, because Darwin's mkDep-darwin.nix intentionally writes
+# /nix/store paths into LC_LOAD_DYLIB at build time — finalize-darwin.sh
+# rewrites them to @rpath entries at tarball time).
+pbs_audit_lib() {
+  local lib="$1" name="$2"
+  echo
+  echo "--- ${name} NEEDED audit ---"
+  local real_lib needed
+  real_lib="$(readlink -f "$lib")"
+  needed=$(readelf -d "$real_lib" | grep NEEDED || true)
+  echo "$needed"
+  if echo "$needed" | grep -q '/nix/store'; then
+    echo "FATAL: ${name} has /nix/store path in DT_NEEDED" >&2
+    return 1
+  fi
+}
+# build-*.sh runs as `bash <script>` from mkDep's buildPhase, which
+# spawns a fresh shell — so the function needs `export -f` to survive
+# the exec boundary even though the env vars above propagate normally.
+export -f pbs_audit_lib
 
 # CC / CXX point at the wrapper scripts in the toolchain. They already
 # carry --target, --sysroot, -B, -L, -resource-dir, -isystem, -fuse-ld

@@ -10,18 +10,14 @@
 # `xdebugSpec` is the value from sources.xdebugVersions.<major.minor> —
 # parallel to the phpSpec pattern in php.nix. Kept as a separate arg so
 # flake.nix can pair different xdebug releases with different PHP variants.
-{ pkgs, sources, toolchain, php, xdebugSpec }:
-let
-  mkDep = import ./mkDep.nix { inherit pkgs sources toolchain; };
-in
+{ mkDep, pkgs, php, xdebugSpec }:
 mkDep {
   name = "xdebug";
   version = xdebugSpec.version;
   src = pkgs.fetchurl { inherit (xdebugSpec) url sha256; };
-  buildScript = ./build-xdebug.sh;
   deps = [ php ];
   # phpize needs autoconf + autoheader at build time. They're already in
-  # toolchain.nix but listing here is defense-in-depth (and documents
-  # the build-tool dependency at the call site).
+  # the toolchain pkg list, listed here as defense-in-depth and to
+  # document the build-tool dependency at the call site.
   extraInputs = with pkgs; [ autoconf automake libtool m4 ];
 }

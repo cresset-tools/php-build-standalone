@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build xdebug.so as a Zend extension against our just-built PHP.
+# Build xdebug.so/.dylib as a Zend extension against our just-built PHP.
 #
 # This is the end-to-end cross-check of the phpize / php-config relocation
 # patches: phpize is invoked from $PBS_DEP_PHP/bin/phpize and must (a)
@@ -7,8 +7,8 @@
 # build-files referencing $prefix/lib/php/build, not the build-time path.
 # If either patch broke, this build dies.
 #
-# Inherits CC, CFLAGS, LDFLAGS from setup-env.sh; mkDep.nix exports
-# PBS_DEP_PHP pointing at the PHP derivation's $out.
+# Inherits CC, CFLAGS, LDFLAGS from setup-env(.sh|-darwin.sh); mkDep
+# exports PBS_DEP_PHP pointing at the PHP derivation's $out.
 
 set -euo pipefail
 
@@ -36,18 +36,18 @@ cd "$src_dir"
 ./configure \
   --with-php-config="$PBS_DEP_PHP/bin/php-config"
 
-make -j"$(nproc)"
+make -j"$PBS_NPROC"
 
 # `make install` puts xdebug.so into php-config's reported extension_dir.
 # At this stage php-config returns the build-time PBS_DEP_PHP-rooted path
-# (e.g. /nix/store/<hash>-pbs-php-8.4.3/lib/extensions/no-debug-non-zts-XXX),
-# but our PBS_DEPS for THIS derivation is xdebug's own /nix/store/<hash>-pbs-xdebug-...
-# We can't let make install write into PHP's $out (read-only), so we use
-# INSTALL_ROOT to redirect the install root, then move the file under our
-# own $out.
+# but our PBS_DEPS for THIS derivation is xdebug's own /nix/store/<hash>.
+# We can't write into PHP's $out (read-only), so use INSTALL_ROOT to
+# redirect, then move the file under our own $out.
 make install INSTALL_ROOT="$PBS_DEPS/__staging"
 
-# Walk the staging tree to find xdebug.so (path is sapi-version-dependent).
+# Walk the staging tree to find xdebug.so/.dylib (path is sapi-version-
+# dependent on Linux; on Darwin phpize/PECL emit a .so too despite the
+# Mach-O format).
 xdebug_so="$(find "$PBS_DEPS/__staging" -name xdebug.so -type f | head -1)"
 if [ -z "$xdebug_so" ]; then
   echo "FATAL: xdebug.so not produced under $PBS_DEPS/__staging" >&2
@@ -56,7 +56,7 @@ if [ -z "$xdebug_so" ]; then
 fi
 
 # Strip the staging prefix and PBS_DEP_PHP prefix to get the relative path
-# under <prefix>/lib/extensions/... so we install it at the corresponding
+# under <prefix>/lib/extensions/... so we install at the corresponding
 # location under our own $out. tree.nix's lib/ merge will combine it with
 # PHP's tree at the canonical extensions/ path.
 rel="${xdebug_so#$PBS_DEPS/__staging}"
@@ -66,13 +66,5 @@ mkdir -p "$PBS_DEPS$(dirname "$rel")"
 cp "$xdebug_so" "$PBS_DEPS$rel"
 rm -rf "$PBS_DEPS/__staging"
 
-# Sanity: NEEDED list should not contain /nix/store paths.
-echo
-echo "--- xdebug.so NEEDED audit ---"
-needed=$(readelf -d "$PBS_DEPS$rel" | grep NEEDED || true)
-echo "$needed"
-if echo "$needed" | grep -q '/nix/store'; then
-  echo "FATAL: xdebug.so has /nix/store path in DT_NEEDED" >&2
-  exit 1
-fi
+pbs_audit_lib "$PBS_DEPS$rel" xdebug.so
 echo "xdebug OK ($rel)"

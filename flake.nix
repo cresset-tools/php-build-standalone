@@ -18,145 +18,67 @@
       isDarwin = system: builtins.elem system darwinSystems;
     in {
       packages = forEach (system:
-        if isDarwin system then
-          # ───────────────────────────── Darwin ─────────────────────────────
-          # Full per-PHP-version fan-out mirroring the Linux side: all 18
-          # bundled deps + PHP + xdebug + tarball, finalized via the Darwin
-          # toolchain (install_name_tool / @rpath rewrites in finalize.sh).
-          let
-            pkgs = import nixpkgs { inherit system; };
-            sources = import ./php-unix/sources.nix;
-            nixpkgsRev = nixpkgs.rev or "dirty";
-            toolchain = pkgs.callPackage ./php-darwin/toolchain.nix {
-              clang = pkgs.clang;
-              llvmPackages = pkgs.llvmPackages;
-            };
-            zlib          = pkgs.callPackage ./php-darwin/zlib.nix          { inherit sources toolchain; };
-            openssl       = pkgs.callPackage ./php-darwin/openssl.nix       { inherit sources toolchain zlib; };
-            libxml2       = pkgs.callPackage ./php-darwin/libxml2.nix       { inherit sources toolchain zlib; };
-            sqlite        = pkgs.callPackage ./php-darwin/sqlite.nix        { inherit sources toolchain; };
-            oniguruma     = pkgs.callPackage ./php-darwin/oniguruma.nix     { inherit sources toolchain; };
-            libsodium     = pkgs.callPackage ./php-darwin/libsodium.nix     { inherit sources toolchain; };
-            bzip2         = pkgs.callPackage ./php-darwin/bzip2.nix         { inherit sources toolchain; };
-            libpng        = pkgs.callPackage ./php-darwin/libpng.nix        { inherit sources toolchain zlib; };
-            libjpeg-turbo = pkgs.callPackage ./php-darwin/libjpeg-turbo.nix { inherit sources toolchain; };
-            libwebp       = pkgs.callPackage ./php-darwin/libwebp.nix       { inherit sources toolchain; };
-            freetype      = pkgs.callPackage ./php-darwin/freetype.nix      { inherit sources toolchain zlib bzip2; };
-            nghttp2       = pkgs.callPackage ./php-darwin/nghttp2.nix       { inherit sources toolchain; };
-            libzip        = pkgs.callPackage ./php-darwin/libzip.nix        { inherit sources toolchain zlib bzip2 openssl; };
-            icu           = pkgs.callPackage ./php-darwin/icu.nix           { inherit sources toolchain; };
-            libcurl       = pkgs.callPackage ./php-darwin/libcurl.nix       { inherit sources toolchain openssl zlib nghttp2; };
-            ncurses       = pkgs.callPackage ./php-darwin/ncurses.nix       { inherit sources toolchain; };
-            libedit       = pkgs.callPackage ./php-darwin/libedit.nix       { inherit sources toolchain ncurses; };
-            libiconv      = pkgs.callPackage ./php-darwin/libiconv.nix      { inherit sources toolchain; };
-            sharedDeps = [
-              zlib openssl libxml2 sqlite oniguruma libsodium bzip2
-              libpng libjpeg-turbo libwebp freetype
-              nghttp2 libzip icu libcurl ncurses libedit libiconv
-            ];
-
-            # Per-PHP variant fan-out, mirroring the Linux side. Same shape:
-            # phpVersions key → { php; xdebug; tree; }.
-            mkPhpVariant = phpKey:
-              let
-                phpSpec    = sources.phpVersions.${phpKey};
-                xdebugSpec = sources.xdebugVersions.${phpSpec.xdebug};
-                php = pkgs.callPackage ./php-darwin/php.nix {
-                  inherit sources toolchain phpSpec
-                          zlib openssl libxml2 sqlite oniguruma libsodium bzip2
-                          libpng libjpeg-turbo libwebp freetype
-                          nghttp2 libzip icu libcurl ncurses libedit libiconv;
-                };
-                xdebug = pkgs.callPackage ./php-darwin/xdebug.nix {
-                  inherit sources toolchain php xdebugSpec;
-                };
-                variantDeps = sharedDeps ++ [ php xdebug ];
-                tree = pkgs.callPackage ./php-darwin/tree.nix {
-                  deps = variantDeps;
-                  inherit toolchain;
-                };
-                tarball = pkgs.callPackage ./php-darwin/tarball.nix {
-                  inherit tree sources nixpkgsRev phpSpec xdebugSpec;
-                  phpVersion = phpKey;
-                };
-              in { inherit php xdebug tree tarball; };
-
-            variants = builtins.mapAttrs (k: _: mkPhpVariant k) sources.phpVersions;
-            variantAttrs = builtins.foldl'
-              (acc: phpKey:
-                let v = variants.${phpKey};
-                    k = pkgs.lib.replaceStrings [ "." ] [ "_" ] phpKey;
-                in acc // {
-                  "php-${k}"     = v.php;
-                  "xdebug-${k}"  = v.xdebug;
-                  "tree-${k}"    = v.tree;
-                  "tarball-${k}" = v.tarball;
-                })
-              {}
-              (builtins.attrNames sources.phpVersions);
-
-            # Bare `tree` retains the deps-only spike output for inspection.
-            depsOnlyTree = pkgs.callPackage ./php-darwin/tree.nix {
-              deps = sharedDeps;
-              inherit toolchain;
-            };
-          in variantAttrs // {
-            inherit toolchain
-                    zlib openssl libxml2 sqlite oniguruma libsodium bzip2
-                    libpng libjpeg-turbo libwebp freetype
-                    nghttp2 libzip icu libcurl ncurses libedit libiconv;
-            tree = depsOnlyTree;
-            default = variants.${sources.latestPhp}.tarball;
-          }
-        else
         let
           pkgs = import nixpkgs { inherit system; };
           sources = import ./php-unix/sources.nix;
+          nixpkgsRev = nixpkgs.rev or "dirty";
+          darwin = isDarwin system;
 
-          # Old-glibc sysroot — derived from CentOS 7 Vault RPMs (glibc 2.17).
-          # This is the same trick python-build-standalone hits via Debian
-          # Jessie: target an old libc as the sysroot, lower the binary's
-          # GLIBC_x symbol floor accordingly. We do it as a separate
-          # derivation so it's cached and inspectable.
-          sysroot = pkgs.callPackage ./php-unix/sysroot.nix {};
+          # Toolchain wiring. Linux uses a clang wrapper against an old
+          # CentOS 7 / glibc 2.17 sysroot (the python-build-standalone
+          # trick). Darwin uses a thin wrapper around nixpkgs's clang +
+          # MACOSX_DEPLOYMENT_TARGET=11.0 (Big Sur) — system libc is
+          # ABI-stable so no sysroot is needed.
+          sysroot = if darwin then null else pkgs.callPackage ./php-unix/sysroot.nix {};
+          toolchain = if darwin
+            then pkgs.callPackage ./php-unix/toolchain-darwin.nix {
+              clang = pkgs.clang;
+              llvmPackages = pkgs.llvmPackages;
+            }
+            else pkgs.callPackage ./php-unix/clang-toolchain.nix { inherit sysroot; };
 
-          # Toolchain wrapper: nixpkgs's modern clang reconfigured to use
-          # our sysroot (-isysroot, --sysroot, -B<startup-files-dir>) and
-          # to static-link libc++ that is itself rebuilt against the old
-          # sysroot. setup-env.sh consumes PBS_CC / PBS_CXX from this.
-          toolchain = pkgs.callPackage ./php-unix/clang-toolchain.nix { inherit sysroot; };
+          # mkDep is the derivation factory used by every per-dep wrapper.
+          # The Linux + Darwin variants differ in toolchain pkg list,
+          # sysroot wiring, and post-build install_name normalization
+          # (Darwin only). Each wrapper takes `mkDep` as a function arg.
+          mkDep = if darwin
+            then pkgs.callPackage ./php-unix/mkDep-darwin.nix { inherit sources toolchain; }
+            else pkgs.callPackage ./php-unix/mkDep.nix         { inherit sources toolchain; };
 
           # Bundled-dep derivations. Built once and shared across all PHP
           # variants — each builds one C library into its own /nix/store path.
-          # The per-variant tree derivation merges them together.
-          zlib = pkgs.callPackage ./php-unix/zlib.nix { inherit sources toolchain; };
-          openssl = pkgs.callPackage ./php-unix/openssl.nix { inherit sources toolchain zlib; };
-          libxml2 = pkgs.callPackage ./php-unix/libxml2.nix { inherit sources toolchain zlib; };
-          sqlite = pkgs.callPackage ./php-unix/sqlite.nix { inherit sources toolchain; };
-          oniguruma = pkgs.callPackage ./php-unix/oniguruma.nix { inherit sources toolchain; };
-          libsodium = pkgs.callPackage ./php-unix/libsodium.nix { inherit sources toolchain; };
-          bzip2 = pkgs.callPackage ./php-unix/bzip2.nix { inherit sources toolchain; };
-          libpng = pkgs.callPackage ./php-unix/libpng.nix { inherit sources toolchain zlib; };
-          libjpeg-turbo = pkgs.callPackage ./php-unix/libjpeg-turbo.nix { inherit sources toolchain; };
-          libwebp = pkgs.callPackage ./php-unix/libwebp.nix { inherit sources toolchain; };
-          freetype = pkgs.callPackage ./php-unix/freetype.nix { inherit sources toolchain zlib bzip2; };
-          nghttp2 = pkgs.callPackage ./php-unix/nghttp2.nix { inherit sources toolchain; };
-          libzip = pkgs.callPackage ./php-unix/libzip.nix { inherit sources toolchain zlib bzip2 openssl; };
-          icu = pkgs.callPackage ./php-unix/icu.nix { inherit sources toolchain; };
-          libcurl = pkgs.callPackage ./php-unix/libcurl.nix { inherit sources toolchain openssl zlib nghttp2; };
-          ncurses = pkgs.callPackage ./php-unix/ncurses.nix { inherit sources toolchain; };
-          libedit = pkgs.callPackage ./php-unix/libedit.nix { inherit sources toolchain ncurses; };
+          # The per-variant tree derivation merges them together. Wrappers
+          # live in php-unix/ and dispatch to platform-specific build-*.sh
+          # scripts via mkDep's pathExists fallback (mkDep-darwin tries
+          # build-<name>-darwin.sh first, falls through to build-<name>.sh).
+          zlib          = pkgs.callPackage ./php-unix/zlib.nix          { inherit mkDep; };
+          openssl       = pkgs.callPackage ./php-unix/openssl.nix       { inherit mkDep zlib; };
+          libxml2       = pkgs.callPackage ./php-unix/libxml2.nix       { inherit mkDep zlib; };
+          sqlite        = pkgs.callPackage ./php-unix/sqlite.nix        { inherit mkDep; };
+          oniguruma     = pkgs.callPackage ./php-unix/oniguruma.nix     { inherit mkDep; };
+          libsodium     = pkgs.callPackage ./php-unix/libsodium.nix     { inherit mkDep; };
+          bzip2         = pkgs.callPackage ./php-unix/bzip2.nix         { inherit mkDep; };
+          libpng        = pkgs.callPackage ./php-unix/libpng.nix        { inherit mkDep zlib; };
+          libjpeg-turbo = pkgs.callPackage ./php-unix/libjpeg-turbo.nix { inherit mkDep; };
+          libwebp       = pkgs.callPackage ./php-unix/libwebp.nix       { inherit mkDep; };
+          freetype      = pkgs.callPackage ./php-unix/freetype.nix      { inherit mkDep zlib bzip2; };
+          nghttp2       = pkgs.callPackage ./php-unix/nghttp2.nix       { inherit mkDep; };
+          libzip        = pkgs.callPackage ./php-unix/libzip.nix        { inherit mkDep zlib bzip2 openssl; };
+          icu           = pkgs.callPackage ./php-unix/icu.nix           { inherit mkDep; };
+          libcurl       = pkgs.callPackage ./php-unix/libcurl.nix       { inherit mkDep openssl zlib nghttp2; };
+          ncurses       = pkgs.callPackage ./php-unix/ncurses.nix       { inherit mkDep; };
+          libedit       = pkgs.callPackage ./php-unix/libedit.nix       { inherit mkDep ncurses; };
+          # libiconv is Darwin-only (apple-sdk strips legacy headers).
+          libiconv      = if darwin
+            then pkgs.callPackage ./php-unix/libiconv.nix { inherit mkDep; }
+            else null;
 
           # Shared bundled-dep list passed into each variant's tree derivation.
-          sharedDeps = [
-            zlib openssl libxml2 sqlite oniguruma libsodium bzip2
-            libpng libjpeg-turbo libwebp freetype
-            nghttp2 libzip icu libcurl ncurses libedit
-          ];
-
-          # Read the locked nixpkgs revision out of the flake input so the
-          # JSON metadata records exactly what built it.
-          nixpkgsRev = nixpkgs.rev or "dirty";
+          sharedDeps =
+            [ zlib openssl libxml2 sqlite oniguruma libsodium bzip2
+              libpng libjpeg-turbo libwebp freetype
+              nghttp2 libzip icu libcurl ncurses libedit ]
+            ++ pkgs.lib.optionals darwin [ libiconv ];
 
           # Build one complete PHP variant (php + xdebug + tree + tarball)
           # from a phpVersions key. The bundled C deps are shared; only the
@@ -165,14 +87,14 @@
             let
               phpSpec     = sources.phpVersions.${phpKey};
               xdebugSpec  = sources.xdebugVersions.${phpSpec.xdebug};
-              php = pkgs.callPackage ./php-unix/php.nix {
-                inherit sources toolchain phpSpec
+              php = pkgs.callPackage ./php-unix/php.nix ({
+                inherit mkDep phpSpec
                         zlib openssl libxml2 sqlite oniguruma libsodium bzip2
                         libpng libjpeg-turbo libwebp freetype
                         nghttp2 libzip icu libcurl ncurses libedit;
-              };
+              } // pkgs.lib.optionalAttrs darwin { inherit libiconv; });
               xdebug = pkgs.callPackage ./php-unix/xdebug.nix {
-                inherit sources toolchain php xdebugSpec;
+                inherit mkDep php xdebugSpec;
               };
               deps = sharedDeps ++ [ php xdebug ];
               tree = pkgs.callPackage ./php-unix/tree.nix {
@@ -207,12 +129,15 @@
             {}
             (builtins.attrNames sources.phpVersions);
 
-        in variantAttrs // {
-          # Shared infrastructure — built once, exposed for inspection / caching.
-          inherit sysroot toolchain
-                  zlib openssl libxml2 sqlite oniguruma libsodium bzip2
-                  libpng libjpeg-turbo libwebp freetype
-                  nghttp2 libzip icu libcurl ncurses libedit;
+          sharedAttrs =
+            { inherit toolchain
+                      zlib openssl libxml2 sqlite oniguruma libsodium bzip2
+                      libpng libjpeg-turbo libwebp freetype
+                      nghttp2 libzip icu libcurl ncurses libedit; }
+            // pkgs.lib.optionalAttrs (!darwin) { inherit sysroot; }
+            // pkgs.lib.optionalAttrs darwin { inherit libiconv; };
+
+        in variantAttrs // sharedAttrs // {
           # `nix build` (no attribute) → tarball for the latest PHP.
           default = variants.${sources.latestPhp}.tarball;
         });
@@ -221,32 +146,19 @@
       # interactive — useful for iterating on a build script before it
       # works inside a derivation.
       devShells = forEach (system:
-        if isDarwin system then
-          let
-            pkgs = import nixpkgs { inherit system; };
-            toolchain = pkgs.callPackage ./php-darwin/toolchain.nix {
-              clang = pkgs.clang;
-              llvmPackages = pkgs.llvmPackages;
-            };
-            toolchainPkgs = import ./php-darwin/toolchain-pkgs.nix { inherit pkgs toolchain; };
-          in {
-            default = (pkgs.mkShell.override { stdenv = pkgs.stdenvNoCC; }) {
-              packages = toolchainPkgs;
-              shellHook = ''
-                unset PKG_CONFIG_PATH LIBRARY_PATH CPATH C_INCLUDE_PATH \
-                      CPLUS_INCLUDE_PATH ACLOCAL_PATH \
-                      CMAKE_PREFIX_PATH NIX_LDFLAGS NIX_CFLAGS_COMPILE
-                export PBS_TOOLCHAIN="${toolchain}"
-                export PBS_NIXPKGS_REV="${nixpkgs.rev or "dirty"}"
-              '';
-            };
-          }
-        else
         let
           pkgs = import nixpkgs { inherit system; };
-          sysroot = pkgs.callPackage ./php-unix/sysroot.nix {};
-          toolchain = pkgs.callPackage ./php-unix/clang-toolchain.nix { inherit sysroot; };
-          toolchainPkgs = import ./php-unix/toolchain.nix { inherit pkgs toolchain; };
+          darwin = isDarwin system;
+          sysroot = if darwin then null else pkgs.callPackage ./php-unix/sysroot.nix {};
+          toolchain = if darwin
+            then pkgs.callPackage ./php-unix/toolchain-darwin.nix {
+              clang = pkgs.clang;
+              llvmPackages = pkgs.llvmPackages;
+            }
+            else pkgs.callPackage ./php-unix/clang-toolchain.nix { inherit sysroot; };
+          toolchainPkgs = if darwin
+            then import ./php-unix/toolchain-pkgs-darwin.nix { inherit pkgs toolchain; }
+            else import ./php-unix/toolchain.nix             { inherit pkgs toolchain; };
         in {
           default = (pkgs.mkShell.override { stdenv = pkgs.stdenvNoCC; }) {
             packages = toolchainPkgs;
@@ -255,7 +167,7 @@
                     CPLUS_INCLUDE_PATH LD_LIBRARY_PATH ACLOCAL_PATH \
                     CMAKE_PREFIX_PATH NIX_LDFLAGS NIX_CFLAGS_COMPILE
               export PBS_TOOLCHAIN="${toolchain}"
-              export PBS_SYSROOT="${sysroot}"
+              ${if darwin then "" else ''export PBS_SYSROOT="${sysroot}"''}
               export PBS_NIXPKGS_REV="${nixpkgs.rev or "dirty"}"
             '';
           };

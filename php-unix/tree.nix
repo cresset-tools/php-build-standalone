@@ -1,10 +1,15 @@
 # Aggregator derivation. Takes a list of per-dep derivations (zlib, openssl,
 # ...), merges their lib/, include/, share/ trees into a single $out, runs
-# finalize.sh (patchelf, .la purge, strip, audit gates).
+# finalize.sh (Linux: patchelf, .la purge, strip, audit gates) or
+# finalize-darwin.sh (Darwin: install_name_tool, codesign, audit gates).
 #
 # $out IS the install tree — `nix shell .#tree` and run `bin/php` works
 # directly. The tarball is packaged from $out by tarball.nix.
 { pkgs, deps, toolchain, phpVersion ? "0.0.0-unknown" }:
+let
+  inherit (pkgs) stdenv lib;
+  finalizer = if stdenv.isDarwin then ./finalize-darwin.sh else ./finalize.sh;
+in
 pkgs.stdenvNoCC.mkDerivation {
   pname = "pbs-tree";
   version = phpVersion;
@@ -12,8 +17,8 @@ pkgs.stdenvNoCC.mkDerivation {
   dontUnpack = true;
   dontConfigure = true;
   dontInstall = true;
-  # finalize.sh handles patchelf, strip, and shebang policy itself. Letting
-  # nixpkgs fixupPhase run AFTER finalize:
+  # finalize.sh handles patchelf/install_name_tool, strip, and shebang
+  # policy itself. Letting nixpkgs fixupPhase run AFTER finalize:
   #   - rewrites #!/bin/sh in phpize/php-config/shtool/config.{guess,sub}
   #     to /nix/store/.../bash, breaking portability;
   #   - runs `patchelf --shrink-rpath`, which silently flips DT_RPATH back
@@ -23,7 +28,9 @@ pkgs.stdenvNoCC.mkDerivation {
   # checks that matter for the tarball.
   dontFixup = true;
 
-  nativeBuildInputs = with pkgs; [ patchelf file findutils gnugrep gnused coreutils binutils-unwrapped ];
+  nativeBuildInputs = with pkgs;
+    [ file findutils gnugrep gnused coreutils ]
+    ++ lib.optionals (!stdenv.isDarwin) [ patchelf binutils-unwrapped ];
 
   buildPhase = ''
     runHook preBuild
@@ -57,9 +64,10 @@ pkgs.stdenvNoCC.mkDerivation {
     # build static-links libstdc++/libgcc into the binary (see -static-
     # libstdc++ -static-libgcc in build-php.sh), the same way build-icu.sh
     # static-links them into ICU's .so files. Tarball stays glibc-only on
-    # the consumer side.
+    # the consumer side. Darwin uses the system-stable libc++ with no
+    # bundling either.
 
-    bash ${./finalize.sh}
+    bash ${finalizer}
 
     runHook postBuild
   '';

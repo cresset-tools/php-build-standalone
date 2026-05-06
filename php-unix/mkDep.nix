@@ -20,7 +20,7 @@
 #                  xdebugVersions maps rather than the flat sources attrset.
 { pkgs, sources, toolchain }:
 { name
-, buildScript
+, buildScript ? ./. + "/build-${name}.sh"
 , deps ? []
 , extraEnv ? {}
 , extraInputs ? []

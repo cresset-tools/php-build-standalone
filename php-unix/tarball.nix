@@ -4,8 +4,18 @@
 #
 # The .tar.zst contents start with a top-level `install/` directory, matching
 # the python-orchestrator-era layout and PBS convention.
-{ pkgs, tree, sources, phpSpec, xdebugSpec, target ? "x86_64-unknown-linux-gnu", phpVersion ? "8.4", nixpkgsRev }:
+#
+# Linux probes max GLIBC_x.y symbol via `objdump -T` (the floor a consumer's
+# glibc must meet). Darwin probes the LC_BUILD_VERSION minos field on every
+# Mach-O via `otool -l` (the macOS version floor).
+{ pkgs, tree, sources, phpSpec, xdebugSpec
+, target ? if pkgs.stdenv.isDarwin then "aarch64-apple-darwin" else "x86_64-unknown-linux-gnu"
+, phpVersion ? "8.4"
+, nixpkgsRev
+}:
 let
+  inherit (pkgs) stdenv lib;
+
   # Build the JSON metadata at *evaluation* time so we don't have to thread
   # the variable list through shell. tree_hash is the only runtime-computed
   # field; we leave it as a sentinel for sed to fill in below.
@@ -15,18 +25,22 @@ let
   # are not bundled libraries. We inject php and xdebug explicitly from the
   # per-variant specs so the metadata records the right version for each build.
   bundledLibraries =
-    pkgs.lib.mapAttrs (_: v: v.version)
-      (pkgs.lib.filterAttrs
+    lib.mapAttrs (_: v: v.version)
+      (lib.filterAttrs
         (_: v: builtins.isAttrs v && v ? version && builtins.isString v.version)
         sources)
     // { php = phpSpec.version; xdebug = xdebugSpec.version; };
+
+  libcAttr = if stdenv.isDarwin
+    then { kind = "darwin"; min_macos_version = "@MIN_MACOS@"; }
+    else { kind = "glibc";  max_symbol_version = "@LIBC_MAX_SYMVER@"; };
 
   metadata = {
     version = "1";
     target_triple = target;
     php_version = phpVersion;
     thread_safety = "nts";
-    libc = { kind = "glibc"; max_symbol_version = "@LIBC_MAX_SYMVER@"; };
+    libc = libcAttr;
     sapis = [ "cli" "fpm" ];
     bundled_libraries = bundledLibraries;
     # ABI numbers identify what extensions can be loaded into this PHP.
@@ -44,6 +58,31 @@ let
   };
 
   metadataFile = pkgs.writeText "php.json.in" (builtins.toJSON metadata);
+
+  # Platform-specific libc/macos probe + sed substitution. Computed at
+  # build time, written into the metadata via the sentinel.
+  libcProbeAndSub = if stdenv.isDarwin then ''
+    # Mach-O equivalent of the glibc symbol-version probe: the LC_BUILD_VERSION
+    # `minos` field on every shipped Mach-O is the lowest-supported macOS for
+    # that artifact. Take the max across all binaries — that's the floor a
+    # consumer's macOS must meet.
+    min_macos=$( { find ${tree} -type f \( -name '*.dylib' -o -name '*.so' -o -path '*/bin/*' \) -print0 \
+        | xargs -0 -r /usr/bin/otool -l 2>/dev/null \
+        | awk '/LC_BUILD_VERSION/{flag=1; next} flag && /minos /{print $2; flag=0}' \
+        | sort -V | tail -1; } || true )
+    min_macos=''${min_macos:-11.0}
+    libc_sed=(-e "s/@MIN_MACOS@/$min_macos/")
+  '' else ''
+    # Compute the highest GLIBC_x.y symbol referenced by any shipped ELF
+    # — that's the floor a consumer's glibc must meet to load this build.
+    libc_max=$( { find ${tree} -type f \( -name '*.so' -o -name '*.so.*' -o -path '*/bin/*' \) -print0 \
+        | xargs -0 -r objdump -T 2>/dev/null \
+        | grep -oE 'GLIBC_[0-9]+\.[0-9]+' \
+        | sort -V \
+        | tail -1; } || true )
+    libc_max=''${libc_max:-GLIBC_2.2.5}
+    libc_sed=(-e "s/@LIBC_MAX_SYMVER@/$libc_max/")
+  '';
 in
 pkgs.stdenvNoCC.mkDerivation {
   pname = "pbs-tarball";
@@ -53,7 +92,9 @@ pkgs.stdenvNoCC.mkDerivation {
   dontConfigure = true;
   dontBuild = true;
 
-  nativeBuildInputs = with pkgs; [ gnutar zstd coreutils gnused findutils binutils-unwrapped ];
+  nativeBuildInputs = with pkgs;
+    [ gnutar zstd coreutils gnused findutils gawk ]
+    ++ lib.optionals (!stdenv.isDarwin) [ binutils-unwrapped ];
 
   installPhase = ''
     runHook preInstall
@@ -95,21 +136,13 @@ pkgs.stdenvNoCC.mkDerivation {
     zend_extension_api=$(grep -E '^#define ZEND_EXTENSION_API_NO' \
       ${tree}/include/php/Zend/zend_extensions.h | awk '{print $3}')
 
-    # Compute the highest GLIBC_x.y symbol referenced by any shipped ELF
-    # — that's the floor a consumer's glibc must meet to load this build.
-    # Walk every ELF (binaries + .so files) and take the max version.
-    libc_max=$( { find ${tree} -type f \( -name '*.so' -o -name '*.so.*' -o -path '*/bin/*' \) -print0 \
-        | xargs -0 -r objdump -T 2>/dev/null \
-        | grep -oE 'GLIBC_[0-9]+\.[0-9]+' \
-        | sort -V \
-        | tail -1; } || true )
-    libc_max=''${libc_max:-GLIBC_2.2.5}
+    ${libcProbeAndSub}
 
     # Substitute all the runtime-computed values into the static metadata.
     sed -e "s/@TREE_HASH@/$tree_hash/" \
         -e "s/@ZEND_MODULE_API_NO@/$zend_module_api/" \
         -e "s/@ZEND_EXTENSION_API_NO@/$zend_extension_api/" \
-        -e "s/@LIBC_MAX_SYMVER@/$libc_max/" \
+        "''${libc_sed[@]}" \
         ${metadataFile} > "$out/$base.json"
 
     echo "produced:"

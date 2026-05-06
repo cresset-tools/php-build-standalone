@@ -1,13 +1,21 @@
-# Darwin counterpart to php-unix/mkDep.nix. Builds one bundled dep into
-# its own /nix/store output. Differs from the Linux version in:
+# Darwin counterpart to mkDep.nix. Builds one bundled dep into its own
+# /nix/store output. Differs from the Linux version in:
 #   - No PBS_SYSROOT (Darwin has no sysroot trick — deployment target
 #     handles portability instead).
-#   - Sources php-darwin/setup-env.sh, not php-unix/setup-env.sh.
-#   - Doesn't use patchelf / readelf in fixup; finalize-darwin uses
+#   - Sources setup-env-darwin.sh, not setup-env.sh.
+#   - Doesn't use patchelf / readelf in fixup; finalize-darwin.sh uses
 #     install_name_tool + otool + codesign.
 { pkgs, sources, toolchain }:
 { name
-, buildScript
+# Defaults to ./build-<name>-darwin.sh; falls back to ./build-<name>.sh
+# (the unified script) if the -darwin variant doesn't exist. Step 7 of
+# the dedup migration unifies build scripts and removes the -darwin
+# variants, after which this falls through to the unified path.
+, buildScript ?
+    let darwinPath = ./. + "/build-${name}-darwin.sh";
+    in if builtins.pathExists darwinPath
+       then darwinPath
+       else ./. + "/build-${name}.sh"
 , deps ? []
 , extraEnv ? {}
 , extraInputs ? []
@@ -15,7 +23,7 @@
 , src ? pkgs.fetchurl { url = sources.${name}.url; sha256 = sources.${name}.sha256; }
 }:
 let
-  toolchainPkgs = import ./toolchain-pkgs.nix { inherit pkgs toolchain; };
+  toolchainPkgs = import ./toolchain-pkgs-darwin.nix { inherit pkgs toolchain; };
   envName = pkgs.lib.toUpper (pkgs.lib.replaceStrings [ "-" ] [ "_" ] name);
 
   exportDeps = pkgs.lib.concatMapStringsSep "\n    " (dep: ''
@@ -57,7 +65,7 @@ pkgs.stdenvNoCC.mkDerivation {
 
     ${exportDeps}
 
-    source ${./setup-env.sh}
+    source ${./setup-env-darwin.sh}
 
     ${appendDepFlags}
 

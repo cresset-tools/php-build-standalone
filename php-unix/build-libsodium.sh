@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # Build libsodium as a shared library into ${PBS_DEPS}.
-# PHP's sodium extension links against libsodium.so for modern crypto
+# PHP's sodium extension links against libsodium for modern crypto
 # primitives (Ed25519, X25519, ChaCha20-Poly1305, BLAKE2b, etc.).
 #
-# Inherits CC, CFLAGS, LDFLAGS from setup-env.sh. No other deps.
+# Inherits CC, CFLAGS, LDFLAGS from setup-env(.sh|-darwin.sh). No deps.
 
 set -euo pipefail
 
@@ -29,19 +29,10 @@ cd "$src_dir"
   --disable-static \
   --enable-shared
 
-make -j"$(nproc)"
+make -j"$PBS_NPROC"
 make install
 
-# Sanity: shared lib must exist with a clean NEEDED list (no /nix/store
-# leakage).
-lib="$PBS_DEPS/lib/libsodium.so"
-real_lib="$(readlink -f "$lib")"
-echo
-echo "--- libsodium NEEDED audit ---"
-needed=$(readelf -d "$real_lib" | grep NEEDED || true)
-echo "$needed"
-if echo "$needed" | grep -q '/nix/store'; then
-  echo "FATAL: libsodium has /nix/store path in DT_NEEDED" >&2
-  exit 1
-fi
+lib="$PBS_DEPS/lib/libsodium.${PBS_LIB_EXT}"
+[ -e "$lib" ] || { echo "FATAL: $lib not produced" >&2; exit 1; }
+pbs_audit_lib "$lib" libsodium
 echo "libsodium OK"

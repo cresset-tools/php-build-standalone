@@ -6,12 +6,8 @@
 # Distributing a PHP binary linked against readline would impose GPL terms
 # on the combined work. libedit uses the BSD license. Same choice as Debian,
 # Homebrew, and FreeBSD's PHP packages.
-{ pkgs, sources, toolchain, ncurses }:
-let
-  mkDep = import ./mkDep.nix { inherit pkgs sources toolchain; };
-in
+{ mkDep, ncurses }:
 mkDep {
   name = "libedit";
-  buildScript = ./build-libedit.sh;
   deps = [ ncurses ];
 }

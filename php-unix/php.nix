@@ -9,24 +9,28 @@
 # version, url, and sha256. Keeping it as a separate arg (not sourced from
 # sources.php) is what lets flake.nix fan out multiple PHP versions without
 # duplicating this derivation.
-{ pkgs, sources, toolchain, phpSpec
+#
+# `libiconv` is Darwin-only (apple-sdk strips legacy libiconv headers). On
+# Linux glibc provides iconv directly, so libiconv defaults to null and is
+# absent from the deps list.
+{ mkDep, pkgs, phpSpec
 , zlib, openssl, libxml2, sqlite, oniguruma, libsodium, bzip2
 , libpng, libjpeg-turbo, libwebp, freetype
 , nghttp2, libzip, icu, libcurl, ncurses, libedit
+, libiconv ? null
 }:
 let
-  mkDep = import ./mkDep.nix { inherit pkgs sources toolchain; };
+  inherit (pkgs) stdenv lib;
 in
 mkDep {
   name = "php";
   version = phpSpec.version;
   src = pkgs.fetchurl { inherit (phpSpec) url sha256; };
-  buildScript = ./build-php.sh;
   deps = [
     zlib openssl libxml2 sqlite oniguruma libsodium bzip2
     libpng libjpeg-turbo libwebp freetype
     nghttp2 libzip icu libcurl ncurses libedit
-  ];
+  ] ++ lib.optionals stdenv.isDarwin [ libiconv ];
   extraEnv = {
     PBS_PHP_PREPARE_SCRIPT = ./prepare-php.sh;
     PBS_PHP_PATCHES_DIR = ./patches;
@@ -34,10 +38,22 @@ mkDep {
     # files in patches/ named NNNN-name@LO-HI.patch, where LO and HI are
     # major-minor numbers (e.g. 81 = PHP 8.1) bounding the version range
     # the patch applies to. See prepare-php.sh for the full convention.
-    PBS_VER_PHP_MAJORMINOR = pkgs.lib.versions.majorMinor phpSpec.version;
+    PBS_VER_PHP_MAJORMINOR = lib.versions.majorMinor phpSpec.version;
+  } // lib.optionalAttrs stdenv.isDarwin {
+    # nixpkgs darwin.libresolv provides build-time -L/<store>/lib +
+    # libresolv.dylib for ld to satisfy `-lresolv` (used by ext/standard/dns).
+    # build-php.sh rewrites the resulting LC_LOAD_DYLIB to
+    # /usr/lib/libresolv.9.dylib post-link so the tarball references the
+    # consumer's system libresolv instead of /nix/store.
+    PBS_DEP_LIBRESOLV_DIR = pkgs.darwin.libresolv;
+    # The matching dev output ships <resolv.h>, <arpa/nameser.h>, <dns.h>,
+    # etc. — the legacy networking headers stripped from nixpkgs's
+    # apple-sdk derivations. Used at compile time so PHP's
+    # ext/standard/dns.c can find them without us having to copy from
+    # the host CLT SDK at build time (machine-dependent + non-reproducible).
+    PBS_DEP_LIBRESOLV_INCLUDE = lib.getInclude pkgs.darwin.libresolv;
   };
   # PHP's buildconf/configure pipeline needs bison + re2c (both already in
-  # toolchain.nix, listed here as defense-in-depth in case the toolchain
-  # ever loses them).
+  # the toolchain pkg list; defense-in-depth listing here).
   extraInputs = with pkgs; [ bison re2c ];
 }
