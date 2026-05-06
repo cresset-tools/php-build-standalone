@@ -1,0 +1,28 @@
+# Docker images for the consumer-side compatibility matrix.
+# Format: <docker-image>  <expected: pass|fail>  <note>
+#
+# The tarball's documented libc floor is GLIBC_2.17 (manylinux2014 / RHEL 7
+# baseline). Every glibc-based image at or above 2.17 is expected to pass.
+# Alpine is musl-based and is expected to fail (no glibc loader at
+# /lib64/ld-linux-x86-64.so.2).
+
+# --- glibc 2.17 baseline (the floor) --------------------------------------
+centos:7                    pass   glibc 2.17 — manylinux2014 baseline
+# --- glibc 2.18 ... 2.27 (would have failed pre-clang+sysroot toolchain) --
+debian:9                    pass   glibc 2.24 — stretch
+ubuntu:18.04                pass   glibc 2.27 — bionic
+# --- glibc 2.28 ... 2.36 ---------------------------------------------------
+debian:10                   pass   glibc 2.28 — buster
+rockylinux:8                pass   glibc 2.28 — RHEL 8 family
+debian:11                   pass   glibc 2.31 — bullseye
+ubuntu:20.04                pass   glibc 2.31 — focal
+rockylinux:9                pass   glibc 2.34 — RHEL 9 family
+ubuntu:22.04                pass   glibc 2.35 — jammy
+debian:12                   pass   glibc 2.36 — bookworm
+# --- glibc 2.38+ (the README's old floor — sanity check still works) -----
+ubuntu:24.04                pass   glibc 2.39 — noble
+debian:13                   pass   glibc 2.41 — trixie
+fedora:41                   pass   recent Fedora
+archlinux:latest            pass   rolling
+# --- musl (negative test) -------------------------------------------------
+alpine:3.20                 fail   musl — no /lib64/ld-linux-x86-64.so.2
