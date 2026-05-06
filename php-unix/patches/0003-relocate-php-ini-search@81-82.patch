@@ -1,0 +1,63 @@
+# Relocate main/php_ini.c (PHP 8.1 / 8.2 variant): make php.ini and conf.d
+# search paths relative to the runtime install root instead of the baked-in
+# build-time PHP_CONFIG_FILE_PATH / PHP_CONFIG_FILE_SCAN_DIR macros.
+#
+# Two changes:
+#   1. php.ini search: insert <install_root>/etc/php *before* PHP_CONFIG_FILE_PATH
+#      in the Unix search list, so a relocated tarball finds its own etc/php first.
+#   2. conf.d scan-dir: fall back to <install_root>/etc/php/conf.d instead of the
+#      build-time PHP_CONFIG_FILE_SCAN_DIR (which would point at the Nix store).
+#
+# Both sites are guarded by pbs_install_root(); if /proc/self/exe is
+# unreadable (containers, non-Linux) the original compiled-in paths are used.
+#
+# Why a separate variant: PHP 8.3 introduced an `append_ini_path()` helper
+# and rewrote this site to use it; the @83-99 patch anchors on that helper.
+# 8.1 / 8.2 still hand-roll the strlcat/paths_separator dance, which has
+# different surrounding context lines. The semantics of the edit — push
+# pbs_etc onto the search list before PHP_CONFIG_FILE_PATH — are the same.
+--- a/main/php_ini.c
++++ b/main/php_ini.c
+@@ -19,6 +19,7 @@
+ #include "zend_ini.h"
+ #include "zend_ini_scanner.h"
+ #include "php_ini.h"
++#include "pbs_relocate.h"
+ #include "ext/standard/dl.h"
+ #include "zend_extensions.h"
+ #include "zend_highlight.h"
+@@ -542,6 +543,17 @@
+
+ #else
+ 		default_location = PHP_CONFIG_FILE_PATH;
++		{
++			/* PBS: prefer <install_root>/etc/php over build-time PHP_CONFIG_FILE_PATH. */
++			char pbs_root[MAXPATHLEN], pbs_etc[MAXPATHLEN];
++			if (pbs_install_root(pbs_root, sizeof(pbs_root))) {
++				snprintf(pbs_etc, sizeof(pbs_etc), "%s/etc/php", pbs_root);
++				if (*php_ini_search_path) {
++					strlcat(php_ini_search_path, paths_separator, search_path_size);
++				}
++				strlcat(php_ini_search_path, pbs_etc, search_path_size);
++			}
++		}
+ 		if (*php_ini_search_path) {
+ 			strlcat(php_ini_search_path, paths_separator, search_path_size);
+ 		}
+@@ -633,8 +645,15 @@
+ 	/* Check for PHP_INI_SCAN_DIR environment variable to override/set config file scan directory */
+ 	php_ini_scanned_path = getenv("PHP_INI_SCAN_DIR");
+ 	if (!php_ini_scanned_path) {
+-		/* Or fall back using possible --with-config-file-scan-dir setting (defaults to empty string!) */
+-		php_ini_scanned_path = PHP_CONFIG_FILE_SCAN_DIR;
++		/* PBS: relocate the scan-dir fallback to <install_root>/etc/php/conf.d. */
++		static char pbs_scan[MAXPATHLEN];
++		char pbs_root[MAXPATHLEN];
++		if (pbs_install_root(pbs_root, sizeof(pbs_root))) {
++			snprintf(pbs_scan, sizeof(pbs_scan), "%s/etc/php/conf.d", pbs_root);
++			php_ini_scanned_path = pbs_scan;
++		} else {
++			php_ini_scanned_path = PHP_CONFIG_FILE_SCAN_DIR;
++		}
+ 	}
+ 	php_ini_scanned_path_len = (int)strlen(php_ini_scanned_path);
