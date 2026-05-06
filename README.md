@@ -16,15 +16,26 @@ linked, bundling its C deps in `lib/`, and pointing every RPATH at
 
 ## What you get
 
-`nix build` produces a single ~28 MB `.tar.zst`:
+`nix build` produces a single ~25–29 MB `.tar.zst` for the latest stable PHP:
 
 ```
 result/
-├── php-8.4.3-x86_64-unknown-linux-gnu.tar.zst    # the artifact
-└── php-8.4.3-x86_64-unknown-linux-gnu.json       # metadata (ABI, versions, hash)
+├── php-8.5.5-x86_64-unknown-linux-gnu.tar.zst    # the artifact
+└── php-8.5.5-x86_64-unknown-linux-gnu.json       # metadata (ABI, versions, hash)
 ```
 
-Extract it anywhere, run `bin/php`.
+Build a specific PHP minor instead with `.#tarball-<minor>` (underscore, not dot
+— the Nix CLI treats `.` as an attribute-path separator):
+
+```sh
+nix build .#tarball-8_1   # → php-8.1.31-x86_64-unknown-linux-gnu.tar.zst
+nix build .#tarball-8_2   # → 8.2.26
+nix build .#tarball-8_3   # → 8.3.14
+nix build .#tarball-8_4   # → 8.4.3
+nix build .#tarball-8_5   # → 8.5.5  (same as the default)
+```
+
+Extract any of them anywhere, run `bin/php`.
 
 ### Host requirements
 
@@ -50,8 +61,13 @@ The 2.17 floor comes from a clang-18 + CentOS 7 sysroot toolchain (PBS-style
 
 ### Bundled
 
-- **PHP 8.4.3** (NTS, CLI + FPM SAPIs)
-- **xdebug 3.4.0** as a loadable Zend extension (`lib/extensions/no-debug-non-zts-20240924/xdebug.so`)
+- **PHP 8.1.31 / 8.2.26 / 8.3.14 / 8.4.3 / 8.5.5** — five separate variants,
+  each NTS, CLI + FPM SAPIs. Patch versions track the latest stable in each
+  line (and pin above the libxml2 2.13 compatibility floor: 8.1.30 / 8.2.20
+  / 8.3.8). The dep stack below is shared across all five.
+- **xdebug 3.5.1** as a loadable Zend extension at
+  `lib/extensions/no-debug-non-zts-<api>/xdebug.so`. Single pin — 3.5 is the
+  first xdebug release supporting PHP 8.5; it covers 8.1 through 8.5.
 - 38 PHP extensions: ctype, curl, date, dom, fileinfo, filter, gd (jpeg/png/webp/freetype),
   hash, iconv, intl (ICU), json, libxml, mbstring (oniguruma), mysqli, mysqlnd, openssl,
   pcre, pdo_sqlite, pdo_mysql, phar, posix, readline (libedit), reflection, session,
@@ -134,8 +150,8 @@ but only require GLIBC_2.17 from the host.
                             │
                             ▼
    ┌──────────────────────────────────────────────────────────┐
-   │  PHP derivation                                          │
-   │    prepare-php.sh applies 6 unified-diff patches         │
+   │  PHP derivation (one per phpVersions entry)              │
+   │    prepare-php.sh dispatches range-suffixed patches      │
    │    build-php.sh configures + builds against bundled deps │
    └──────────────────────────────────────────────────────────┘
                             │
@@ -158,24 +174,37 @@ but only require GLIBC_2.17 from the host.
    └──────────────────────────────────────────────────────────┘
 ```
 
-### Relocation — six source patches
+### Relocation — auto-dispatched source patches
 
 PHP's source bakes the build-time install prefix into many runtime path
-lookups. Six unified-diff patches in [`php-unix/patches/`](php-unix/patches/)
+lookups. Unified-diff patches in [`php-unix/patches/`](php-unix/patches/)
 rewrite each callsite to resolve the install root from `/proc/self/exe`
-at runtime, with a header-only helper `main/pbs_relocate.h`:
+at runtime, with a header-only helper `main/pbs_relocate.h`. Build-time
+macros (`PHP_PREFIX`, `PHP_EXTENSION_DIR`, etc.) remain as fallbacks if
+`/proc/self/exe` is unreadable.
 
-| Patch | What it does |
-|---|---|
-| `0001-relocate-phpize.patch` | `scripts/phpize.in`: compute `$prefix` from `$0` |
-| `0002-relocate-php-config.patch` | `scripts/php-config.in`: same |
-| `0003-relocate-php-ini-search.patch` | `main/php_ini.c`: append `<root>/etc/php` to ini search path; relocate scan-dir fallback |
-| `0004-relocate-extension-dir-startup.patch` | `main/main.c`: override `extension_dir` ini default at startup |
-| `0005-relocate-cli-ini-display.patch` | `sapi/cli/php_cli.c`: `php --ini` shows the resolved path |
-| `0006-relocate-fpm-paths.patch` | `sapi/fpm/fpm/fpm_conf.c`: relocate PHP_PREFIX / PHP_SYSCONFDIR |
+Patches are named **`NNNN-name@LO-HI.patch`**, where `NNNN` is the apply-
+order sequence number and `LO`/`HI` are inclusive PHP-version bounds
+in major-minor form (`81` → 8.1, `99` → effective infinity). The
+dispatcher in `prepare-php.sh` enumerates the directory and applies every
+patch whose range covers the current PHP version. Adding a patch for a
+single new version (or a single new range) is just dropping a file in.
 
-The build-time macros (`PHP_PREFIX`, `PHP_EXTENSION_DIR`, etc.) remain as
-fallbacks if `/proc/self/exe` is unreadable.
+The dispatcher fails loudly on naming-convention violations and on two
+patches with the same `NNNN` both matching one PHP version (overlapping
+ranges within a group are an authoring error).
+
+Current patch set:
+
+| Group | Variants | What it does |
+|---|---|---|
+| 0001 | `@81-99` | `scripts/phpize.in`: compute `$prefix` from `$0` |
+| 0002 | `@81-83`, `@84-99` | `scripts/php-config.in`: same — split because 8.4 added a `lib_dir` line |
+| 0003 | `@81-82`, `@83-99` | `main/php_ini.c`: prepend `<root>/etc/php` to ini search; relocate scan-dir fallback. Split because 8.3 introduced an `append_ini_path` helper |
+| 0004 | `@81-99` | `main/main.c`: override `extension_dir` ini default at startup |
+| 0005 | `@81-83`, `@84-84`, `@85-99` | `sapi/cli/php_cli.c`: `php --ini` shows the resolved path. Three-way split: 8.4 renamed the case label, 8.5 added quotes around `%s` |
+| 0006 | `@81-99` | `sapi/fpm/fpm/fpm_conf.c`: relocate PHP_PREFIX / PHP_SYSCONFDIR |
+| 0007 | `@81-81` | `configure`: bump intl's C++ standard probe from `c++11` to `c++17` (ICU 75 needs it; 8.2+ auto-detects via pkg-config) |
 
 ### Audit gates (in `php-unix/finalize.sh`)
 
@@ -202,10 +231,13 @@ The tarball can't ship until all five pass:
 ## Project tree
 
 ```
-flake.nix                      flake outputs: tarball, tree, php, xdebug, each dep
+flake.nix                      fans out one variant per phpVersions entry;
+                               outputs: tarball-<minor>, tree-<minor>,
+                               php-<minor>, xdebug-<minor>, plus shared deps
 flake.lock                     pinned nixpkgs revision
 php-unix/
-  sources.nix                  per-dep {url, sha256, version}
+  sources.nix                  shared dep sources + phpVersions /
+                               xdebugVersions / latestPhp maps
   sysroot.nix                  CentOS 7 RPM-based glibc-2.17 sysroot
   clang-toolchain.nix          wrapped clang-18 + lld targeting the sysroot
   toolchain.nix                pkgs in nativeBuildInputs
@@ -213,8 +245,9 @@ php-unix/
   mkDep.nix                    derivation factory
   build-<dep>.sh               per-dep configure/make/install
   <dep>.nix                    calls mkDep with deps list
-  patches/                     6 unified-diff PHP source patches
-  prepare-php.sh               applies patches + drops main/pbs_relocate.h
+  patches/                     range-suffixed PHP source patches
+                               (NNNN-name@LO-HI.patch — auto-dispatched)
+  prepare-php.sh               dispatches patches + drops main/pbs_relocate.h
   build-php.sh                 configures + builds PHP
   build-xdebug.sh              builds xdebug via the shipped phpize
   tree.nix                     merges per-dep $outs, runs finalize.sh
@@ -223,6 +256,7 @@ php-unix/
 tests/
   distros.txt                  expected pass/fail per distro image
   run-matrix.sh                extract once, mount RO into each container
+                               (PHP_TARBALL=path overrides the default lookup)
   smoke.sh                     POSIX-sh per-container smoke gates
 ```
 
