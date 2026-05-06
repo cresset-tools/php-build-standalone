@@ -1,15 +1,14 @@
-# Build the PHP tarball on every push and PR. On version tags
-# (refs/tags/v*), additionally publish the .tar.zst + .json as a GitHub
-# release asset.
+# Build every supported PHP minor on push and PR. On version tags
+# (refs/tags/v*), publish each .tar.zst + .json as a GitHub release asset.
 #
-# A full clean build takes ~15 minutes because we compile 16 C
-# dependencies plus PHP plus xdebug from source. We use FlakeHub Cache
-# to share /nix/store between runs — incremental builds (e.g. when only
-# README changes) finish in seconds because every derivation is
-# content-addressed and replayed from cache. FlakeHub Cache authenticates
-# via the workflow's GitHub OIDC token, which is why this job needs
-# `id-token: write`. Note: pushes to the cache are skipped on PRs from
-# forks because their JWTs lack the required claims.
+# A full clean build of one minor takes ~15 minutes — most of that is the
+# 17 C dependencies plus PHP itself plus xdebug. The matrix runs all five
+# variants in parallel; FlakeHub Cache shares /nix/store between matrix
+# legs and between runs, so the bundled deps are built once and reused
+# (PHP and xdebug are the only per-minor recompiles). Cache pushes
+# authenticate via the workflow's GitHub OIDC token, which is why this
+# job needs `id-token: write`. PR pushes from forks lack the required
+# JWT claims; FlakeHub Cache silently downgrades to read-only on those.
 
 name: build
 
@@ -23,11 +22,26 @@ on:
 
 jobs:
   build-tarball:
-    name: build x86_64-linux tarball
+    name: build PHP ${{ matrix.php }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
       id-token: write
+    strategy:
+      # Don't cancel the other minors when one fails — we want to know
+      # which version-specific patches need attention, not just the first.
+      fail-fast: false
+      matrix:
+        # Each row carries both the dotted PHP version (used for human-
+        # readable job titles, artifact names, and smoke output) and the
+        # underscored flake attribute (Nix CLI parses dots as attribute
+        # path separators, so the flake exposes `tarball-8_5`, not 8.5).
+        include:
+          - { php: "8.1", attr: "tarball-8_1" }
+          - { php: "8.2", attr: "tarball-8_2" }
+          - { php: "8.3", attr: "tarball-8_3" }
+          - { php: "8.4", attr: "tarball-8_4" }
+          - { php: "8.5", attr: "tarball-8_5" }
     steps:
       - uses: actions/checkout@v4
 
@@ -38,12 +52,14 @@ jobs:
         uses: DeterminateSystems/flakehub-cache-action@main
 
       - name: Build the tarball
-        run: nix build .#tarball --print-build-logs
+        run: nix build ".#${{ matrix.attr }}" --print-build-logs
 
       - name: Smoke-test the artifact
-        # Extract to a fresh prefix and verify the basics: PHP runs,
-        # all expected extensions load, xdebug loads, and runtime path
-        # resolution tracks the install root.
+        # Extract to a fresh prefix and verify the basics: PHP runs, the
+        # expected version is reported, xdebug dlopens, intl resolves
+        # locale data through the bundled ICU, and runtime path resolution
+        # tracks the install root after the tree is moved. These gates
+        # are version-agnostic; one inline script handles all five.
         run: |
           set -euo pipefail
           mkdir -p /tmp/smoke
@@ -53,6 +69,13 @@ jobs:
           echo "::group::php -v"
           "$PHP" -v
           echo "::endgroup::"
+          # Cross-check that we built the version this matrix leg expected
+          # — defends against a flake change accidentally rerouting an
+          # attribute to the wrong source.
+          actual=$("$PHP" -r 'echo PHP_MAJOR_VERSION,".",PHP_MINOR_VERSION;')
+          if [ "$actual" != "${{ matrix.php }}" ]; then
+            echo "FAIL: expected PHP ${{ matrix.php }}, got $actual"; exit 1
+          fi
           echo "::group::php -m"
           "$PHP" -m
           echo "::endgroup::"
@@ -74,7 +97,8 @@ jobs:
       - name: Upload tarball as workflow artifact
         uses: actions/upload-artifact@v4
         with:
-          name: php-tarball-x86_64-linux-gnu
+          # Per-minor name so the five matrix legs don't collide on upload.
+          name: php-tarball-${{ matrix.php }}-x86_64-linux-gnu
           path: |
             result/php-*.tar.zst
             result/php-*.json
@@ -84,6 +108,9 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
+          # Each matrix leg appends its own pair of files to the same
+          # release, so a tagged release ends up with all five tarballs
+          # plus their metadata JSONs.
           files: |
             result/php-*.tar.zst
             result/php-*.json
