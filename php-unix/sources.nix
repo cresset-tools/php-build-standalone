@@ -140,6 +140,26 @@
     version = "8.4.3";
   };
 
+  # ncurses — terminfo/terminal-capability library; needed by libedit as its
+  # terminfo backend. We bundle it so the tarball works on minimal containers
+  # that lack a system ncurses (Alpine musl, Ubuntu minimal, etc.).
+  ncurses = {
+    url = "https://ftp.gnu.org/gnu/ncurses/ncurses-6.5.tar.gz";
+    sha256 = "136d91bc269a9a5785e5f9e980bc76ab57428f604ce3e5a5a90cebc767971cc6";
+    version = "6.5";
+  };
+
+  # libedit — BSD editline library; provides line editing and history for
+  # PHP's ext/readline (php -a interactive shell). We use libedit rather
+  # than GNU readline because readline is GPL-licensed and redistributing
+  # a PHP binary linked against it would impose GPL terms on the combined
+  # work. Distros (Debian, Homebrew) make the same call.
+  libedit = {
+    url = "https://thrysoee.dk/editline/libedit-20240808-3.1.tar.gz";
+    sha256 = "5f0573349d77c4a48967191cdd6634dd7aa5f6398c6a57fe037cc02696d6099f";
+    version = "20240808-3.1";
+  };
+
   # xdebug — built via the just-installed bin/phpize after PHP itself.
   # This is the headline use case for the entire project: dynamic-linked
   # PHP that can dlopen xdebug for development workflows. Building xdebug

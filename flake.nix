@@ -49,11 +49,13 @@
           libzip = pkgs.callPackage ./php-unix/libzip.nix { inherit sources toolchain zlib bzip2 openssl; };
           icu = pkgs.callPackage ./php-unix/icu.nix { inherit sources toolchain; };
           libcurl = pkgs.callPackage ./php-unix/libcurl.nix { inherit sources toolchain openssl zlib nghttp2; };
+          ncurses = pkgs.callPackage ./php-unix/ncurses.nix { inherit sources toolchain; };
+          libedit = pkgs.callPackage ./php-unix/libedit.nix { inherit sources toolchain ncurses; };
 
           php = pkgs.callPackage ./php-unix/php.nix {
             inherit sources toolchain zlib openssl libxml2 sqlite oniguruma libsodium bzip2
                     libpng libjpeg-turbo libwebp freetype
-                    nghttp2 libzip icu libcurl;
+                    nghttp2 libzip icu libcurl ncurses libedit;
           };
 
           xdebug = pkgs.callPackage ./php-unix/xdebug.nix {
@@ -63,7 +65,7 @@
           deps = [
             zlib openssl libxml2 sqlite oniguruma libsodium bzip2
             libpng libjpeg-turbo libwebp freetype
-            nghttp2 libzip icu libcurl
+            nghttp2 libzip icu libcurl ncurses libedit
             php xdebug
           ];
 
@@ -84,7 +86,7 @@
           inherit sysroot toolchain
                   zlib openssl libxml2 sqlite oniguruma libsodium bzip2
                   libpng libjpeg-turbo libwebp freetype
-                  nghttp2 libzip icu libcurl php xdebug
+                  nghttp2 libzip icu libcurl ncurses libedit php xdebug
                   tree tarball;
           # `nix build` (no attribute) → tarball.
           default = tarball;

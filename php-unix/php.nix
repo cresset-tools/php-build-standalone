@@ -7,7 +7,7 @@
 { pkgs, sources, toolchain
 , zlib, openssl, libxml2, sqlite, oniguruma, libsodium, bzip2
 , libpng, libjpeg-turbo, libwebp, freetype
-, nghttp2, libzip, icu, libcurl
+, nghttp2, libzip, icu, libcurl, ncurses, libedit
 }:
 let
   mkDep = import ./mkDep.nix { inherit pkgs sources toolchain; };
@@ -18,7 +18,7 @@ mkDep {
   deps = [
     zlib openssl libxml2 sqlite oniguruma libsodium bzip2
     libpng libjpeg-turbo libwebp freetype
-    nghttp2 libzip icu libcurl
+    nghttp2 libzip icu libcurl ncurses libedit
   ];
   extraEnv = {
     PBS_PHP_PREPARE_SCRIPT = ./prepare-php.sh;

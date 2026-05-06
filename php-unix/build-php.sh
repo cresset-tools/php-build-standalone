@@ -31,6 +31,8 @@ set -euo pipefail
 : "${PBS_DEP_LIBZIP:?}"
 : "${PBS_DEP_ICU:?}"
 : "${PBS_DEP_LIBCURL:?}"
+: "${PBS_DEP_NCURSES:?}"
+: "${PBS_DEP_LIBEDIT:?}"
 
 src_dir="$PBS_SOURCES/php-${PBS_VER_PHP}"
 rm -rf "$src_dir"
@@ -138,8 +140,9 @@ export LDFLAGS="$LDFLAGS ${libstdcxx_a}"
   --enable-tokenizer \
   --enable-ctype \
   --with-iconv \
+  --with-libedit="$PBS_DEP_LIBEDIT" \
   --enable-opcache \
-  PKG_CONFIG_PATH="$PBS_DEP_LIBZIP/lib/pkgconfig:$PBS_DEP_ICU/lib/pkgconfig:$PBS_DEP_LIBPNG/lib/pkgconfig:$PBS_DEP_LIBWEBP/lib/pkgconfig:$PBS_DEP_FREETYPE/lib/pkgconfig:$PBS_DEP_LIBJPEG_TURBO/lib/pkgconfig:$PBS_DEP_OPENSSL/lib/pkgconfig:$PBS_DEP_LIBCURL/lib/pkgconfig:$PBS_DEP_LIBXML2/lib/pkgconfig:$PBS_DEP_ONIGURUMA/lib/pkgconfig:$PBS_DEP_ZLIB/lib/pkgconfig:$PBS_DEP_SQLITE/lib/pkgconfig:$PBS_DEP_LIBSODIUM/lib/pkgconfig:$PBS_DEP_BZIP2/lib/pkgconfig:$PBS_DEP_NGHTTP2/lib/pkgconfig"
+  PKG_CONFIG_PATH="$PBS_DEP_LIBZIP/lib/pkgconfig:$PBS_DEP_ICU/lib/pkgconfig:$PBS_DEP_LIBPNG/lib/pkgconfig:$PBS_DEP_LIBWEBP/lib/pkgconfig:$PBS_DEP_FREETYPE/lib/pkgconfig:$PBS_DEP_LIBJPEG_TURBO/lib/pkgconfig:$PBS_DEP_OPENSSL/lib/pkgconfig:$PBS_DEP_LIBCURL/lib/pkgconfig:$PBS_DEP_LIBXML2/lib/pkgconfig:$PBS_DEP_ONIGURUMA/lib/pkgconfig:$PBS_DEP_ZLIB/lib/pkgconfig:$PBS_DEP_SQLITE/lib/pkgconfig:$PBS_DEP_LIBSODIUM/lib/pkgconfig:$PBS_DEP_BZIP2/lib/pkgconfig:$PBS_DEP_NGHTTP2/lib/pkgconfig:$PBS_DEP_LIBEDIT/lib/pkgconfig:$PBS_DEP_NCURSES/lib/pkgconfig"
 
 # PHP's build is single-pass; no separate libs/exec phases.
 make -j"$(nproc)"
@@ -147,6 +150,19 @@ make -j"$(nproc)"
 # `make install` writes everything (binaries + extensions + headers +
 # build files + man pages) under $PBS_DEPS=$out.
 make install
+
+# Confirm readline (libedit-backed) is compiled into the binary. PHP builds
+# ext/readline statically into the CLI (no readline.so), so we verify via
+# php -m rather than looking for an extension .so file.
+# We need LD_LIBRARY_PATH so the just-built php can find its bundled shared
+# libs (libssl, libedit, etc.) at this point — they are in our dep store
+# paths which PBS_DEPS_LDPATH accumulates across all deps. This is safe
+# here because we scope it to a single command, not the whole build script.
+if ! LD_LIBRARY_PATH="$PBS_DEPS/lib${PBS_DEPS_LDPATH:+:$PBS_DEPS_LDPATH}" "$PBS_DEPS/bin/php" -m | grep -qi readline; then
+  echo "FATAL: readline not listed in php -m; --with-libedit configure step may have silently failed" >&2
+  exit 1
+fi
+echo "readline OK (libedit-backed)"
 
 # PHP's install drops a few things we don't need or that bake build-time
 # paths and would fail the audit:
