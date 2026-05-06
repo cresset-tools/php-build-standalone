@@ -117,8 +117,8 @@ echo "=== finalize: detoxifying installed text files ==="
 # paths in comments AND in the load-bearing `include=` directive. Drop
 # them entirely: users author their own config, and shipping a broken
 # template is worse than shipping no template.
-rm -f "$PBS_INSTALL/etc/php-fpm.conf.default"
-rm -rf "$PBS_INSTALL/etc/php-fpm.d"
+rm -f "$PBS_INSTALL/etc/php/php-fpm.conf.default"
+rm -rf "$PBS_INSTALL/etc/php/php-fpm.d"
 
 # Walk every text file once, sed-replace pbs-* store paths with sentinel.
 # Use grep -lI (text only, recursive) to find candidates.

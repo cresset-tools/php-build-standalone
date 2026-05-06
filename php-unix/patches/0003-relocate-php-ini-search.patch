@@ -3,9 +3,9 @@
 # PHP_CONFIG_FILE_SCAN_DIR macros.
 #
 # Two changes:
-#   1. php.ini search: insert <install_root>/etc *before* PHP_CONFIG_FILE_PATH
-#      in the Unix search list, so a relocated tarball finds its own etc/ first.
-#   2. conf.d scan-dir: fall back to <install_root>/etc/conf.d instead of the
+#   1. php.ini search: insert <install_root>/etc/php *before* PHP_CONFIG_FILE_PATH
+#      in the Unix search list, so a relocated tarball finds its own etc/php first.
+#   2. conf.d scan-dir: fall back to <install_root>/etc/php/conf.d instead of the
 #      build-time PHP_CONFIG_FILE_SCAN_DIR (which would point at the Nix store).
 #
 # Both sites are guarded by pbs_install_root(); if /proc/self/exe is
@@ -25,10 +25,10 @@
  #else
  		default_location = PHP_CONFIG_FILE_PATH;
 +		{
-+			/* PBS: prefer <install_root>/etc over build-time PHP_CONFIG_FILE_PATH. */
++			/* PBS: prefer <install_root>/etc/php over build-time PHP_CONFIG_FILE_PATH. */
 +			char pbs_root[MAXPATHLEN], pbs_etc[MAXPATHLEN];
 +			if (pbs_install_root(pbs_root, sizeof(pbs_root))) {
-+				snprintf(pbs_etc, sizeof(pbs_etc), "%s/etc", pbs_root);
++				snprintf(pbs_etc, sizeof(pbs_etc), "%s/etc/php", pbs_root);
 +				append_ini_path(php_ini_search_path, search_path_size, pbs_etc);
 +			}
 +		}
@@ -41,11 +41,11 @@
  	if (!php_ini_scanned_path) {
 -		/* Or fall back using possible --with-config-file-scan-dir setting (defaults to empty string!) */
 -		php_ini_scanned_path = PHP_CONFIG_FILE_SCAN_DIR;
-+		/* PBS: relocate the scan-dir fallback to <install_root>/etc/conf.d. */
++		/* PBS: relocate the scan-dir fallback to <install_root>/etc/php/conf.d. */
 +		static char pbs_scan[MAXPATHLEN];
 +		char pbs_root[MAXPATHLEN];
 +		if (pbs_install_root(pbs_root, sizeof(pbs_root))) {
-+			snprintf(pbs_scan, sizeof(pbs_scan), "%s/etc/conf.d", pbs_root);
++			snprintf(pbs_scan, sizeof(pbs_scan), "%s/etc/php/conf.d", pbs_root);
 +			php_ini_scanned_path = pbs_scan;
 +		} else {
 +			php_ini_scanned_path = PHP_CONFIG_FILE_SCAN_DIR;

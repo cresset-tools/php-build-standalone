@@ -78,8 +78,8 @@ CEOF
 echo "  wrote main/pbs_relocate.h"
 
 echo "=== prepare-php: patch main/php_ini.c (php.ini search path) ==="
-# Adds <install_root>/etc before PHP_CONFIG_FILE_PATH in the search list, and
-# relocates the conf.d scan-dir fallback to <install_root>/etc/conf.d.
+# Adds <install_root>/etc/php before PHP_CONFIG_FILE_PATH in the search list, and
+# relocates the conf.d scan-dir fallback to <install_root>/etc/php/conf.d.
 patch -p1 < "${PBS_PHP_PATCHES_DIR}/0003-relocate-php-ini-search.patch"
 echo "  patched main/php_ini.c"
 
@@ -90,13 +90,13 @@ patch -p1 < "${PBS_PHP_PATCHES_DIR}/0004-relocate-extension-dir-startup.patch"
 echo "  patched main/main.c"
 
 echo "=== prepare-php: patch sapi/cli/php_cli.c (--ini display) ==="
-# Makes `php --ini` print <install_root>/etc instead of the Nix store path.
+# Makes `php --ini` print <install_root>/etc/php instead of the Nix store path.
 patch -p1 < "${PBS_PHP_PATCHES_DIR}/0005-relocate-cli-ini-display.patch"
 echo "  patched sapi/cli/php_cli.c"
 
 echo "=== prepare-php: patch sapi/fpm/fpm/fpm_conf.c (prefix + sysconfdir) ==="
 # Relocates PHP_PREFIX (used for $prefix expansion in pool configs) and the
-# default php-fpm.conf path from PHP_SYSCONFDIR to <install_root>/etc/.
+# default php-fpm.conf path from PHP_SYSCONFDIR to <install_root>/etc/php/.
 patch -p1 < "${PBS_PHP_PATCHES_DIR}/0006-relocate-fpm-paths.patch"
 echo "  patched sapi/fpm/fpm/fpm_conf.c (2 sites)"
 

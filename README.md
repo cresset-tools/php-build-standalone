@@ -162,7 +162,7 @@ at runtime, with a header-only helper `main/pbs_relocate.h`:
 |---|---|
 | `0001-relocate-phpize.patch` | `scripts/phpize.in`: compute `$prefix` from `$0` |
 | `0002-relocate-php-config.patch` | `scripts/php-config.in`: same |
-| `0003-relocate-php-ini-search.patch` | `main/php_ini.c`: append `<root>/etc` to ini search path; relocate scan-dir fallback |
+| `0003-relocate-php-ini-search.patch` | `main/php_ini.c`: append `<root>/etc/php` to ini search path; relocate scan-dir fallback |
 | `0004-relocate-extension-dir-startup.patch` | `main/main.c`: override `extension_dir` ini default at startup |
 | `0005-relocate-cli-ini-display.patch` | `sapi/cli/php_cli.c`: `php --ini` shows the resolved path |
 | `0006-relocate-fpm-paths.patch` | `sapi/fpm/fpm/fpm_conf.c`: relocate PHP_PREFIX / PHP_SYSCONFDIR |

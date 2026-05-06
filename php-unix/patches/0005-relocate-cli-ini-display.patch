@@ -3,7 +3,7 @@
 #
 # Without this patch, `php --ini` prints the Nix store path baked in as
 # PHP_CONFIG_FILE_PATH, confusing users who installed via the relocated tarball.
-# With the patch, the displayed path is <install_root>/etc, matching what
+# With the patch, the displayed path is <install_root>/etc/php, matching what
 # php_ini.c actually searches first (see 0003-relocate-php-ini-search.patch).
 # Falls back to PHP_CONFIG_FILE_PATH if /proc/self/exe is unreadable.
 --- a/sapi/cli/php_cli.c	2026-05-05 18:45:40.050901980 +0000
@@ -24,7 +24,7 @@
 +				{
 +					char pbs_root[MAXPATHLEN], pbs_etc[MAXPATHLEN];
 +					if (pbs_install_root(pbs_root, sizeof(pbs_root))) {
-+						snprintf(pbs_etc, sizeof(pbs_etc), "%s/etc", pbs_root);
++						snprintf(pbs_etc, sizeof(pbs_etc), "%s/etc/php", pbs_root);
 +						zend_printf("Configuration File (php.ini) Path: %s\n", pbs_etc);
 +					} else {
 +						zend_printf("Configuration File (php.ini) Path: %s\n", PHP_CONFIG_FILE_PATH);

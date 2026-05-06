@@ -100,14 +100,15 @@ export LDFLAGS="$LDFLAGS ${libstdcxx_a}"
   --prefix="$PBS_DEPS" \
   --libdir="$PBS_DEPS/lib" \
   --sbindir="$PBS_DEPS/bin" \
+  --sysconfdir="$PBS_DEPS/etc/php" \
   --disable-rpath \
   --disable-cgi \
   --disable-phpdbg \
   --enable-cli \
   --enable-fpm \
   --without-pear \
-  --with-config-file-path="$PBS_DEPS/etc" \
-  --with-config-file-scan-dir="$PBS_DEPS/etc/conf.d" \
+  --with-config-file-path="$PBS_DEPS/etc/php" \
+  --with-config-file-scan-dir="$PBS_DEPS/etc/php/conf.d" \
   --with-zlib="$PBS_DEP_ZLIB" \
   --with-openssl="$PBS_DEP_OPENSSL" \
   --with-libxml="$PBS_DEP_LIBXML2" \
