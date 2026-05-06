@@ -3,10 +3,13 @@
 # release asset.
 #
 # A full clean build takes ~15 minutes because we compile 16 C
-# dependencies plus PHP plus xdebug from source. We use the Magic Nix
-# Cache action to cache /nix/store between runs — incremental builds
-# (e.g. when only README changes) finish in seconds because every
-# derivation is content-addressed and replayed from cache.
+# dependencies plus PHP plus xdebug from source. We use FlakeHub Cache
+# to share /nix/store between runs — incremental builds (e.g. when only
+# README changes) finish in seconds because every derivation is
+# content-addressed and replayed from cache. FlakeHub Cache authenticates
+# via the workflow's GitHub OIDC token, which is why this job needs
+# `id-token: write`. Note: pushes to the cache are skipped on PRs from
+# forks because their JWTs lack the required claims.
 
 name: build
 
@@ -22,14 +25,17 @@ jobs:
   build-tarball:
     name: build x86_64-linux tarball
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
     steps:
       - uses: actions/checkout@v4
 
       - name: Install Nix
-        uses: DeterminateSystems/nix-installer-action@main
+        uses: DeterminateSystems/determinate-nix-action@v3
 
-      - name: Cache /nix/store
-        uses: DeterminateSystems/magic-nix-cache-action@main
+      - name: Set up FlakeHub Cache
+        uses: DeterminateSystems/flakehub-cache-action@main
 
       - name: Build the tarball
         run: nix build .#tarball --print-build-logs
