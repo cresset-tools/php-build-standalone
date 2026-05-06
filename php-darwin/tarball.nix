@@ -52,6 +52,12 @@ pkgs.stdenvNoCC.mkDerivation {
     staging="$NIX_BUILD_TOP/staging"
     mkdir -p "$staging/install"
     cp -a ${tree}/. "$staging/install/"
+    # /nix/store is 0555, and cp -a preserves that. Without u+w on the
+    # staged copy the tarball ships unwritable directories — users then
+    # can't rm or mv their install without chmodding first, and macOS
+    # rename(2) refuses entirely (it updates the source dir's `..` entry
+    # so it needs write permission, even when the parent is unchanged).
+    chmod -R u+w "$staging/install"
 
     export SOURCE_DATE_EPOCH=1704067200
     tar --sort=name \

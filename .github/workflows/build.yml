@@ -102,7 +102,9 @@ jobs:
           # Linux uses /proc/self/exe, Darwin uses _NSGetExecutablePath —
           # both feed the same pbs_install_root() API in pbs_relocate.h,
           # so the smoke test is identical: move install/, ask php for
-          # extension_dir, expect it to track the new prefix.
+          # extension_dir, expect it to track the new prefix. (This also
+          # incidentally checks the tarball ships writable directories,
+          # since macOS rename(2) refuses 0555 source dirs.)
           mv "$smoke_root/install" "$smoke_root/relocated"
           ext_dir=$("$smoke_root/relocated/bin/php" -r 'echo ini_get("extension_dir");')
           case "$ext_dir" in
