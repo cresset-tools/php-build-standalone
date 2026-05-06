@@ -145,11 +145,32 @@ export LDFLAGS="$LDFLAGS ${libstdcxx_a}"
   PKG_CONFIG_PATH="$PBS_DEP_LIBZIP/lib/pkgconfig:$PBS_DEP_ICU/lib/pkgconfig:$PBS_DEP_LIBPNG/lib/pkgconfig:$PBS_DEP_LIBWEBP/lib/pkgconfig:$PBS_DEP_FREETYPE/lib/pkgconfig:$PBS_DEP_LIBJPEG_TURBO/lib/pkgconfig:$PBS_DEP_OPENSSL/lib/pkgconfig:$PBS_DEP_LIBCURL/lib/pkgconfig:$PBS_DEP_LIBXML2/lib/pkgconfig:$PBS_DEP_ONIGURUMA/lib/pkgconfig:$PBS_DEP_ZLIB/lib/pkgconfig:$PBS_DEP_SQLITE/lib/pkgconfig:$PBS_DEP_LIBSODIUM/lib/pkgconfig:$PBS_DEP_BZIP2/lib/pkgconfig:$PBS_DEP_NGHTTP2/lib/pkgconfig:$PBS_DEP_LIBEDIT/lib/pkgconfig:$PBS_DEP_NCURSES/lib/pkgconfig"
 
 # PHP's build is single-pass; no separate libs/exec phases.
-make -j"$(nproc)"
+#
+# LD_LIBRARY_PATH: ext/phar/Makefile.frag's pharcmd target invokes the
+# freshly-built sapi/cli/php to generate ext/phar/phar.php and phar.phar
+# via build_precommand.php. That binary has DT_NEEDED for libssl.so.3,
+# libicuio.so.75, etc. with bare sonames, and at this stage its DT_RPATH
+# only covers a subset of bundled deps (some pkg-config-resolved deps
+# slip in via libtool, others don't). Without LD_LIBRARY_PATH it fails
+# with "libssl.so.3: cannot open shared object file" — and the
+# Makefile's `-@` prefix swallows the error silently, leaving install-
+# pharcmd to create bin/phar -> phar.phar as a dangling symlink.
+# pharcmd is part of the default `all` target, so we need this on `make`
+# too, not just `make install`.
+LD_LIBRARY_PATH="${PBS_DEPS_LDPATH:-}" make -j"$(nproc)"
 
 # `make install` writes everything (binaries + extensions + headers +
-# build files + man pages) under $PBS_DEPS=$out.
-make install
+# build files + man pages) under $PBS_DEPS=$out. LD_LIBRARY_PATH is
+# kept here for the same reason — install-pharcmd re-invokes the cli
+# binary if phar.phar is missing.
+LD_LIBRARY_PATH="${PBS_DEPS_LDPATH:-}" make install
+
+# Sanity: install-pharcmd's `-@` prefix means a failed phar.phar build
+# never propagates a non-zero exit. Verify the file actually landed.
+if [ ! -f "$PBS_DEPS/bin/phar.phar" ]; then
+  echo "FATAL: bin/phar.phar not produced; pharcmd likely failed silently (check LD_LIBRARY_PATH)" >&2
+  exit 1
+fi
 
 # Confirm readline (libedit-backed) is compiled into the binary. PHP builds
 # ext/readline statically into the CLI (no readline.so), so we verify via
