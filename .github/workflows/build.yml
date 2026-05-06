@@ -37,8 +37,8 @@ jobs:
         #     (Nix CLI parses dots as attribute path separators, so the
         #     flake exposes `tarball-8_5`, not 8.5).
         #   - os: GitHub-hosted runner image. ubuntu-latest covers x86_64
-        #     glibc; macos-14 is the Apple Silicon image (only macOS arch
-        #     we ship — Apple is dropping x86_64 in macOS 27).
+        #     glibc; macos-26 (Tahoe) is the current Apple Silicon image
+        #     (only macOS arch we ship — Apple dropped x86_64 in macOS 27).
         #   - target: triple used in the tarball filename. Matches the
         #     value baked into the .json metadata by tarball.nix.
         include:
@@ -47,11 +47,11 @@ jobs:
           - { php: "8.3", attr: "tarball-8_3", os: ubuntu-latest, target: "x86_64-unknown-linux-gnu" }
           - { php: "8.4", attr: "tarball-8_4", os: ubuntu-latest, target: "x86_64-unknown-linux-gnu" }
           - { php: "8.5", attr: "tarball-8_5", os: ubuntu-latest, target: "x86_64-unknown-linux-gnu" }
-          - { php: "8.1", attr: "tarball-8_1", os: macos-14,      target: "aarch64-apple-darwin" }
-          - { php: "8.2", attr: "tarball-8_2", os: macos-14,      target: "aarch64-apple-darwin" }
-          - { php: "8.3", attr: "tarball-8_3", os: macos-14,      target: "aarch64-apple-darwin" }
-          - { php: "8.4", attr: "tarball-8_4", os: macos-14,      target: "aarch64-apple-darwin" }
-          - { php: "8.5", attr: "tarball-8_5", os: macos-14,      target: "aarch64-apple-darwin" }
+          - { php: "8.1", attr: "tarball-8_1", os: macos-26,      target: "aarch64-apple-darwin" }
+          - { php: "8.2", attr: "tarball-8_2", os: macos-26,      target: "aarch64-apple-darwin" }
+          - { php: "8.3", attr: "tarball-8_3", os: macos-26,      target: "aarch64-apple-darwin" }
+          - { php: "8.4", attr: "tarball-8_4", os: macos-26,      target: "aarch64-apple-darwin" }
+          - { php: "8.5", attr: "tarball-8_5", os: macos-26,      target: "aarch64-apple-darwin" }
     steps:
       - uses: actions/checkout@v4
 
@@ -59,12 +59,6 @@ jobs:
         uses: DeterminateSystems/determinate-nix-action@v3
 
       - name: Set up FlakeHub Cache
-        # Linux only. The action hangs indefinitely on macos-14 (both
-        # `@main` and pinned v3.19.1 reproduced the same stuck-step
-        # behavior — `Install Nix` finishes cleanly, then this step
-        # never returns). Darwin builds without cache for now; first
-        # build will be slow, subsequent macOS builds reuse nothing.
-        if: runner.os != 'macOS'
         uses: DeterminateSystems/flakehub-cache-action@v3.19.1
 
       - name: Build the tarball
