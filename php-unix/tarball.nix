@@ -4,12 +4,22 @@
 #
 # The .tar.zst contents start with a top-level `install/` directory, matching
 # the python-orchestrator-era layout and PBS convention.
-{ pkgs, tree, sources, target ? "x86_64-unknown-linux-gnu", phpVersion ? "8.4", nixpkgsRev }:
+{ pkgs, tree, sources, phpSpec, xdebugSpec, target ? "x86_64-unknown-linux-gnu", phpVersion ? "8.4", nixpkgsRev }:
 let
   # Build the JSON metadata at *evaluation* time so we don't have to thread
   # the variable list through shell. tree_hash is the only runtime-computed
   # field; we leave it as a sentinel for sed to fill in below.
-  bundledLibraries = pkgs.lib.mapAttrs (_: v: v.version) sources;
+  #
+  # Only include the flat bundled-dep entries from sources — the phpVersions /
+  # xdebugVersions maps and latestPhp string live at the top level too but
+  # are not bundled libraries. We inject php and xdebug explicitly from the
+  # per-variant specs so the metadata records the right version for each build.
+  bundledLibraries =
+    pkgs.lib.mapAttrs (_: v: v.version)
+      (pkgs.lib.filterAttrs
+        (_: v: builtins.isAttrs v && v ? version && builtins.isString v.version)
+        sources)
+    // { php = phpSpec.version; xdebug = xdebugSpec.version; };
 
   metadata = {
     version = "1";

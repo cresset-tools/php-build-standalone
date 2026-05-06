@@ -32,8 +32,9 @@
           # sysroot. setup-env.sh consumes PBS_CC / PBS_CXX from this.
           toolchain = pkgs.callPackage ./php-unix/clang-toolchain.nix { inherit sysroot; };
 
-          # Per-dep derivations. Each builds one bundled library into its own
-          # /nix/store path. The tree derivation later merges them.
+          # Bundled-dep derivations. Built once and shared across all PHP
+          # variants — each builds one C library into its own /nix/store path.
+          # The per-variant tree derivation merges them together.
           zlib = pkgs.callPackage ./php-unix/zlib.nix { inherit sources toolchain; };
           openssl = pkgs.callPackage ./php-unix/openssl.nix { inherit sources toolchain zlib; };
           libxml2 = pkgs.callPackage ./php-unix/libxml2.nix { inherit sources toolchain zlib; };
@@ -52,44 +53,74 @@
           ncurses = pkgs.callPackage ./php-unix/ncurses.nix { inherit sources toolchain; };
           libedit = pkgs.callPackage ./php-unix/libedit.nix { inherit sources toolchain ncurses; };
 
-          php = pkgs.callPackage ./php-unix/php.nix {
-            inherit sources toolchain zlib openssl libxml2 sqlite oniguruma libsodium bzip2
-                    libpng libjpeg-turbo libwebp freetype
-                    nghttp2 libzip icu libcurl ncurses libedit;
-          };
-
-          xdebug = pkgs.callPackage ./php-unix/xdebug.nix {
-            inherit sources toolchain php;
-          };
-
-          deps = [
+          # Shared bundled-dep list passed into each variant's tree derivation.
+          sharedDeps = [
             zlib openssl libxml2 sqlite oniguruma libsodium bzip2
             libpng libjpeg-turbo libwebp freetype
             nghttp2 libzip icu libcurl ncurses libedit
-            php xdebug
           ];
-
-          tree = pkgs.callPackage ./php-unix/tree.nix {
-            inherit deps toolchain;
-            phpVersion = sources.php.version;
-          };
 
           # Read the locked nixpkgs revision out of the flake input so the
           # JSON metadata records exactly what built it.
           nixpkgsRev = nixpkgs.rev or "dirty";
 
-          tarball = pkgs.callPackage ./php-unix/tarball.nix {
-            inherit tree sources nixpkgsRev;
-            phpVersion = sources.php.version;
-          };
-        in {
+          # Build one complete PHP variant (php + xdebug + tree + tarball)
+          # from a phpVersions key. The bundled C deps are shared; only the
+          # PHP and xdebug derivations differ between variants.
+          mkPhpVariant = phpKey:
+            let
+              phpSpec     = sources.phpVersions.${phpKey};
+              xdebugSpec  = sources.xdebugVersions.${phpSpec.xdebug};
+              php = pkgs.callPackage ./php-unix/php.nix {
+                inherit sources toolchain phpSpec
+                        zlib openssl libxml2 sqlite oniguruma libsodium bzip2
+                        libpng libjpeg-turbo libwebp freetype
+                        nghttp2 libzip icu libcurl ncurses libedit;
+              };
+              xdebug = pkgs.callPackage ./php-unix/xdebug.nix {
+                inherit sources toolchain php xdebugSpec;
+              };
+              deps = sharedDeps ++ [ php xdebug ];
+              tree = pkgs.callPackage ./php-unix/tree.nix {
+                inherit deps toolchain;
+                phpVersion = phpSpec.version;
+              };
+              tarball = pkgs.callPackage ./php-unix/tarball.nix {
+                inherit tree sources nixpkgsRev phpSpec xdebugSpec;
+                phpVersion = phpSpec.version;
+              };
+            in { inherit php xdebug tree tarball; };
+
+          # Fan out over every entry in phpVersions. variants."8.4" = { php; xdebug; tree; tarball; }
+          variants = builtins.mapAttrs (k: _: mkPhpVariant k) sources.phpVersions;
+
+          # Flatten variants into top-level outputs keyed as php-<minor>,
+          # xdebug-<minor>, tree-<minor>, tarball-<minor>. The major.minor key
+          # (e.g. "8.4") uses an underscore separator in the attribute name
+          # ("8_4") because the Nix CLI treats dots as attribute-path
+          # separators — `nix build .#tarball-8.4` would be parsed as
+          # attr `tarball-8` sub-attr `4` and fail with "not found".
+          variantAttrs = builtins.foldl'
+            (acc: phpKey:
+              let v = variants.${phpKey};
+                  k = pkgs.lib.replaceStrings [ "." ] [ "_" ] phpKey;
+              in acc // {
+                "php-${k}"     = v.php;
+                "xdebug-${k}"  = v.xdebug;
+                "tree-${k}"    = v.tree;
+                "tarball-${k}" = v.tarball;
+              })
+            {}
+            (builtins.attrNames sources.phpVersions);
+
+        in variantAttrs // {
+          # Shared infrastructure — built once, exposed for inspection / caching.
           inherit sysroot toolchain
                   zlib openssl libxml2 sqlite oniguruma libsodium bzip2
                   libpng libjpeg-turbo libwebp freetype
-                  nghttp2 libzip icu libcurl ncurses libedit php xdebug
-                  tree tarball;
-          # `nix build` (no attribute) → tarball.
-          default = tarball;
+                  nghttp2 libzip icu libcurl ncurses libedit;
+          # `nix build` (no attribute) → tarball for the latest PHP.
+          default = variants.${sources.latestPhp}.tarball;
         });
 
       # Hacking shell. Same toolchain as the derivations consume, but

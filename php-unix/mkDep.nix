@@ -15,6 +15,9 @@
 #   deps         — list of other pbs-* derivations this dep needs at build time
 #   extraEnv     — attrset of additional env vars to export before the script
 #   extraInputs  — additional nativeBuildInputs (nasm, perl, etc.)
+#   src          — optional override; defaults to fetchurl of sources.<name>.
+#                  Pass explicitly for entries that live in the phpVersions /
+#                  xdebugVersions maps rather than the flat sources attrset.
 { pkgs, sources, toolchain }:
 { name
 , buildScript
@@ -22,12 +25,9 @@
 , extraEnv ? {}
 , extraInputs ? []
 , version ? sources.${name}.version
+, src ? pkgs.fetchurl { url = sources.${name}.url; sha256 = sources.${name}.sha256; }
 }:
 let
-  src = pkgs.fetchurl {
-    url = sources.${name}.url;
-    sha256 = sources.${name}.sha256;
-  };
   upper = pkgs.lib.toUpper name;
   toolchainPkgs = import ./toolchain.nix { inherit pkgs toolchain; };
 

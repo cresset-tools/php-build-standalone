@@ -5,6 +5,14 @@
 # Replaces php-unix/downloads.yml — Nix is the only consumer, so YAML
 # adds no value over a Nix attrset. backup_url support can be re-added
 # via fetchurl's `urls` list if/when an upstream goes flaky.
+#
+# Structure:
+#   - Flat attrs (zlib, openssl, …) are bundled-dep sources shared across
+#     all PHP versions — fetched once and reused by every variant.
+#   - phpVersions / xdebugVersions are two-level maps keyed by major.minor
+#     (e.g. "8.4", "3.4"). Each PHP entry carries an `xdebug` pointer to
+#     the xdebugVersions key it should pair with.
+#   - latestPhp is the key used for the `default` flake output.
 
 {
   zlib = {
@@ -133,13 +141,6 @@
     version = "8.11.0";
   };
 
-  # PHP itself. 8.4 is the v1 target (CLI + FPM, NTS).
-  php = {
-    url = "https://www.php.net/distributions/php-8.4.3.tar.xz";
-    sha256 = "5c42173cbde7d0add8249c2e8a0c19ae271f41d8c47d67d72bdf91a88dcc7e4b";
-    version = "8.4.3";
-  };
-
   # ncurses — terminfo/terminal-capability library; needed by libedit as its
   # terminfo backend. We bundle it so the tarball works on minimal containers
   # that lack a system ncurses (Alpine musl, Ubuntu minimal, etc.).
@@ -160,14 +161,34 @@
     version = "20240808-3.1";
   };
 
-  # xdebug — built via the just-installed bin/phpize after PHP itself.
+  # PHP version matrix. Each entry pairs a PHP major.minor with a specific
+  # patch release and the xdebugVersions key it should use. New PHP versions
+  # are added here; bundled deps above remain shared across all variants.
+  phpVersions = {
+    "8.4" = {
+      version = "8.4.3";
+      url = "https://www.php.net/distributions/php-8.4.3.tar.xz";
+      sha256 = "5c42173cbde7d0add8249c2e8a0c19ae271f41d8c47d67d72bdf91a88dcc7e4b";
+      # xdebug key in xdebugVersions that pairs with this PHP release.
+      xdebug = "3.4";
+    };
+  };
+
+  # xdebug version matrix. Keyed by major.minor. PHP entries point here via
+  # the `xdebug` field so the pairing is explicit and easy to update.
   # This is the headline use case for the entire project: dynamic-linked
   # PHP that can dlopen xdebug for development workflows. Building xdebug
   # via our shipped phpize also serves as an end-to-end cross-check of
   # the relocation patches (scripts/phpize.in / php-config.in).
-  xdebug = {
-    url = "https://xdebug.org/files/xdebug-3.4.0.tgz";
-    sha256 = "89667b8d04aaf04c023eb109900e1cce97ca39f97f2f3f24199630cc0e1cc77d";
-    version = "3.4.0";
+  xdebugVersions = {
+    "3.4" = {
+      version = "3.4.0";
+      url = "https://xdebug.org/files/xdebug-3.4.0.tgz";
+      sha256 = "89667b8d04aaf04c023eb109900e1cce97ca39f97f2f3f24199630cc0e1cc77d";
+    };
   };
+
+  # The key into phpVersions that `default` and the unqualified CLI output
+  # should resolve to. Bump this when a new stable PHP is promoted.
+  latestPhp = "8.4";
 }
