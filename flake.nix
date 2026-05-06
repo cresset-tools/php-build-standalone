@@ -10,11 +10,105 @@
 
   outputs = { self, nixpkgs }:
     let
-      systems = [ "x86_64-linux" ];
+      linuxSystems  = [ "x86_64-linux" ];
+      darwinSystems = [ "aarch64-darwin" ];
+      systems = linuxSystems ++ darwinSystems;
       forEach = f: builtins.listToAttrs
         (map (system: { name = system; value = f system; }) systems);
+      isDarwin = system: builtins.elem system darwinSystems;
     in {
       packages = forEach (system:
+        if isDarwin system then
+          # ───────────────────────────── Darwin spike ─────────────────────────────
+          # First-target-of-opportunity: zlib only, end-to-end through the
+          # Darwin toolchain + finalize. Once this builds and passes the
+          # audit gates, the rest of the deps follow the same pattern.
+          let
+            pkgs = import nixpkgs { inherit system; };
+            sources = import ./php-unix/sources.nix;
+            nixpkgsRev = nixpkgs.rev or "dirty";
+            toolchain = pkgs.callPackage ./php-darwin/toolchain.nix {
+              clang = pkgs.clang;
+              llvmPackages = pkgs.llvmPackages;
+            };
+            zlib          = pkgs.callPackage ./php-darwin/zlib.nix          { inherit sources toolchain; };
+            openssl       = pkgs.callPackage ./php-darwin/openssl.nix       { inherit sources toolchain zlib; };
+            libxml2       = pkgs.callPackage ./php-darwin/libxml2.nix       { inherit sources toolchain zlib; };
+            sqlite        = pkgs.callPackage ./php-darwin/sqlite.nix        { inherit sources toolchain; };
+            oniguruma     = pkgs.callPackage ./php-darwin/oniguruma.nix     { inherit sources toolchain; };
+            libsodium     = pkgs.callPackage ./php-darwin/libsodium.nix     { inherit sources toolchain; };
+            bzip2         = pkgs.callPackage ./php-darwin/bzip2.nix         { inherit sources toolchain; };
+            libpng        = pkgs.callPackage ./php-darwin/libpng.nix        { inherit sources toolchain zlib; };
+            libjpeg-turbo = pkgs.callPackage ./php-darwin/libjpeg-turbo.nix { inherit sources toolchain; };
+            libwebp       = pkgs.callPackage ./php-darwin/libwebp.nix       { inherit sources toolchain; };
+            freetype      = pkgs.callPackage ./php-darwin/freetype.nix      { inherit sources toolchain zlib bzip2; };
+            nghttp2       = pkgs.callPackage ./php-darwin/nghttp2.nix       { inherit sources toolchain; };
+            libzip        = pkgs.callPackage ./php-darwin/libzip.nix        { inherit sources toolchain zlib bzip2 openssl; };
+            icu           = pkgs.callPackage ./php-darwin/icu.nix           { inherit sources toolchain; };
+            libcurl       = pkgs.callPackage ./php-darwin/libcurl.nix       { inherit sources toolchain openssl zlib nghttp2; };
+            ncurses       = pkgs.callPackage ./php-darwin/ncurses.nix       { inherit sources toolchain; };
+            libedit       = pkgs.callPackage ./php-darwin/libedit.nix       { inherit sources toolchain ncurses; };
+            libiconv      = pkgs.callPackage ./php-darwin/libiconv.nix      { inherit sources toolchain; };
+            sharedDeps = [
+              zlib openssl libxml2 sqlite oniguruma libsodium bzip2
+              libpng libjpeg-turbo libwebp freetype
+              nghttp2 libzip icu libcurl ncurses libedit libiconv
+            ];
+
+            # Per-PHP variant fan-out, mirroring the Linux side. Same shape:
+            # phpVersions key → { php; xdebug; tree; }.
+            mkPhpVariant = phpKey:
+              let
+                phpSpec    = sources.phpVersions.${phpKey};
+                xdebugSpec = sources.xdebugVersions.${phpSpec.xdebug};
+                php = pkgs.callPackage ./php-darwin/php.nix {
+                  inherit sources toolchain phpSpec
+                          zlib openssl libxml2 sqlite oniguruma libsodium bzip2
+                          libpng libjpeg-turbo libwebp freetype
+                          nghttp2 libzip icu libcurl ncurses libedit libiconv;
+                };
+                xdebug = pkgs.callPackage ./php-darwin/xdebug.nix {
+                  inherit sources toolchain php xdebugSpec;
+                };
+                variantDeps = sharedDeps ++ [ php xdebug ];
+                tree = pkgs.callPackage ./php-darwin/tree.nix {
+                  deps = variantDeps;
+                  inherit toolchain;
+                };
+                tarball = pkgs.callPackage ./php-darwin/tarball.nix {
+                  inherit tree sources nixpkgsRev phpSpec xdebugSpec;
+                  phpVersion = phpKey;
+                };
+              in { inherit php xdebug tree tarball; };
+
+            variants = builtins.mapAttrs (k: _: mkPhpVariant k) sources.phpVersions;
+            variantAttrs = builtins.foldl'
+              (acc: phpKey:
+                let v = variants.${phpKey};
+                    k = pkgs.lib.replaceStrings [ "." ] [ "_" ] phpKey;
+                in acc // {
+                  "php-${k}"     = v.php;
+                  "xdebug-${k}"  = v.xdebug;
+                  "tree-${k}"    = v.tree;
+                  "tarball-${k}" = v.tarball;
+                })
+              {}
+              (builtins.attrNames sources.phpVersions);
+
+            # Bare `tree` retains the deps-only spike output for inspection.
+            depsOnlyTree = pkgs.callPackage ./php-darwin/tree.nix {
+              deps = sharedDeps;
+              inherit toolchain;
+            };
+          in variantAttrs // {
+            inherit toolchain
+                    zlib openssl libxml2 sqlite oniguruma libsodium bzip2
+                    libpng libjpeg-turbo libwebp freetype
+                    nghttp2 libzip icu libcurl ncurses libedit libiconv;
+            tree = depsOnlyTree;
+            default = variants.${sources.latestPhp}.tarball;
+          }
+        else
         let
           pkgs = import nixpkgs { inherit system; };
           sources = import ./php-unix/sources.nix;
@@ -127,6 +221,27 @@
       # interactive — useful for iterating on a build script before it
       # works inside a derivation.
       devShells = forEach (system:
+        if isDarwin system then
+          let
+            pkgs = import nixpkgs { inherit system; };
+            toolchain = pkgs.callPackage ./php-darwin/toolchain.nix {
+              clang = pkgs.clang;
+              llvmPackages = pkgs.llvmPackages;
+            };
+            toolchainPkgs = import ./php-darwin/toolchain-pkgs.nix { inherit pkgs toolchain; };
+          in {
+            default = (pkgs.mkShell.override { stdenv = pkgs.stdenvNoCC; }) {
+              packages = toolchainPkgs;
+              shellHook = ''
+                unset PKG_CONFIG_PATH LIBRARY_PATH CPATH C_INCLUDE_PATH \
+                      CPLUS_INCLUDE_PATH ACLOCAL_PATH \
+                      CMAKE_PREFIX_PATH NIX_LDFLAGS NIX_CFLAGS_COMPILE
+                export PBS_TOOLCHAIN="${toolchain}"
+                export PBS_NIXPKGS_REV="${nixpkgs.rev or "dirty"}"
+              '';
+            };
+          }
+        else
         let
           pkgs = import nixpkgs { inherit system; };
           sysroot = pkgs.callPackage ./php-unix/sysroot.nix {};

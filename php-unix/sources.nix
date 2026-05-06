@@ -150,6 +150,20 @@
     version = "6.5";
   };
 
+  # libiconv — character set conversion library. Bundled on Darwin only:
+  # glibc provides iconv as part of libc, so the Linux build doesn't need
+  # this dep. Apple's macOS ships libiconv.2.dylib as a system library
+  # but its headers live in the SDK and aren't visible inside the Nix
+  # sandbox; PHP's configure does a literal `test -r $prefix/include/iconv.h`
+  # which fails. Bundling resolves both halves: configure finds the header
+  # and the resulting PHP links against our /nix-store-built libiconv,
+  # which finalize then relocates to @rpath like every other dep.
+  libiconv = {
+    url = "https://ftp.gnu.org/pub/gnu/libiconv/libiconv-1.17.tar.gz";
+    sha256 = "8f74213b56238c85a50a5329f77e06198771e70dd9a739779f4c02f65d971313";
+    version = "1.17";
+  };
+
   # libedit — BSD editline library; provides line editing and history for
   # PHP's ext/readline (php -a interactive shell). We use libedit rather
   # than GNU readline because readline is GPL-licensed and redistributing

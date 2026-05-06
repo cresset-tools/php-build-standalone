@@ -126,19 +126,24 @@ for patch_file in "${selected_files[@]}"; do
 done
 
 # pbs_relocate.h — a minimal header-only helper resolving the install root
-# from /proc/self/exe at runtime. Header-only means no Makefile changes
-# needed. Sites that consult build-time PHP_PREFIX / PHP_SYSCONFDIR /
-# PHP_EXTENSION_DIR macros at runtime should prefer pbs_install_root() —
-# that's what makes the tarball work after relocation. Several patches
-# above #include this file.
+# at runtime. Header-only means no Makefile changes needed. Sites that
+# consult build-time PHP_PREFIX / PHP_SYSCONFDIR / PHP_EXTENSION_DIR
+# macros at runtime should prefer pbs_install_root() — that's what makes
+# the tarball work after relocation. Several patches above #include this
+# file.
+#
+# Cross-platform: the API (pbs_install_root) is identical; the
+# implementation switches on __APPLE__:
+#   - Linux: readlink("/proc/self/exe", ...)
+#   - Darwin: _NSGetExecutablePath() + realpath() to canonicalize.
 echo "=== prepare-php: drop pbs_relocate.h helper ==="
 cat > main/pbs_relocate.h <<'CEOF'
 /* PBS: runtime path resolution for relocatable installs.
  * The build-time PHP_PREFIX / PHP_SYSCONFDIR / PHP_EXTENSION_DIR macros
  * point at the build-time install path and remain useful as fallbacks,
  * but every callsite that consults them at runtime should prefer the
- * install-relative path computed from /proc/self/exe — that's what makes
- * the tarball work after relocation. */
+ * install-relative path computed from the running executable's path —
+ * that's what makes the tarball work after relocation. */
 #ifndef PHP_PBS_RELOCATE_H
 #define PHP_PBS_RELOCATE_H
 
@@ -146,15 +151,36 @@ cat > main/pbs_relocate.h <<'CEOF'
 #include <limits.h>
 #include <string.h>
 #include <stdio.h>
+#include <stdlib.h>
 
-/* Compute the install root by stripping bin/<exe> off /proc/self/exe.
- * Writes a NUL-terminated absolute path into buf, returns its length, or
- * 0 on any failure (caller should then fall back to compiled-in defaults). */
+#ifdef __APPLE__
+#include <mach-o/dyld.h>
+#endif
+
+/* Compute the install root by stripping bin/<exe> off the running
+ * binary's resolved absolute path. Writes a NUL-terminated absolute
+ * path into buf, returns its length, or 0 on any failure (caller
+ * should then fall back to compiled-in defaults). */
 static inline size_t pbs_install_root(char *buf, size_t bufsize) {
     if (bufsize < 2) return 0;
+#ifdef __APPLE__
+    /* _NSGetExecutablePath may return a path that includes . / ..
+     * components or a symlink, so we canonicalize via realpath().
+     * realpath(path, NULL) allocates; copy into the caller's buf. */
+    char raw[4096];
+    uint32_t rawsize = sizeof(raw);
+    if (_NSGetExecutablePath(raw, &rawsize) != 0) return 0;
+    char *resolved = realpath(raw, NULL);
+    if (!resolved) return 0;
+    size_t rlen = strlen(resolved);
+    if (rlen >= bufsize) { free(resolved); return 0; }
+    memcpy(buf, resolved, rlen + 1);
+    free(resolved);
+#else
     ssize_t n = readlink("/proc/self/exe", buf, bufsize - 1);
     if (n <= 0) return 0;
     buf[n] = 0;
+#endif
     /* /opt/php/bin/php → /opt/php/bin */
     char *p = strrchr(buf, '/');
     if (!p || p == buf) return 0;

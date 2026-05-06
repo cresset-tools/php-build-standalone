@@ -22,8 +22,8 @@ on:
 
 jobs:
   build-tarball:
-    name: build PHP ${{ matrix.php }}
-    runs-on: ubuntu-latest
+    name: build PHP ${{ matrix.php }} (${{ matrix.target }})
+    runs-on: ${{ matrix.os }}
     permissions:
       contents: read
       id-token: write
@@ -32,16 +32,26 @@ jobs:
       # which version-specific patches need attention, not just the first.
       fail-fast: false
       matrix:
-        # Each row carries both the dotted PHP version (used for human-
-        # readable job titles, artifact names, and smoke output) and the
-        # underscored flake attribute (Nix CLI parses dots as attribute
-        # path separators, so the flake exposes `tarball-8_5`, not 8.5).
+        # Each row carries:
+        #   - php / attr: dotted version + underscored flake attribute
+        #     (Nix CLI parses dots as attribute path separators, so the
+        #     flake exposes `tarball-8_5`, not 8.5).
+        #   - os: GitHub-hosted runner image. ubuntu-latest covers x86_64
+        #     glibc; macos-14 is the Apple Silicon image (only macOS arch
+        #     we ship — Apple is dropping x86_64 in macOS 27).
+        #   - target: triple used in the tarball filename. Matches the
+        #     value baked into the .json metadata by tarball.nix.
         include:
-          - { php: "8.1", attr: "tarball-8_1" }
-          - { php: "8.2", attr: "tarball-8_2" }
-          - { php: "8.3", attr: "tarball-8_3" }
-          - { php: "8.4", attr: "tarball-8_4" }
-          - { php: "8.5", attr: "tarball-8_5" }
+          - { php: "8.1", attr: "tarball-8_1", os: ubuntu-latest, target: "x86_64-unknown-linux-gnu" }
+          - { php: "8.2", attr: "tarball-8_2", os: ubuntu-latest, target: "x86_64-unknown-linux-gnu" }
+          - { php: "8.3", attr: "tarball-8_3", os: ubuntu-latest, target: "x86_64-unknown-linux-gnu" }
+          - { php: "8.4", attr: "tarball-8_4", os: ubuntu-latest, target: "x86_64-unknown-linux-gnu" }
+          - { php: "8.5", attr: "tarball-8_5", os: ubuntu-latest, target: "x86_64-unknown-linux-gnu" }
+          - { php: "8.1", attr: "tarball-8_1", os: macos-14,      target: "aarch64-apple-darwin" }
+          - { php: "8.2", attr: "tarball-8_2", os: macos-14,      target: "aarch64-apple-darwin" }
+          - { php: "8.3", attr: "tarball-8_3", os: macos-14,      target: "aarch64-apple-darwin" }
+          - { php: "8.4", attr: "tarball-8_4", os: macos-14,      target: "aarch64-apple-darwin" }
+          - { php: "8.5", attr: "tarball-8_5", os: macos-14,      target: "aarch64-apple-darwin" }
     steps:
       - uses: actions/checkout@v4
 
@@ -59,13 +69,16 @@ jobs:
         # expected version is reported, xdebug dlopens, intl resolves
         # locale data through the bundled ICU, and runtime path resolution
         # tracks the install root after the tree is moved. These gates
-        # are version-agnostic; one inline script handles all five.
+        # are version- and platform-agnostic; one inline script handles
+        # both Linux and Darwin matrix legs (same tarball layout, same
+        # relocation contract — pbs_relocate.h switches on __APPLE__).
         run: |
           set -euo pipefail
-          mkdir -p /tmp/smoke
+          smoke_root="$RUNNER_TEMP/smoke"
+          mkdir -p "$smoke_root"
           tar --use-compress-program=unzstd \
-              -xf result/php-*.tar.zst -C /tmp/smoke
-          PHP=/tmp/smoke/install/bin/php
+              -xf result/php-*.tar.zst -C "$smoke_root"
+          PHP="$smoke_root/install/bin/php"
           echo "::group::php -v"
           "$PHP" -v
           echo "::endgroup::"
@@ -85,11 +98,15 @@ jobs:
           echo "::group::expect intl currency formatting"
           "$PHP" -r 'echo NumberFormatter::create("en_US", NumberFormatter::CURRENCY)->formatCurrency(1234.56, "USD"), "\n";'
           echo "::endgroup::"
-          echo "::group::expect relocation tracks /proc/self/exe"
-          mv /tmp/smoke/install /tmp/smoke/relocated
-          ext_dir=$(/tmp/smoke/relocated/bin/php -r 'echo ini_get("extension_dir");')
+          echo "::group::expect relocation tracks the running binary"
+          # Linux uses /proc/self/exe, Darwin uses _NSGetExecutablePath —
+          # both feed the same pbs_install_root() API in pbs_relocate.h,
+          # so the smoke test is identical: move install/, ask php for
+          # extension_dir, expect it to track the new prefix.
+          mv "$smoke_root/install" "$smoke_root/relocated"
+          ext_dir=$("$smoke_root/relocated/bin/php" -r 'echo ini_get("extension_dir");')
           case "$ext_dir" in
-            /tmp/smoke/relocated/lib/extensions/*) echo "ok: $ext_dir" ;;
+            "$smoke_root/relocated/lib/extensions/"*) echo "ok: $ext_dir" ;;
             *) echo "FAIL: extension_dir=$ext_dir did not track relocation"; exit 1 ;;
           esac
           echo "::endgroup::"
@@ -97,8 +114,8 @@ jobs:
       - name: Upload tarball as workflow artifact
         uses: actions/upload-artifact@v4
         with:
-          # Per-minor name so the five matrix legs don't collide on upload.
-          name: php-tarball-${{ matrix.php }}-x86_64-linux-gnu
+          # Per-(minor × target) name so the matrix legs don't collide.
+          name: php-tarball-${{ matrix.php }}-${{ matrix.target }}
           path: |
             result/php-*.tar.zst
             result/php-*.json
