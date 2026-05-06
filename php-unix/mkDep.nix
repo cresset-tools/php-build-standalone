@@ -15,7 +15,7 @@
 #   deps         — list of other pbs-* derivations this dep needs at build time
 #   extraEnv     — attrset of additional env vars to export before the script
 #   extraInputs  — additional nativeBuildInputs (nasm, perl, etc.)
-{ pkgs, sources }:
+{ pkgs, sources, toolchain }:
 { name
 , buildScript
 , deps ? []
@@ -29,7 +29,7 @@ let
     sha256 = sources.${name}.sha256;
   };
   upper = pkgs.lib.toUpper name;
-  toolchain = import ./toolchain.nix { inherit pkgs; };
+  toolchainPkgs = import ./toolchain.nix { inherit pkgs toolchain; };
 
   # `name` may contain dashes (e.g. libxml2 → fine, but pdo-sqlite would
   # need normalizing for env vars). Normalize: dashes → underscores, then
@@ -65,7 +65,7 @@ pkgs.stdenvNoCC.mkDerivation {
   pname = "pbs-${name}";
   inherit version src;
 
-  nativeBuildInputs = toolchain ++ extraInputs;
+  nativeBuildInputs = toolchainPkgs ++ extraInputs;
 
   dontUnpack = true;
   dontConfigure = true;
@@ -83,10 +83,12 @@ pkgs.stdenvNoCC.mkDerivation {
   buildPhase = ''
     runHook preBuild
 
-    # Toolchain paths consumed by setup-env.sh.
-    export PBS_GLIBC_LIB="${pkgs.glibc}/lib"
-    export PBS_GCC_LIBGCC="${pkgs.gcc-unwrapped.lib}/lib"
-    export PBS_GLIBC_DEV_INCLUDE="${pkgs.glibc.dev}/include"
+    # Toolchain paths consumed by setup-env.sh. PBS_TOOLCHAIN holds the
+    # wrapped clang+lld+sysroot-aware CC; PBS_SYSROOT exposes the
+    # CentOS 7 / glibc 2.17 sysroot tree for the rare build script that
+    # needs to thread an explicit path (e.g. positional libstdc++.a).
+    export PBS_TOOLCHAIN="${toolchain}"
+    export PBS_SYSROOT="${toolchain.passthru.sysroot}"
 
     # Per-dep contract: PBS_SRC_<NAME> = source tarball, PBS_VER_<NAME> = version.
     export PBS_SRC_${envName}="$src"

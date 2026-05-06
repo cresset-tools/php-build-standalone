@@ -3,9 +3,9 @@
 # deflate support), bzip2 (bzip2-compressed entries), and openssl (AES
 # encryption per the modern .zip spec). lzma/zstd backends are disabled —
 # the PBS bundle doesn't carry xz or zstd.
-{ pkgs, sources, zlib, bzip2, openssl }:
+{ pkgs, sources, toolchain, zlib, bzip2, openssl }:
 let
-  mkDep = import ./mkDep.nix { inherit pkgs sources; };
+  mkDep = import ./mkDep.nix { inherit pkgs sources toolchain; };
 in
 mkDep {
   name = "libzip";

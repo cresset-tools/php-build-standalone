@@ -16,7 +16,7 @@ let
     target_triple = target;
     php_version = phpVersion;
     thread_safety = "nts";
-    libc = { kind = "glibc"; };
+    libc = { kind = "glibc"; max_symbol_version = "@LIBC_MAX_SYMVER@"; };
     sapis = [ "cli" "fpm" ];
     bundled_libraries = bundledLibraries;
     # ABI numbers identify what extensions can be loaded into this PHP.
@@ -43,7 +43,7 @@ pkgs.stdenvNoCC.mkDerivation {
   dontConfigure = true;
   dontBuild = true;
 
-  nativeBuildInputs = with pkgs; [ gnutar zstd coreutils gnused findutils ];
+  nativeBuildInputs = with pkgs; [ gnutar zstd coreutils gnused findutils binutils-unwrapped ];
 
   installPhase = ''
     runHook preInstall
@@ -79,10 +79,21 @@ pkgs.stdenvNoCC.mkDerivation {
     zend_extension_api=$(grep -E '^#define ZEND_EXTENSION_API_NO' \
       ${tree}/include/php/Zend/zend_extensions.h | awk '{print $3}')
 
+    # Compute the highest GLIBC_x.y symbol referenced by any shipped ELF
+    # — that's the floor a consumer's glibc must meet to load this build.
+    # Walk every ELF (binaries + .so files) and take the max version.
+    libc_max=$( { find ${tree} -type f \( -name '*.so' -o -name '*.so.*' -o -path '*/bin/*' \) -print0 \
+        | xargs -0 -r objdump -T 2>/dev/null \
+        | grep -oE 'GLIBC_[0-9]+\.[0-9]+' \
+        | sort -V \
+        | tail -1; } || true )
+    libc_max=''${libc_max:-GLIBC_2.2.5}
+
     # Substitute all the runtime-computed values into the static metadata.
     sed -e "s/@TREE_HASH@/$tree_hash/" \
         -e "s/@ZEND_MODULE_API_NO@/$zend_module_api/" \
         -e "s/@ZEND_EXTENSION_API_NO@/$zend_extension_api/" \
+        -e "s/@LIBC_MAX_SYMVER@/$libc_max/" \
         ${metadataFile} > "$out/$base.json"
 
     echo "produced:"

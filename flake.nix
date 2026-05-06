@@ -14,32 +14,45 @@
           pkgs = import nixpkgs { inherit system; };
           sources = import ./php-unix/sources.nix;
 
+          # Old-glibc sysroot — derived from CentOS 7 Vault RPMs (glibc 2.17).
+          # This is the same trick python-build-standalone hits via Debian
+          # Jessie: target an old libc as the sysroot, lower the binary's
+          # GLIBC_x symbol floor accordingly. We do it as a separate
+          # derivation so it's cached and inspectable.
+          sysroot = pkgs.callPackage ./php-unix/sysroot.nix {};
+
+          # Toolchain wrapper: nixpkgs's modern clang reconfigured to use
+          # our sysroot (-isysroot, --sysroot, -B<startup-files-dir>) and
+          # to static-link libc++ that is itself rebuilt against the old
+          # sysroot. setup-env.sh consumes PBS_CC / PBS_CXX from this.
+          toolchain = pkgs.callPackage ./php-unix/clang-toolchain.nix { inherit sysroot; };
+
           # Per-dep derivations. Each builds one bundled library into its own
           # /nix/store path. The tree derivation later merges them.
-          zlib = pkgs.callPackage ./php-unix/zlib.nix { inherit sources; };
-          openssl = pkgs.callPackage ./php-unix/openssl.nix { inherit sources zlib; };
-          libxml2 = pkgs.callPackage ./php-unix/libxml2.nix { inherit sources zlib; };
-          sqlite = pkgs.callPackage ./php-unix/sqlite.nix { inherit sources; };
-          oniguruma = pkgs.callPackage ./php-unix/oniguruma.nix { inherit sources; };
-          libsodium = pkgs.callPackage ./php-unix/libsodium.nix { inherit sources; };
-          bzip2 = pkgs.callPackage ./php-unix/bzip2.nix { inherit sources; };
-          libpng = pkgs.callPackage ./php-unix/libpng.nix { inherit sources zlib; };
-          libjpeg-turbo = pkgs.callPackage ./php-unix/libjpeg-turbo.nix { inherit sources; };
-          libwebp = pkgs.callPackage ./php-unix/libwebp.nix { inherit sources; };
-          freetype = pkgs.callPackage ./php-unix/freetype.nix { inherit sources zlib bzip2; };
-          nghttp2 = pkgs.callPackage ./php-unix/nghttp2.nix { inherit sources; };
-          libzip = pkgs.callPackage ./php-unix/libzip.nix { inherit sources zlib bzip2 openssl; };
-          icu = pkgs.callPackage ./php-unix/icu.nix { inherit sources; };
-          libcurl = pkgs.callPackage ./php-unix/libcurl.nix { inherit sources openssl zlib nghttp2; };
+          zlib = pkgs.callPackage ./php-unix/zlib.nix { inherit sources toolchain; };
+          openssl = pkgs.callPackage ./php-unix/openssl.nix { inherit sources toolchain zlib; };
+          libxml2 = pkgs.callPackage ./php-unix/libxml2.nix { inherit sources toolchain zlib; };
+          sqlite = pkgs.callPackage ./php-unix/sqlite.nix { inherit sources toolchain; };
+          oniguruma = pkgs.callPackage ./php-unix/oniguruma.nix { inherit sources toolchain; };
+          libsodium = pkgs.callPackage ./php-unix/libsodium.nix { inherit sources toolchain; };
+          bzip2 = pkgs.callPackage ./php-unix/bzip2.nix { inherit sources toolchain; };
+          libpng = pkgs.callPackage ./php-unix/libpng.nix { inherit sources toolchain zlib; };
+          libjpeg-turbo = pkgs.callPackage ./php-unix/libjpeg-turbo.nix { inherit sources toolchain; };
+          libwebp = pkgs.callPackage ./php-unix/libwebp.nix { inherit sources toolchain; };
+          freetype = pkgs.callPackage ./php-unix/freetype.nix { inherit sources toolchain zlib bzip2; };
+          nghttp2 = pkgs.callPackage ./php-unix/nghttp2.nix { inherit sources toolchain; };
+          libzip = pkgs.callPackage ./php-unix/libzip.nix { inherit sources toolchain zlib bzip2 openssl; };
+          icu = pkgs.callPackage ./php-unix/icu.nix { inherit sources toolchain; };
+          libcurl = pkgs.callPackage ./php-unix/libcurl.nix { inherit sources toolchain openssl zlib nghttp2; };
 
           php = pkgs.callPackage ./php-unix/php.nix {
-            inherit sources zlib openssl libxml2 sqlite oniguruma libsodium bzip2
+            inherit sources toolchain zlib openssl libxml2 sqlite oniguruma libsodium bzip2
                     libpng libjpeg-turbo libwebp freetype
                     nghttp2 libzip icu libcurl;
           };
 
           xdebug = pkgs.callPackage ./php-unix/xdebug.nix {
-            inherit sources php;
+            inherit sources toolchain php;
           };
 
           deps = [
@@ -50,7 +63,7 @@
           ];
 
           tree = pkgs.callPackage ./php-unix/tree.nix {
-            inherit deps;
+            inherit deps toolchain;
             phpVersion = sources.php.version;
           };
 
@@ -63,7 +76,8 @@
             phpVersion = sources.php.version;
           };
         in {
-          inherit zlib openssl libxml2 sqlite oniguruma libsodium bzip2
+          inherit sysroot toolchain
+                  zlib openssl libxml2 sqlite oniguruma libsodium bzip2
                   libpng libjpeg-turbo libwebp freetype
                   nghttp2 libzip icu libcurl php xdebug
                   tree tarball;
@@ -77,7 +91,9 @@
       devShells = forEach (system:
         let
           pkgs = import nixpkgs { inherit system; };
-          toolchainPkgs = import ./php-unix/toolchain.nix { inherit pkgs; };
+          sysroot = pkgs.callPackage ./php-unix/sysroot.nix {};
+          toolchain = pkgs.callPackage ./php-unix/clang-toolchain.nix { inherit sysroot; };
+          toolchainPkgs = import ./php-unix/toolchain.nix { inherit pkgs toolchain; };
         in {
           default = (pkgs.mkShell.override { stdenv = pkgs.stdenvNoCC; }) {
             packages = toolchainPkgs;
@@ -85,9 +101,8 @@
               unset PKG_CONFIG_PATH LIBRARY_PATH CPATH C_INCLUDE_PATH \
                     CPLUS_INCLUDE_PATH LD_LIBRARY_PATH ACLOCAL_PATH \
                     CMAKE_PREFIX_PATH NIX_LDFLAGS NIX_CFLAGS_COMPILE
-              export PBS_GLIBC_LIB="${pkgs.glibc}/lib"
-              export PBS_GLIBC_DEV_INCLUDE="${pkgs.glibc.dev}/include"
-              export PBS_GCC_LIBGCC="${pkgs.gcc-unwrapped.lib}/lib"
+              export PBS_TOOLCHAIN="${toolchain}"
+              export PBS_SYSROOT="${sysroot}"
               export PBS_NIXPKGS_REV="${nixpkgs.rev or "dirty"}"
             '';
           };

@@ -6,9 +6,9 @@
 # $PBS_DEP_PHP/bin/phpize and have access to PHP's lib/php/build files.
 # We do NOT inherit any of PHP's transitive deps here — phpize+php-config
 # already report whatever include/lib paths the extension needs.
-{ pkgs, sources, php }:
+{ pkgs, sources, toolchain, php }:
 let
-  mkDep = import ./mkDep.nix { inherit pkgs sources; };
+  mkDep = import ./mkDep.nix { inherit pkgs sources toolchain; };
 in
 mkDep {
   name = "xdebug";

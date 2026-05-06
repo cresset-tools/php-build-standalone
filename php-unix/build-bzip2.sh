@@ -24,8 +24,16 @@ cd "$src_dir"
 
 # First pass: build with the regular Makefile to populate headers + manpages
 # via its `install` target. We then drop libbz2.a since we ship shared only.
-make -j"$(nproc)" -f Makefile CC="$CC" CFLAGS="$CFLAGS"
-make install PREFIX="$PBS_DEPS"
+# Skip the default `test` step — bzip2's Makefile runs the just-built CLI,
+# which the Nix sandbox can't exec because our wrapper bakes in
+# /lib64/ld-linux-x86-64.so.2 as the .interp (the path doesn't exist in the
+# sandbox). The actual binary still works post-finalize on consumer hosts.
+# Build only the targets we install — libbz2.a, bzip2, bzip2recover —
+# and skip `all`'s implicit `test` dependency.
+make -j"$(nproc)" -f Makefile CC="$CC" CFLAGS="$CFLAGS" libbz2.a bzip2 bzip2recover
+# `make install` also depends on `all` → would re-trigger test. Override
+# with `install` calling the same prerequisite list we just satisfied.
+make install PREFIX="$PBS_DEPS" -o test
 rm -f "$PBS_DEPS/lib/libbz2.a"
 
 # Second pass: build the shared library. Makefile-libbz2_so produces

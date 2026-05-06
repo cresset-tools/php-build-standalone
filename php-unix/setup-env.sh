@@ -1,56 +1,52 @@
-# Sourced by every per-dep build script. Sets the toolchain compile/link
-# flags used across all bundled-dep builds.
+# Sourced by every per-dep build script. Sets the compile/link flags
+# used across all bundled-dep builds.
 #
-# Inputs (must be exported by the caller — i.e. the derivation):
-#   PBS_GLIBC_LIB         — ${pkgs.glibc}/lib       (crt1.o etc + libc)
-#   PBS_GCC_LIBGCC        — ${pkgs.gcc-unwrapped.lib}/lib  (libgcc_s.so)
-#   PBS_GLIBC_DEV_INCLUDE — ${pkgs.glibc.dev}/include (rarely needed; gcc-unwrapped
-#                           is configured with --with-native-system-header-dir
-#                           pointing here already, so explicit -isystem is redundant)
+# We use clang from a custom toolchain wrapper (php-unix/clang-toolchain.nix),
+# pointed at a CentOS 7 / glibc 2.17 sysroot (php-unix/sysroot.nix). The
+# wrapper bakes --sysroot, -B, -L, -nostdinc, -static-libgcc, the
+# dynamic-linker path, and libstdc++ search paths into every CC
+# invocation. Same load-bearing trick as python-build-standalone:
+# modern compiler against an old sysroot, producing binaries with a
+# glibc symbol floor at 2.17 (in practice ~2.14 for most code).
+#
+# Inputs (must be exported by the derivation calling this):
+#   PBS_TOOLCHAIN — $out of php-unix/clang-toolchain.nix.
+#                   Contains bin/cc, bin/c++, bin/ld, etc.
+#   PBS_SYSROOT   — $out of php-unix/sysroot.nix. Used by the few
+#                   places we still need to thread an explicit path
+#                   (e.g. positional libstdc++.a in PHP's link line).
 
-: "${PBS_GLIBC_LIB:?must be set by the derivation}"
-: "${PBS_GCC_LIBGCC:?must be set by the derivation}"
+: "${PBS_TOOLCHAIN:?must be set by the derivation}"
+: "${PBS_SYSROOT:?must be set by the derivation}"
 
-# Three flags are baked into CC itself rather than just CFLAGS/LDFLAGS,
-# because they have to land at position 0 on every link command — libtool
-# puts user LDFLAGS at the END (after libs and even after the .so files
-# being linked against), too late to affect anything they're meant to
-# control:
+# CC / CXX point at the wrapper scripts in the toolchain. They already
+# carry --target, --sysroot, -B, -L, -resource-dir, -isystem, -fuse-ld
+# and -static-libgcc, plus a hardcoded -dynamic-linker. Anything we add
+# here is purely above-and-beyond.
 #
-#   -B${PBS_GLIBC_LIB} — startup-files lookup. Some build systems
-#     (libtool's testdso.la rule in libxml2 is the canonical offender)
-#     compose link commands from templates that don't include all of
-#     CFLAGS/LDFLAGS. Embedding -B in CC means every gcc invocation
-#     gets it.
+# -Wl,--no-as-needed is appended at the linker level to keep DT_NEEDED
+# entries even when libtool puts -l flags ahead of the .o files. With
+# clang's default --as-needed plus libtool ordering, libs that aren't
+# referenced from any preceding object get dropped from DT_NEEDED — the
+# .so still builds (shared linking is permissive) but downstream
+# consumers fail to load it because the dependency edge is missing.
 #
-#   -Wl,--no-as-needed — ensures every -l on the link line produces a
-#     DT_NEEDED entry. With the default --as-needed, libs that come
-#     before the .o files (libtool sometimes orders them that way) get
-#     dropped because no symbol is yet undefined when they're processed.
-#     The shared lib still builds (shared linking is permissive about
-#     undefined symbols) but its DT_NEEDED is missing libs it actually
-#     uses, breaking downstream consumers.
-#
-#   -Wl,--copy-dt-needed-entries — when linking an executable (xmlcatalog,
-#     xmllint, …) against a shared lib (libxml2.so) that itself has
-#     DT_NEEDED entries (libm, libz), modern ld defaults to NOT consulting
-#     those transitive deps for symbol resolution. The executable then
-#     fails to link with "undefined reference to log10@GLIBC_2.2.5" even
-#     though libxml2.so correctly NEEDED libm.so.6. This flag restores the
-#     pre-binutils-2.22 behavior of walking DT_NEEDED transitively.
-export CC="gcc -B${PBS_GLIBC_LIB} -Wl,--no-as-needed -Wl,--copy-dt-needed-entries"
-export CXX="g++ -B${PBS_GLIBC_LIB} -Wl,--no-as-needed -Wl,--copy-dt-needed-entries"
-export AR=ar
-export RANLIB=ranlib
-export NM=nm
-export STRIP=strip
+# lld does NOT need --copy-dt-needed-entries: it resolves indirect
+# DT_NEEDED references transitively by default (the libxml2/log10 case
+# from binutils-2.22+ is a GNU-ld-only quirk). Passing the flag to lld
+# is a hard error ("unknown argument"). If/when we switch back to a
+# GNU-ld-driven link, re-add it.
+export CC="${PBS_TOOLCHAIN}/bin/cc -Wl,--no-as-needed"
+export CXX="${PBS_TOOLCHAIN}/bin/c++ -Wl,--no-as-needed"
+export AR="${PBS_TOOLCHAIN}/bin/ar"
+export RANLIB="${PBS_TOOLCHAIN}/bin/ranlib"
+export NM="${PBS_TOOLCHAIN}/bin/nm"
+export STRIP="${PBS_TOOLCHAIN}/bin/strip"
 
-# -L for libgcc_s appears in CFLAGS (not just LDFLAGS) because some
-# configure scripts (zlib's hand-rolled one, notably) test shared-lib
-# support using only $CFLAGS/$SFLAGS. Without -L{libgcc} reachable via
-# CFLAGS, the test fails to find -lgcc_s and configure silently falls
-# back to static-only — which is precisely what we don't want.
-export CFLAGS="-O2 -fPIC -L${PBS_GCC_LIBGCC} -L${PBS_GLIBC_LIB}"
+# CFLAGS — generic "build a portable shared lib" flags. -O2 -fPIC is
+# nothing surprising. Note we do NOT pass any -L / -isystem / -B / -L
+# flags here; the wrapper script already handles all of those.
+export CFLAGS="-O2 -fPIC"
 export CXXFLAGS="$CFLAGS"
 export CPPFLAGS=""
 
@@ -58,20 +54,35 @@ export CPPFLAGS=""
 # bash → autoconf → libtool → Make → /bin/sh without any layer expanding
 # it is fragile and differs per build system. Instead, finalize.sh runs
 # `patchelf --force-rpath --set-rpath '$ORIGIN/../lib'` over every ELF
-# at the end, uniformly. Same approach as PBS
-# (cpython-unix/build-cpython.sh:872).
+# at the end, uniformly. Same approach as PBS.
 #
 # We DO keep --disable-new-dtags so any rpath libtool/autoconf decide to
 # emit becomes DT_RPATH not DT_RUNPATH (defense in depth — finalize
 # normalizes either way).
-export LDFLAGS="-L${PBS_GLIBC_LIB} -L${PBS_GCC_LIBGCC} -Wl,--disable-new-dtags -Wl,-z,origin"
+export LDFLAGS="-Wl,--disable-new-dtags -Wl,-z,origin"
 
-# LIBRARY_PATH is gcc's env-var equivalent of -L. Some build systems
-# (bzip2's Makefile-libbz2_so is the canonical case) compose link
-# commands as `$(CC) -shared $(OBJS)` with no $(LDFLAGS) reference, so
-# our -L flags in LDFLAGS never reach the linker. Without LIBRARY_PATH,
-# ld then can't find libgcc_s.so or crt files.
+# LIBRARY_PATH is gcc/clang's env-var equivalent of -L. We need it
+# because some build systems (bzip2's Makefile-libbz2_so notably) compose
+# link commands as `$(CC) -shared $(OBJS)` with no $(LDFLAGS) reference,
+# so library search paths in LDFLAGS never reach the linker. By the
+# time we get here the wrapper's -L already covers the sysroot paths,
+# but expose the sysroot lib64 dir explicitly anyway as a backstop.
+export LIBRARY_PATH="${PBS_SYSROOT}/usr/lib64"
+
+# LD_LIBRARY_PATH lets the just-built executables find their libc at
+# runtime when autoconf's "can the compiler run programs?" probe (and
+# similar in-build invocations) executes them. The wrapper hardcodes
+# ${PBS_SYSROOT}/lib64/ld-linux-x86-64.so.2 as the build-time .interp;
+# that ld.so then resolves DT_NEEDED libc.so.6 via this search path.
+# finalize.sh strips the sysroot-baked interp + DT_RPATH at the end,
+# so this is purely a sandbox-runtime concern.
+# NB: do NOT set LD_LIBRARY_PATH here. We tried it; it works for
+# conftest binaries but pollutes every other process the build
+# spawns (bash, make, awk, ...) — those are built against modern
+# glibc and explode with "GLIBC_2.34 not found" when they pick up
+# our sysroot's glibc-2.17 libc.so.6 instead of their own.
 #
-# This is redundant with LDFLAGS for most build systems, but harmless:
-# gcc adds LIBRARY_PATH dirs to the link search list at link time.
-export LIBRARY_PATH="${PBS_GLIBC_LIB}:${PBS_GCC_LIBGCC}"
+# Instead, the clang wrapper bakes -Wl,-rpath,${PBS_SYSROOT}/lib64
+# into every link line so just-built test binaries find their old
+# libc via DT_RPATH (which IS process-local). finalize.sh strips
+# those build-time RPATHs and resets to $ORIGIN/../lib.

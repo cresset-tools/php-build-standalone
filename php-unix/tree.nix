@@ -4,7 +4,7 @@
 #
 # $out IS the install tree — `nix shell .#tree` and run `bin/php` works
 # directly. The tarball is packaged from $out by tarball.nix.
-{ pkgs, deps, phpVersion ? "0.0.0-unknown" }:
+{ pkgs, deps, toolchain, phpVersion ? "0.0.0-unknown" }:
 pkgs.stdenvNoCC.mkDerivation {
   pname = "pbs-tree";
   version = phpVersion;

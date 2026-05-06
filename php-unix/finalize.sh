@@ -46,10 +46,13 @@ while IFS= read -r -d '' f; do
   fi
   patchelf --remove-rpath "$f" 2>/dev/null || true
   patchelf --force-rpath --set-rpath '$ORIGIN/../lib' "$f"
-  # Only set interpreter on dynamically-linked executables. .so files
-  # don't have an interp; patchelf --set-interpreter no-ops on them but
-  # we skip explicitly to be tidy.
-  if file -b "$f" | grep -q 'dynamically linked.*executable'; then
+  # Set interpreter on every ELF that has an INTERP segment. We check
+  # that via readelf rather than `file` output — `file` reports
+  # PIE-executables as "pie executable, ... dynamically linked" (order
+  # varies by file version) so a single regex doesn't catch both
+  # PIE and non-PIE executables. .so files have no INTERP segment, so
+  # readelf -l prints nothing for INTERP and we correctly skip them.
+  if readelf -l "$f" 2>/dev/null | grep -q INTERP; then
     patchelf --set-interpreter /lib64/ld-linux-x86-64.so.2 "$f"
   fi
   patched=$((patched + 1))
@@ -230,11 +233,13 @@ if [ -n "$bad_needed" ]; then
   fail=1
 fi
 
-# Gate D: every dynamically-linked executable points at /lib64/ld-linux-x86-64.so.2.
+# Gate D: every executable with an INTERP segment points at
+# /lib64/ld-linux-x86-64.so.2. Same INTERP-detection trick as the
+# patchelf walk above (PIE-vs-non-PIE confuses `file` regexes).
 bad_interp=""
 while IFS= read -r -d '' f; do
   [ -L "$f" ] && continue
-  if file -b "$f" 2>/dev/null | grep -q 'dynamically linked.*executable'; then
+  if readelf -l "$f" 2>/dev/null | grep -q INTERP; then
     interp="$(readelf -p .interp "$f" 2>/dev/null | awk '/\[/{print $NF}' | head -1)"
     if [ "$interp" != "/lib64/ld-linux-x86-64.so.2" ]; then
       bad_interp+="$f: $interp"$'\n'

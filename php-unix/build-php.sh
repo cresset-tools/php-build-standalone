@@ -44,43 +44,33 @@ bash "${PBS_PHP_PREPARE_SCRIPT}"
 
 # PBS-equivalent C runtime story for PHP itself: don't bundle
 # libstdc++.so.6 / libgcc_s.so.1 in the tarball. PBS's validator allows
-# only the LSB-standard glibc set on x86_64; we match that. Three flag
-# changes vs the default CC composition in setup-env.sh:
+# only the LSB-standard glibc set on x86_64; we match that.
 #
-# (1) Drop -Wl,--copy-dt-needed-entries. That flag is essential for
-#     libtool's testdso/xmlcatalog rules in libxml2, but with a static
-#     C++ runtime present (see (3)) it produces versym entries with
-#     empty version names — the binary then dies at startup with
-#     "no version information available (required by .../php)". PHP's
-#     own link line is well-behaved (every needed lib is named via -l),
-#     so the flag isn't needed here.
+# Two changes vs the default CC composition in setup-env.sh:
 #
-# (2) Use -Wl,--as-needed (NOT --no-as-needed). With --as-needed, when
-#     libtool re-adds -lstdc++ at the end of the link line, the linker
-#     emits a DT_NEEDED only if some symbol is still unresolved — which
-#     won't happen, because libstdc++.a (3) already resolved everything.
-#     --no-as-needed (our default) would force a DT_NEEDED libstdc++.so.6
-#     even though the static archive made it redundant.
+# (1) Use -Wl,--as-needed (overriding setup-env.sh's --no-as-needed).
+#     When libtool re-adds -lstdc++ at the end of the PHP link line, we
+#     want the linker to emit a DT_NEEDED only if some C++ symbol is
+#     still unresolved — which won't happen, because libstdc++.a (2)
+#     already resolved everything. --no-as-needed would force a
+#     DT_NEEDED libstdc++.so.6 even though the static archive made it
+#     redundant. (Our wrapper already passes -static-libgcc, so libgcc
+#     is fine without this dance.)
 #
-# (3) Static-link libstdc++ via the .a file as a positional LDFLAG.
-#     -static-libstdc++ is a g++ driver flag and PHP's link runs through
-#     gcc, so we go direct: pass libstdc++.a as a positional argument so
-#     the linker resolves C++ symbols from it before any later -lstdc++.
-#     gcc-unwrapped's main /lib is where the .a lives — not on our search
-#     path by default, so we ask gcc itself for the path.
-#
-# (4) -static-libgcc baked into CC so it applies to every gcc invocation,
-#     including the tiny build-time helpers under ext/opcache/jit/ir/
-#     (gen_ir_fold_hash, minilua) which don't pick up our LDFLAGS and
-#     would otherwise fail with "cannot find -lgcc_s".
-gcc_libstdcxx_a="$(gcc -print-file-name=libstdc++.a)"
-if [ ! -f "$gcc_libstdcxx_a" ]; then
-  echo "FATAL: gcc -print-file-name=libstdc++.a returned non-existent path: $gcc_libstdcxx_a" >&2
+# (2) Static-link libstdc++ via libstdc++.a as a positional LDFLAG.
+#     -static-libstdc++ is a clang++ driver flag and PHP's link runs
+#     through cc (clang via our wrapper), so we go direct: pass
+#     libstdc++.a as a positional argument so the linker resolves C++
+#     symbols from it before any later -lstdc++. The archive is in
+#     our sysroot, copied there by sysroot.nix from devtoolset-11.
+libstdcxx_a="${PBS_SYSROOT}/usr/lib64/libstdc++.a"
+if [ ! -f "$libstdcxx_a" ]; then
+  echo "FATAL: $libstdcxx_a not present in sysroot" >&2
   exit 1
 fi
-export CC="gcc -B${PBS_GLIBC_LIB} -Wl,--as-needed -static-libgcc"
-export CXX="g++ -B${PBS_GLIBC_LIB} -Wl,--as-needed -static-libgcc"
-export LDFLAGS="$LDFLAGS ${gcc_libstdcxx_a}"
+export CC="${PBS_TOOLCHAIN}/bin/cc -Wl,--as-needed"
+export CXX="${PBS_TOOLCHAIN}/bin/c++ -Wl,--as-needed"
+export LDFLAGS="$LDFLAGS ${libstdcxx_a}"
 
 # PHP's configure links against host system libs in some optional paths.
 # We've already passed -L flags via LDFLAGS for every dep; the explicit

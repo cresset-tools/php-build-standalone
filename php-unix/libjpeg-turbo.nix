@@ -2,9 +2,9 @@
 # for PHP's gd extension (JPEG decode/encode). Build commands live in
 # build-libjpeg-turbo.sh; this file just declares the derivation shape
 # via mkDep. Leaf node in the dep graph: links only against libm/libc.
-{ pkgs, sources }:
+{ pkgs, sources, toolchain }:
 let
-  mkDep = import ./mkDep.nix { inherit pkgs sources; };
+  mkDep = import ./mkDep.nix { inherit pkgs sources toolchain; };
 in
 mkDep {
   name = "libjpeg-turbo";

@@ -4,13 +4,13 @@
 # We pass the prepare-php.sh path through extraEnv so build-php.sh can
 # source it before configure runs (configure consumes scripts/phpize.in
 # and scripts/php-config.in as inputs, so the patches must land first).
-{ pkgs, sources
+{ pkgs, sources, toolchain
 , zlib, openssl, libxml2, sqlite, oniguruma, libsodium, bzip2
 , libpng, libjpeg-turbo, libwebp, freetype
 , nghttp2, libzip, icu, libcurl
 }:
 let
-  mkDep = import ./mkDep.nix { inherit pkgs sources; };
+  mkDep = import ./mkDep.nix { inherit pkgs sources toolchain; };
 in
 mkDep {
   name = "php";

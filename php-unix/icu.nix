@@ -2,9 +2,9 @@
 # for PHP's intl extension. ICU is C++, so this is the first dep that pulls
 # libstdc++.so into DT_NEEDED — gcc-unwrapped's lib output ships it and
 # LIBRARY_PATH already points there, so this is expected and correct.
-{ pkgs, sources }:
+{ pkgs, sources, toolchain }:
 let
-  mkDep = import ./mkDep.nix { inherit pkgs sources; };
+  mkDep = import ./mkDep.nix { inherit pkgs sources toolchain; };
 in
 mkDep {
   name = "icu";
