@@ -1,0 +1,42 @@
+# Relocate sapi/cli/php_cli.c (PHP 8.1 / 8.2 / 8.3 variant): fix
+# "Configuration File (php.ini) Path:" output shown by `php --ini` to
+# reflect the runtime install root.
+#
+# Without this patch, `php --ini` prints the Nix store path baked in as
+# PHP_CONFIG_FILE_PATH, confusing users who installed via the relocated tarball.
+# With the patch, the displayed path is <install_root>/etc/php, matching what
+# php_ini.c actually searches first (see 0003-relocate-php-ini-search.patch).
+# Falls back to PHP_CONFIG_FILE_PATH if /proc/self/exe is unreadable.
+#
+# Why a separate variant: PHP 8.4 renamed the case label from
+# `PHP_MODE_SHOW_INI_CONFIG` (this file) to `PHP_CLI_MODE_SHOW_INI_CONFIG`
+# (the @84-84 patch). PHP 8.5 then gained escaped quotes around the path
+# value (the @85-99 patch). The actual edit is identical in shape across
+# all three; only the surrounding context line differs.
+--- a/sapi/cli/php_cli.c
++++ b/sapi/cli/php_cli.c
+@@ -19,6 +19,7 @@
+ */
+
+ #include "php.h"
++#include "../../main/pbs_relocate.h"
+ #include "php_globals.h"
+ #include "php_variables.h"
+ #include "php_ini_builder.h"
+@@ -1120,7 +1121,15 @@
+
+ 			case PHP_MODE_SHOW_INI_CONFIG:
+ 				{
+-					zend_printf("Configuration File (php.ini) Path: %s\n", PHP_CONFIG_FILE_PATH);
++					{
++						char pbs_root[MAXPATHLEN], pbs_etc[MAXPATHLEN];
++						if (pbs_install_root(pbs_root, sizeof(pbs_root))) {
++							snprintf(pbs_etc, sizeof(pbs_etc), "%s/etc/php", pbs_root);
++							zend_printf("Configuration File (php.ini) Path: %s\n", pbs_etc);
++						} else {
++							zend_printf("Configuration File (php.ini) Path: %s\n", PHP_CONFIG_FILE_PATH);
++						}
++					}
+ 					zend_printf("Loaded Configuration File:         %s\n", php_ini_opened_path ? php_ini_opened_path : "(none)");
+ 					zend_printf("Scan for additional .ini files in: %s\n", php_ini_scanned_path  ? php_ini_scanned_path : "(none)");
+ 					zend_printf("Additional .ini files parsed:      %s\n", php_ini_scanned_files ? php_ini_scanned_files : "(none)");
