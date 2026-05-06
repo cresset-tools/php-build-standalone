@@ -1,0 +1,32 @@
+# Force PHP 8.1's intl to compile against C++17 instead of C++11.
+#
+# ICU 75 (which we bundle) requires C++17: its public headers use
+# std::enable_if_t, std::is_same_v, and `auto` template parameters that
+# don't exist in C++11 mode. PHP 8.1's ext/intl/config.m4 hardcodes
+# PHP_CXX_COMPILE_STDCXX(11, mandatory, PHP_INTL_STDCXX), which forces
+# `-std=c++11` onto the intl build and breaks the build with errors like
+# "no template named 'enable_if_t' in namespace 'std'".
+#
+# PHP 8.2 introduced a runtime conditional that bumps the requirement to
+# C++17 when icu-uc.pc reports >= 74 (commit 6dc6c84e2 in 8.2.0), so 8.2 /
+# 8.3 / 8.4 / 8.5 auto-detect our ICU 75 and Just Work. PHP 8.1 lacks that
+# conditional and never received a backport.
+#
+# Rather than ship a configure-regenerating patch (which would require
+# pulling autoconf into the toolchain), patch the shipped, autoconf-
+# generated `configure` directly: change the loop variable that drives
+# the C++ standard probe from "11 0x" to "17 0x" so the macro picks
+# `-std=c++17` and assigns it to PHP_INTL_STDCXX.
+#
+# Only the ext/intl probe matches "11 0x" in PHP 8.1's configure; there
+# is no second site to disambiguate against.
+--- a/configure
++++ b/configure
+@@ -48754,7 +48754,7 @@
+
+
+-  ax_cxx_compile_alternatives="11 0x"  ax_cxx_compile_cxx11_required=truednl
++  ax_cxx_compile_alternatives="17 0x"  ax_cxx_compile_cxx11_required=truednl
+   ac_ext=cpp
+ ac_cpp='$CXXCPP $CPPFLAGS'
+ ac_compile='$CXX -c $CXXFLAGS $CPPFLAGS conftest.$ac_ext >&5'
