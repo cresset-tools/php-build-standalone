@@ -1,7 +1,12 @@
 {
   description = "php-build-standalone — portable PHP tarballs, built in a Nix sandbox";
 
-  inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixos-24.11";
+  # FlakeHub mirror of nixpkgs. The 0.1.x series tracks nixos-unstable;
+  # any 0.1.* version is a snapshot of the unstable channel. Using
+  # FlakeHub instead of `github:NixOS/nixpkgs` lets the flakehub-cache
+  # action in CI dedupe nixpkgs downloads against Determinate's binary
+  # cache rather than pulling raw tarballs from GitHub on every run.
+  inputs.nixpkgs.url = "https://flakehub.com/f/NixOS/nixpkgs/0.1.*.tar.gz";
 
   outputs = { self, nixpkgs }:
     let
