@@ -59,9 +59,12 @@ jobs:
         uses: DeterminateSystems/determinate-nix-action@v3
 
       - name: Set up FlakeHub Cache
-        # Pin to a release per the action's own README — `@main` rolls
-        # users into phased rollouts and was hanging indefinitely on
-        # macos-14 the first time the Darwin matrix legs ran it.
+        # Linux only. The action hangs indefinitely on macos-14 (both
+        # `@main` and pinned v3.19.1 reproduced the same stuck-step
+        # behavior — `Install Nix` finishes cleanly, then this step
+        # never returns). Darwin builds without cache for now; first
+        # build will be slow, subsequent macOS builds reuse nothing.
+        if: runner.os != 'macOS'
         uses: DeterminateSystems/flakehub-cache-action@v3.19.1
 
       - name: Build the tarball
