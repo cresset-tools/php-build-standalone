@@ -164,31 +164,62 @@
   # PHP version matrix. Each entry pairs a PHP major.minor with a specific
   # patch release and the xdebugVersions key it should use. New PHP versions
   # are added here; bundled deps above remain shared across all variants.
+  #
+  # Patch-version pins are deliberate: 8.1.30 / 8.2.20 / 8.3.8 were the first
+  # releases to compile against libxml2 2.13 (the fix never made it into
+  # earlier patches). We track the latest stable in each line and pin above
+  # that floor so simplexml/dom/xml extensions build cleanly.
   phpVersions = {
+    "8.1" = {
+      version = "8.1.31";
+      url = "https://www.php.net/distributions/php-8.1.31.tar.xz";
+      sha256 = "c4f244d46ba51c72f7d13d4f66ce6a9e9a8d6b669c51be35e01765ba58e7afca";
+      xdebug = "3.4";
+    };
+    "8.2" = {
+      version = "8.2.26";
+      url = "https://www.php.net/distributions/php-8.2.26.tar.xz";
+      sha256 = "54747400cb4874288ad41a785e6147e2ff546cceeeb55c23c00c771ac125c6ef";
+      xdebug = "3.4";
+    };
+    "8.3" = {
+      version = "8.3.14";
+      url = "https://www.php.net/distributions/php-8.3.14.tar.xz";
+      sha256 = "58b4cb9019bf70c0cbcdb814c7df79b9065059d14cf7dbf48d971f8e56ae9be7";
+      xdebug = "3.4";
+    };
     "8.4" = {
       version = "8.4.3";
       url = "https://www.php.net/distributions/php-8.4.3.tar.xz";
       sha256 = "5c42173cbde7d0add8249c2e8a0c19ae271f41d8c47d67d72bdf91a88dcc7e4b";
-      # xdebug key in xdebugVersions that pairs with this PHP release.
+      xdebug = "3.4";
+    };
+    "8.5" = {
+      version = "8.5.5";
+      url = "https://www.php.net/distributions/php-8.5.5.tar.xz";
+      sha256 = "95bec382f4bd00570a8ef52a58ec04d8d9b9a90494781f1c106d1b274a3902f2";
       xdebug = "3.4";
     };
   };
 
-  # xdebug version matrix. Keyed by major.minor. PHP entries point here via
-  # the `xdebug` field so the pairing is explicit and easy to update.
+  # xdebug version matrix. Keyed by series tag (here, "3.4" — single entry
+  # because xdebug 3.4.5 supports the full 8.1 → 8.5 PHP range we ship).
+  # PHP entries point here via the `xdebug` field so the pairing is explicit
+  # and easy to update.
+  #
   # This is the headline use case for the entire project: dynamic-linked
   # PHP that can dlopen xdebug for development workflows. Building xdebug
   # via our shipped phpize also serves as an end-to-end cross-check of
   # the relocation patches (scripts/phpize.in / php-config.in).
   xdebugVersions = {
     "3.4" = {
-      version = "3.4.0";
-      url = "https://xdebug.org/files/xdebug-3.4.0.tgz";
-      sha256 = "89667b8d04aaf04c023eb109900e1cce97ca39f97f2f3f24199630cc0e1cc77d";
+      version = "3.4.5";
+      url = "https://xdebug.org/files/xdebug-3.4.5.tgz";
+      sha256 = "f58442306ce55fe3b811c31759a247242989164f2a7933f05c8d59b06665b9c9";
     };
   };
 
   # The key into phpVersions that `default` and the unqualified CLI output
   # should resolve to. Bump this when a new stable PHP is promoted.
-  latestPhp = "8.4";
+  latestPhp = "8.5";
 }

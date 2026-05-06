@@ -1,0 +1,41 @@
+# Relocate sapi/cli/php_cli.c: fix "Configuration File (php.ini) Path:" output
+# shown by `php --ini` to reflect the runtime install root.  PHP 8.5+ variant.
+#
+# Upstream changed the printf format string in PHP 8.5 to add quotes around
+# path values (e.g. `"%s\n"` became `"\"%s\"\n"`).  The surrounding structure
+# of the PHP_CLI_MODE_SHOW_INI_CONFIG block also changed: the Loaded and Scan
+# lines now use if/else rather than inline ternary expressions.  This variant
+# matches the 8.5+ form; use 0005-relocate-cli-ini-display.patch for 8.1–8.4.
+#
+# Without this patch, `php --ini` prints the Nix store path baked in as
+# PHP_CONFIG_FILE_PATH, confusing users who installed via the relocated tarball.
+# With the patch, the displayed path is <install_root>/etc/php, matching what
+# php_ini.c actually searches first (see 0003-relocate-php-ini-search.patch).
+# Falls back to PHP_CONFIG_FILE_PATH if /proc/self/exe is unreadable.
+--- a/sapi/cli/php_cli.c
++++ b/sapi/cli/php_cli.c
+@@ -19,6 +19,7 @@
+ */
+
+ #include "php.h"
++#include "../../main/pbs_relocate.h"
+ #include "php_globals.h"
+ #include "php_variables.h"
+ #include "php_ini_builder.h"
+@@ -1105,7 +1106,15 @@
+
+ 		case PHP_CLI_MODE_SHOW_INI_CONFIG:
+ 			{
+-				zend_printf("Configuration File (php.ini) Path: \"%s\"\n", PHP_CONFIG_FILE_PATH);
++				{
++					char pbs_root[MAXPATHLEN], pbs_etc[MAXPATHLEN];
++					if (pbs_install_root(pbs_root, sizeof(pbs_root))) {
++						snprintf(pbs_etc, sizeof(pbs_etc), "%s/etc/php", pbs_root);
++						zend_printf("Configuration File (php.ini) Path: \"%s\"\n", pbs_etc);
++					} else {
++						zend_printf("Configuration File (php.ini) Path: \"%s\"\n", PHP_CONFIG_FILE_PATH);
++					}
++				}
+ 				if (php_ini_opened_path) {
+ 					zend_printf("Loaded Configuration File:         \"%s\"\n", php_ini_opened_path);
+ 				} else {

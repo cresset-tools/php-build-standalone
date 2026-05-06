@@ -74,6 +74,13 @@ export CC="${PBS_TOOLCHAIN}/bin/cc -Wl,--as-needed"
 export CXX="${PBS_TOOLCHAIN}/bin/c++ -Wl,--as-needed"
 export LDFLAGS="$LDFLAGS ${libstdcxx_a}"
 
+# ICU 75's headers require C++17. PHP 8.4+ already defaults to C++17, but
+# 8.1 / 8.2 / 8.3 default to C++11 and the intl extension fails to compile
+# against ICU 75 unless we bump CXXFLAGS. Setting -std=c++17 unconditionally
+# is a no-op on 8.4/8.5 and load-bearing on the older minors. PHP's configure
+# threads CXXFLAGS into intl's Makefile.
+export CXXFLAGS="${CXXFLAGS:-} -std=c++17"
+
 # PHP's configure links against host system libs in some optional paths.
 # We've already passed -L flags via LDFLAGS for every dep; the explicit
 # --with-<lib>=$DEP further tells PHP to search $DEP/include and $DEP/lib

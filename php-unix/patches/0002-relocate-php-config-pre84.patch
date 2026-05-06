@@ -1,0 +1,61 @@
+# Relocate scripts/php-config.in: replace build-time @-substitutions with
+# runtime path computation from $0.  Pre-8.4 variant.
+#
+# PHP 8.4 added `lib_dir="@orig_libdir@"` to scripts/php-config.in; this
+# variant targets the pre-8.4 layout (PHP 8.1, 8.2, 8.3) that has no such
+# line.  The 0002-relocate-php-config.patch variant for 8.4+ removes that
+# line and replaces it with `lib_dir="$prefix/lib"`; that hunk does not
+# apply to pre-8.4 sources where the line is absent.
+#
+# Without this patch, configure bakes the Nix store path into php-config,
+# so --prefix, --include-dir, --man-dir, and --php-binary all return paths
+# inside /nix/store/... that don't exist after relocation.
+# Tools like phpize and pkg-config wrappers query php-config at runtime.
+#
+# Three groups of changes (identical to 0002 except no lib_dir replacement):
+#   1. SED="@SED@" → SED=sed (PATH-discovered sed at runtime).
+#      Top variable block: compute prefix at runtime from $0 instead of
+#      @prefix@ / @datarootdir@ / @exec_prefix@.
+#   2. include_dir: replace @includedir@ with $prefix-relative path.
+#      man_dir: replace `eval echo @mandir@` with $prefix/share/man.
+#   3. SAPI binary paths: replace @bindir@ with $prefix/bin.
+--- a/scripts/php-config.in
++++ b/scripts/php-config.in
+@@ -1,17 +1,18 @@
+ #! /bin/sh
+
+-SED="@SED@"
+-prefix="@prefix@"
+-datarootdir="@datarootdir@"
+-exec_prefix="@exec_prefix@"
++SED=sed
++# PBS: compute prefix at runtime from $0; tarball is relocatable.
++prefix=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
++datarootdir="$prefix/share"
++exec_prefix="$prefix"
+ version="@PHP_VERSION@"
+ vernum="@PHP_VERSION_ID@"
+-include_dir="@includedir@/php"
++include_dir="$prefix/include/php"
+ includes="-I$include_dir -I$include_dir/main -I$include_dir/TSRM -I$include_dir/Zend -I$include_dir/ext -I$include_dir/ext/date/lib"
+ ldflags="@PHP_LDFLAGS@"
+ libs="@EXTRA_LIBS@"
+ extension_dir='@EXTENSION_DIR@'
+-man_dir=`eval echo @mandir@`
++man_dir="$prefix/share/man"
+ program_prefix="@program_prefix@"
+ program_suffix="@program_suffix@"
+ exe_extension="@EXEEXT@"
+@@ -26,10 +27,10 @@
+ for sapi in $php_sapis; do
+   case $sapi in
+   cli)
+-    php_cli_binary="@bindir@/${program_prefix}php${program_suffix}${exe_extension}"
++    php_cli_binary="$prefix/bin/${program_prefix}php${program_suffix}${exe_extension}"
+     ;;
+   cgi)
+-    php_cgi_binary="@bindir@/${program_prefix}php-cgi${program_suffix}${exe_extension}"
++    php_cgi_binary="$prefix/bin/${program_prefix}php-cgi${program_suffix}${exe_extension}"
+     ;;
+   esac
+ done
