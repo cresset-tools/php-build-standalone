@@ -10,7 +10,7 @@
 #   - Flat attrs (zlib, openssl, …) are bundled-dep sources shared across
 #     all PHP versions — fetched once and reused by every variant.
 #   - phpVersions / xdebugVersions are two-level maps keyed by major.minor
-#     (e.g. "8.4", "3.4"). Each PHP entry carries an `xdebug` pointer to
+#     (e.g. "8.5", "3.5"). Each PHP entry carries an `xdebug` pointer to
 #     the xdebugVersions key it should pair with.
 #   - latestPhp is the key used for the `default` flake output.
 
@@ -174,48 +174,50 @@
       version = "8.1.31";
       url = "https://www.php.net/distributions/php-8.1.31.tar.xz";
       sha256 = "c4f244d46ba51c72f7d13d4f66ce6a9e9a8d6b669c51be35e01765ba58e7afca";
-      xdebug = "3.4";
+      xdebug = "3.5";
     };
     "8.2" = {
       version = "8.2.26";
       url = "https://www.php.net/distributions/php-8.2.26.tar.xz";
       sha256 = "54747400cb4874288ad41a785e6147e2ff546cceeeb55c23c00c771ac125c6ef";
-      xdebug = "3.4";
+      xdebug = "3.5";
     };
     "8.3" = {
       version = "8.3.14";
       url = "https://www.php.net/distributions/php-8.3.14.tar.xz";
       sha256 = "58b4cb9019bf70c0cbcdb814c7df79b9065059d14cf7dbf48d971f8e56ae9be7";
-      xdebug = "3.4";
+      xdebug = "3.5";
     };
     "8.4" = {
       version = "8.4.3";
       url = "https://www.php.net/distributions/php-8.4.3.tar.xz";
       sha256 = "5c42173cbde7d0add8249c2e8a0c19ae271f41d8c47d67d72bdf91a88dcc7e4b";
-      xdebug = "3.4";
+      xdebug = "3.5";
     };
     "8.5" = {
       version = "8.5.5";
       url = "https://www.php.net/distributions/php-8.5.5.tar.xz";
       sha256 = "95bec382f4bd00570a8ef52a58ec04d8d9b9a90494781f1c106d1b274a3902f2";
-      xdebug = "3.4";
+      xdebug = "3.5";
     };
   };
 
-  # xdebug version matrix. Keyed by series tag (here, "3.4" — single entry
-  # because xdebug 3.4.5 supports the full 8.1 → 8.5 PHP range we ship).
-  # PHP entries point here via the `xdebug` field so the pairing is explicit
-  # and easy to update.
+  # xdebug version matrix. Keyed by series tag. PHP entries point here via
+  # the `xdebug` field so the pairing is explicit and easy to update.
+  #
+  # We pin xdebug 3.5.1 because it is the first xdebug release with PHP 8.5
+  # support (3.4.x's configure refuses any PHP >= 8.5.0). 3.5.x covers PHP
+  # 8.1 through 8.5, so a single entry suffices for the whole range we ship.
   #
   # This is the headline use case for the entire project: dynamic-linked
   # PHP that can dlopen xdebug for development workflows. Building xdebug
   # via our shipped phpize also serves as an end-to-end cross-check of
   # the relocation patches (scripts/phpize.in / php-config.in).
   xdebugVersions = {
-    "3.4" = {
-      version = "3.4.5";
-      url = "https://xdebug.org/files/xdebug-3.4.5.tgz";
-      sha256 = "f58442306ce55fe3b811c31759a247242989164f2a7933f05c8d59b06665b9c9";
+    "3.5" = {
+      version = "3.5.1";
+      url = "https://xdebug.org/files/xdebug-3.5.1.tgz";
+      sha256 = "0f26849a5edf3d9120edc100219854599d54f923a8a4d1cb4fe4403520e49678";
     };
   };
 

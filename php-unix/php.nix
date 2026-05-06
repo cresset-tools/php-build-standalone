@@ -30,9 +30,10 @@ mkDep {
   extraEnv = {
     PBS_PHP_PREPARE_SCRIPT = ./prepare-php.sh;
     PBS_PHP_PATCHES_DIR = ./patches;
-    # Consumed by prepare-php.sh to pick the right patch variants (0002-pre84
-    # for 8.1–8.3 which have no `lib_dir` line; 0005-85plus for 8.5+ which
-    # changed the `php --ini` printf format string).
+    # Consumed by prepare-php.sh to dispatch range-suffixed patches —
+    # files in patches/ named NNNN-name@LO-HI.patch, where LO and HI are
+    # major-minor numbers (e.g. 81 = PHP 8.1) bounding the version range
+    # the patch applies to. See prepare-php.sh for the full convention.
     PBS_VER_PHP_MAJORMINOR = pkgs.lib.versions.majorMinor phpSpec.version;
   };
   # PHP's buildconf/configure pipeline needs bison + re2c (both already in
