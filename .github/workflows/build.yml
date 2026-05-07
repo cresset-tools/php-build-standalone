@@ -1,14 +1,28 @@
 # Build every supported PHP minor on push and PR. On version tags
-# (refs/tags/v*), publish each .tar.zst + .json as a GitHub release asset.
+# (refs/tags/v*), the release job assembles and publishes the full
+# release-bundle tree (interpreter tarballs, per-extension tarballs,
+# per-store-path tarballs, and index.json) as GitHub Release assets.
+#
+# Job graph:
+#   build-tarball   — 5-minor × 2-OS matrix; builds tarball-<minor>,
+#                     closures-<minor>, extension-xdebug-<minor>,
+#                     release-<minor> per leg; uploads artifacts.
+#   distro-matrix   — Ubuntu only; runs tests/run-matrix.sh for each
+#                     PHP minor against 15 glibc distros + 1 musl
+#                     expected-fail (Alpine).
+#   assemble        — 2-OS matrix (ubuntu-latest, macos-26); builds
+#                     release-bundle and uploads it per platform.
+#   release         — tags only; downloads both release-bundle artifacts,
+#                     flattens and renames them, publishes to GH Release.
 #
 # A full clean build of one minor takes ~15 minutes — most of that is the
-# 17 C dependencies plus PHP itself plus xdebug. The matrix runs all five
-# variants in parallel; FlakeHub Cache shares /nix/store between matrix
-# legs and between runs, so the bundled deps are built once and reused
-# (PHP and xdebug are the only per-minor recompiles). Cache pushes
-# authenticate via the workflow's GitHub OIDC token, which is why this
-# job needs `id-token: write`. PR pushes from forks lack the required
-# JWT claims; FlakeHub Cache silently downgrades to read-only on those.
+# 17 C dependencies plus PHP itself plus xdebug. FlakeHub Cache shares
+# /nix/store between matrix legs and between runs, so the bundled deps
+# are built once and reused (PHP and xdebug are the only per-minor
+# recompiles). Cache pushes authenticate via the workflow's GitHub OIDC
+# token, which is why jobs need `id-token: write`. PR pushes from forks
+# lack the required JWT claims; FlakeHub Cache silently downgrades to
+# read-only on those.
 
 name: build
 
@@ -19,6 +33,12 @@ on:
   pull_request:
     branches: [main]
   workflow_dispatch:
+
+# Cancel superseded pushes on PR branches. Never cancel main — a tag push
+# mid-release would otherwise leave a half-uploaded GH Release.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   build-tarball:
@@ -33,7 +53,7 @@ jobs:
       fail-fast: false
       matrix:
         # Each row carries:
-        #   - php / attr: dotted version + underscored flake attribute
+        #   - php / minor: dotted version + underscored flake attribute suffix
         #     (Nix CLI parses dots as attribute path separators, so the
         #     flake exposes `tarball-8_5`, not 8.5).
         #   - os: GitHub-hosted runner image. ubuntu-latest covers x86_64
@@ -42,16 +62,16 @@ jobs:
         #   - target: triple used in the tarball filename. Matches the
         #     value baked into the .json metadata by tarball.nix.
         include:
-          - { php: "8.1", attr: "tarball-8_1", os: ubuntu-latest, target: "x86_64-unknown-linux-gnu" }
-          - { php: "8.2", attr: "tarball-8_2", os: ubuntu-latest, target: "x86_64-unknown-linux-gnu" }
-          - { php: "8.3", attr: "tarball-8_3", os: ubuntu-latest, target: "x86_64-unknown-linux-gnu" }
-          - { php: "8.4", attr: "tarball-8_4", os: ubuntu-latest, target: "x86_64-unknown-linux-gnu" }
-          - { php: "8.5", attr: "tarball-8_5", os: ubuntu-latest, target: "x86_64-unknown-linux-gnu" }
-          - { php: "8.1", attr: "tarball-8_1", os: macos-26,      target: "aarch64-apple-darwin" }
-          - { php: "8.2", attr: "tarball-8_2", os: macos-26,      target: "aarch64-apple-darwin" }
-          - { php: "8.3", attr: "tarball-8_3", os: macos-26,      target: "aarch64-apple-darwin" }
-          - { php: "8.4", attr: "tarball-8_4", os: macos-26,      target: "aarch64-apple-darwin" }
-          - { php: "8.5", attr: "tarball-8_5", os: macos-26,      target: "aarch64-apple-darwin" }
+          - { php: "8.1", minor: "8_1", os: ubuntu-latest, target: "x86_64-unknown-linux-gnu" }
+          - { php: "8.2", minor: "8_2", os: ubuntu-latest, target: "x86_64-unknown-linux-gnu" }
+          - { php: "8.3", minor: "8_3", os: ubuntu-latest, target: "x86_64-unknown-linux-gnu" }
+          - { php: "8.4", minor: "8_4", os: ubuntu-latest, target: "x86_64-unknown-linux-gnu" }
+          - { php: "8.5", minor: "8_5", os: ubuntu-latest, target: "x86_64-unknown-linux-gnu" }
+          - { php: "8.1", minor: "8_1", os: macos-26,      target: "aarch64-apple-darwin" }
+          - { php: "8.2", minor: "8_2", os: macos-26,      target: "aarch64-apple-darwin" }
+          - { php: "8.3", minor: "8_3", os: macos-26,      target: "aarch64-apple-darwin" }
+          - { php: "8.4", minor: "8_4", os: macos-26,      target: "aarch64-apple-darwin" }
+          - { php: "8.5", minor: "8_5", os: macos-26,      target: "aarch64-apple-darwin" }
     steps:
       - uses: actions/checkout@v4
 
@@ -61,17 +81,20 @@ jobs:
       - name: Set up FlakeHub Cache
         uses: DeterminateSystems/flakehub-cache-action@v3.19.1
 
-      - name: Build the tarball
-        run: nix build ".#${{ matrix.attr }}" --print-build-logs
+      - name: Build tarball
+        run: nix build ".#tarball-${{ matrix.minor }}" --print-build-logs
 
       - name: Smoke-test the artifact
         # Extract to a fresh prefix and verify the basics: PHP runs, the
-        # expected version is reported, xdebug dlopens, intl resolves
-        # locale data through the bundled ICU, and runtime path resolution
-        # tracks the install root after the tree is moved. These gates
-        # are version- and platform-agnostic; one inline script handles
-        # both Linux and Darwin matrix legs (same tarball layout, same
-        # relocation contract — pbs_relocate.h switches on __APPLE__).
+        # expected version is reported, intl resolves locale data through
+        # the bundled ICU, and runtime path resolution tracks the install
+        # root after the tree is moved. xdebug is NOT checked here —
+        # Phase 3 ships xdebug as a separate per-extension tarball; the
+        # distro-matrix job covers xdebug end-to-end via tests/smoke.sh.
+        # These gates are version- and platform-agnostic; one inline
+        # script handles both Linux and Darwin matrix legs (same tarball
+        # layout, same relocation contract — pbs_relocate.h switches on
+        # __APPLE__).
         run: |
           set -euo pipefail
           smoke_root="$RUNNER_TEMP/smoke"
@@ -92,9 +115,6 @@ jobs:
           echo "::group::php -m"
           "$PHP" -m
           echo "::endgroup::"
-          echo "::group::expect xdebug loadable"
-          "$PHP" -dzend_extension=xdebug -r 'echo "xdebug ", phpversion("xdebug"), "\n";'
-          echo "::endgroup::"
           echo "::group::expect intl currency formatting"
           "$PHP" -r 'echo NumberFormatter::create("en_US", NumberFormatter::CURRENCY)->formatCurrency(1234.56, "USD"), "\n";'
           echo "::endgroup::"
@@ -113,6 +133,15 @@ jobs:
           esac
           echo "::endgroup::"
 
+      - name: Build closures
+        run: nix build ".#closures-${{ matrix.minor }}" --print-build-logs
+
+      - name: Build extension-xdebug
+        run: nix build ".#extension-xdebug-${{ matrix.minor }}" --print-build-logs
+
+      - name: Build release
+        run: nix build ".#release-${{ matrix.minor }}" -o result-release --print-build-logs
+
       - name: Upload tarball as workflow artifact
         uses: actions/upload-artifact@v4
         with:
@@ -123,14 +152,129 @@ jobs:
             result/php-*.json
           if-no-files-found: error
 
-      - name: Attach to GitHub Release (tags only)
-        if: startsWith(github.ref, 'refs/tags/v')
+      - name: Upload release tree as workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          # Uploaded separately from the tarball so the assemble job can
+          # grab all five minors' release trees without needing the raw
+          # interpreter tarballs again.
+          name: release-${{ matrix.php }}-${{ matrix.target }}
+          path: result-release/
+          if-no-files-found: error
+
+  distro-matrix:
+    name: distro matrix PHP ${{ matrix.php }}
+    runs-on: ubuntu-latest
+    needs: [build-tarball]
+    permissions:
+      contents: read
+      id-token: write
+    strategy:
+      fail-fast: false
+      matrix:
+        php: ["8.1", "8.2", "8.3", "8.4", "8.5"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download Linux tarball
+        uses: actions/download-artifact@v4
+        with:
+          name: php-tarball-${{ matrix.php }}-x86_64-unknown-linux-gnu
+          path: artifacts/
+
+      - name: Run distro matrix
+        run: |
+          tarball=$(find artifacts -name 'php-*.tar.zst' | head -n1)
+          PHP_TARBALL="$tarball" tests/run-matrix.sh
+
+  assemble:
+    name: assemble release-bundle (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    needs: [build-tarball]
+    permissions:
+      contents: read
+      id-token: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-latest, artifact: linux }
+          - { os: macos-26,      artifact: darwin }
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Nix
+        uses: DeterminateSystems/determinate-nix-action@v3
+
+      - name: Set up FlakeHub Cache
+        uses: DeterminateSystems/flakehub-cache-action@v3.19.1
+
+      - name: Build release-bundle
+        # FlakeHub Cache hits all per-minor inputs already built in
+        # build-tarball, so this is fast on a warm cache.
+        run: nix build .#release-bundle --print-build-logs
+
+      - name: Upload release-bundle artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-bundle-${{ matrix.artifact }}
+          path: result/
+          if-no-files-found: error
+
+  release:
+    name: publish GitHub Release
+    runs-on: ubuntu-latest
+    needs: [build-tarball, distro-matrix, assemble]
+    if: startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: write
+      id-token: write
+    steps:
+      - name: Download Linux release-bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: release-bundle-linux
+          path: bundles/linux/
+
+      - name: Download Darwin release-bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: release-bundle-darwin
+          path: bundles/darwin/
+
+      - name: Flatten and stage release assets
+        # Flatten each bundle tree: path/to/file → path__to__file. Double
+        # underscore (rather than single) so legitimate underscores in
+        # version strings don't create ambiguous round-trips. index.json
+        # from each platform is kept separate.
+        run: |
+          set -euo pipefail
+          mkdir -p staging
+
+          for platform in linux darwin; do
+            src="bundles/$platform"
+            if [ -f "$src/index.json" ]; then
+              cp "$src/index.json" "staging/index-${platform}.json"
+            fi
+            find "$src" -type f ! -name 'index.json' | while IFS= read -r f; do
+              prefix="${src}/"
+              rel="${f#"$prefix"}"
+              flat="${rel//\//__}"
+              cp "$f" "staging/$flat"
+            done
+          done
+
+          echo "Staged files:"
+          find staging -type f | sort
+          collisions=$(find staging -type f -printf '%f\n' | sort | uniq -d)
+          if [ -n "$collisions" ]; then
+            echo "FAIL: basename collisions in staging/:"
+            echo "$collisions"
+            exit 1
+          fi
+
+      - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          # Each matrix leg appends its own pair of files to the same
-          # release, so a tagged release ends up with all five tarballs
-          # plus their metadata JSONs.
-          files: |
-            result/php-*.tar.zst
-            result/php-*.json
+          files: staging/*
           fail_on_unmatched_files: true

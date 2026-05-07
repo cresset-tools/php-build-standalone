@@ -1,14 +1,15 @@
-# Computes closures.json: for every ELF in the install tree, records the
-# transitive set of store-path names whose lib/ must be present for that
-# ELF to resolve all its non-system DT_NEEDEDs at runtime.
+# Computes closures.json: for every ELF/Mach-O binary in the install tree,
+# records the transitive set of store-path names whose lib/ must be present
+# for that binary to resolve all its non-system dynamic deps at runtime.
 #
 # Algorithm:
 #   1. Read PBS_STORE_MANIFEST (storeName → nixStorePath pairs) — same
 #      source the finalize scripts use.
 #   2. Build a soname → storeName index by scanning each storePath's lib/.
-#   3. Walk every ELF in the tree; for each, collect its direct DT_NEEDED
-#      sonames, map each to a storeName, then *recursively* expand each
-#      storeName's own DT_NEEDEDs to get the transitive closure.
+#   3. Walk every ELF/Mach-O in the tree; for each, collect its direct
+#      DT_NEEDED (Linux) / LC_LOAD_DYLIB (Darwin) sonames, map each to a
+#      storeName, then *recursively* expand each storeName's own deps to
+#      get the transitive closure.
 #   4. Emit closures.json at $out/closures.json.
 #
 # Format:
@@ -37,7 +38,9 @@ pkgs.stdenvNoCC.mkDerivation {
   dontBuild = true;
   dontFixup = true;
 
-  nativeBuildInputs = with pkgs; [ findutils binutils-unwrapped jq ];
+  nativeBuildInputs = [ pkgs.findutils pkgs.jq ]
+    ++ lib.optional (!stdenv.isDarwin) pkgs.binutils-unwrapped
+    ++ lib.optional   stdenv.isDarwin  pkgs.darwin.cctools;
 
   installPhase = ''
     runHook preInstall
@@ -52,19 +55,55 @@ pkgs.stdenvNoCC.mkDerivation {
     declare -A SONAME_STORE=()
     declare -A STORENAME_NIX=()
 
-    SYSTEM_SONAMES=(
-      libc.so.6 libm.so.6 libdl.so.2 libpthread.so.0 librt.so.1
-      libresolv.so.2 libutil.so.1 "ld-linux-x86-64.so.2"
-      libgcc_s.so.1 libstdc++.so.6
-    )
-
-    _is_system() {
-      local sn="$1"
-      for s in "''${SYSTEM_SONAMES[@]}"; do
-        [ "$s" = "$sn" ] && return 0
-      done
-      return 1
-    }
+    if [ "$(uname)" = "Darwin" ]; then
+      SYSTEM_SONAMES=(
+        /usr/lib/libSystem.B.dylib /usr/lib/libobjc.A.dylib
+        /usr/lib/libc++.1.dylib /usr/lib/libc++abi.dylib
+        /usr/lib/libz.1.dylib
+      )
+      _is_system() {
+        local sn="$1"
+        for s in "''${SYSTEM_SONAMES[@]}"; do
+          [ "$s" = "$sn" ] && return 0
+        done
+        case "$sn" in
+          /usr/lib/*|/System/*|@rpath/*) return 0 ;;
+        esac
+        return 1
+      }
+      _get_soname() {
+        # LC_ID_DYLIB install name — use basename as the index key.
+        local f="$1"
+        basename "$(otool -D "$f" 2>/dev/null | tail -n1)" 2>/dev/null || true
+      }
+      _get_needed() {
+        # LC_LOAD_DYLIB lines: "\t<path> (compatibility ...)" — print full path.
+        otool -L "$1" 2>/dev/null | awk 'NR>1 {print $1}'
+      }
+      _lib_glob="*.dylib*"
+      _is_binary() { file -b "$1" 2>/dev/null | grep -q 'Mach-O'; }
+    else
+      SYSTEM_SONAMES=(
+        libc.so.6 libm.so.6 libdl.so.2 libpthread.so.0 librt.so.1
+        libresolv.so.2 libutil.so.1 "ld-linux-x86-64.so.2"
+        libgcc_s.so.1 libstdc++.so.6
+      )
+      _is_system() {
+        local sn="$1"
+        for s in "''${SYSTEM_SONAMES[@]}"; do
+          [ "$s" = "$sn" ] && return 0
+        done
+        return 1
+      }
+      _get_soname() {
+        readelf -d "$1" 2>/dev/null | awk -F'[][]' '/\(SONAME\)/ {print $2}'
+      }
+      _get_needed() {
+        readelf -d "$1" 2>/dev/null | awk -F'[][]' '/\(NEEDED\)/ {print $2}'
+      }
+      _lib_glob="*.so*"
+      _is_binary() { file -b "$1" 2>/dev/null | grep -q 'ELF'; }
+    fi
 
     while IFS=' ' read -r storeName nixPath; do
       [ -n "$storeName" ] || continue
@@ -72,11 +111,11 @@ pkgs.stdenvNoCC.mkDerivation {
       [ -d "$nixPath/lib" ] || continue
       while IFS= read -r -d "" sofile; do
         [ -L "$sofile" ] && continue
-        soname="$(readelf -d "$sofile" 2>/dev/null | awk -F'[][]' '/\(SONAME\)/ {print $2}')"
+        soname="$(_get_soname "$sofile")"
         [ -n "$soname" ] || continue
         _is_system "$soname" && continue
         SONAME_STORE["$soname"]="$storeName"
-      done < <(find "$nixPath/lib" -name "*.so*" -print0 2>/dev/null)
+      done < <(find "$nixPath/lib" -name "$_lib_glob" -print0 2>/dev/null)
     done < "$PBS_STORE_MANIFEST"
 
     # ---- Step 2: transitive closure of a storeName ----
@@ -92,7 +131,7 @@ pkgs.stdenvNoCC.mkDerivation {
       _CLOSURE_RESULT+=("$sn")
       local nixPath="''${STORENAME_NIX[$sn]:-}"
       [ -n "$nixPath" ] || return 0
-      # Walk every non-symlink .so* under lib/ of this store path
+      # Walk every non-symlink lib file under lib/ of this store path
       while IFS= read -r -d "" sofile; do
         [ -L "$sofile" ] && continue
         while IFS= read -r needed; do
@@ -101,27 +140,27 @@ pkgs.stdenvNoCC.mkDerivation {
           local dep_sn="''${SONAME_STORE[$needed]:-}"
           [ -n "$dep_sn" ] || continue
           _expand_store "$dep_sn"
-        done < <(readelf -d "$sofile" 2>/dev/null | awk -F'[][]' '/\(NEEDED\)/ {print $2}')
-      done < <(find "$nixPath/lib" -name "*.so*" -print0 2>/dev/null)
+        done < <(_get_needed "$sofile")
+      done < <(find "$nixPath/lib" -name "$_lib_glob" -print0 2>/dev/null)
     }
 
-    # ---- Step 3: walk every ELF in the tree ----
+    # ---- Step 3: walk every binary in the tree ----
     # Output accumulates into a JSON object incrementally.
     json_entries=""
     while IFS= read -r -d "" f; do
       [ -L "$f" ] && continue
-      file -b "$f" 2>/dev/null | grep -q 'ELF' || continue
+      _is_binary "$f" || continue
 
       rel="''${f#$PBS_INSTALL/}"
 
-      # Compute direct DT_NEEDEDs that map to a storeName.
+      # Compute direct deps that map to a storeName.
       declare -A direct_stores=()
       while IFS= read -r needed; do
         [ -n "$needed" ] || continue
         _is_system "$needed" && continue
         sn="''${SONAME_STORE[$needed]:-}"
         [ -n "$sn" ] && direct_stores["$sn"]=1
-      done < <(readelf -d "$f" 2>/dev/null | awk -F'[][]' '/\(NEEDED\)/ {print $2}')
+      done < <(_get_needed "$f")
 
       # Transitively expand each direct store dep.
       _CLOSURE_RESULT=()
@@ -147,14 +186,14 @@ pkgs.stdenvNoCC.mkDerivation {
       fi
     done < <(find "$PBS_INSTALL" -type f -print0)
 
-    # Final: if no ELFs found, emit empty object.
+    # Final: if no binaries found, emit empty object.
     if [ -z "$json_entries" ]; then
       echo '{}' > "$out/closures.json"
     else
       echo "$json_entries" | jq '.' > "$out/closures.json"
     fi
 
-    echo "closures.json written ($(jq 'keys|length' "$out/closures.json") ELF entries)"
+    echo "closures.json written ($(jq 'keys|length' "$out/closures.json") binary entries)"
 
     runHook postInstall
   '';

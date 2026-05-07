@@ -45,13 +45,20 @@ let
   depByStoreName = builtins.listToAttrs
     (map (d: { name = d.passthru.storeName; value = d; }) bundledDeps);
 
-  # Platform fields (Linux-only for now; Darwin variant would differ).
-  platformFields = builtins.toJSON {
-    os = "linux";
-    arch = "x86_64";
-    libc = "glibc";
-    libc_min = "2.17";
-  };
+  # Platform fields — conditional on host platform to match tarball.nix
+  # convention (see tarball.nix lines 34-36 for the Darwin field names).
+  platformFields = if stdenv.isDarwin
+    then builtins.toJSON {
+      os = "darwin";
+      arch = "aarch64";
+      min_macos_version = "11.0";
+    }
+    else builtins.toJSON {
+      os = "linux";
+      arch = "x86_64";
+      libc = "glibc";
+      libc_min = "2.17";
+    };
 
   # Static parts of the manifest (runtime-computed fields filled in by sed).
   manifestTemplate = pkgs.writeText "ext-manifest.json.in" (builtins.toJSON {
@@ -72,6 +79,9 @@ let
     closure = "@CLOSURE_PLACEHOLDER@";
   });
 
+  # Platform tag used in tarball/manifest basename.
+  platformTag = if stdenv.isDarwin then "nts-aarch64-darwin" else "nts-linux-glibc";
+
   # Sanitize extName for use in the Nix derivation name.
   safeName = lib.replaceStrings [ "_" ] [ "-" ] extName;
 in
@@ -84,7 +94,8 @@ pkgs.stdenvNoCC.mkDerivation {
   dontBuild = true;
   dontFixup = true;
 
-  nativeBuildInputs = with pkgs; [ gnutar zstd coreutils gnused findutils jq binutils-unwrapped ];
+  nativeBuildInputs = with pkgs; [ gnutar zstd coreutils gnused findutils jq ]
+    ++ lib.optional (!stdenv.isDarwin) pkgs.binutils-unwrapped;
 
   installPhase = ''
     runHook preInstall
@@ -164,7 +175,7 @@ pkgs.stdenvNoCC.mkDerivation {
     ''}
 
     export SOURCE_DATE_EPOCH=1704067200
-    base="${extName}-${extVersion}+php${phpMinor}-nts-linux-glibc"
+    base="${extName}-${extVersion}+php${phpMinor}-${platformTag}"
     tar --sort=name \
         --mtime="@$SOURCE_DATE_EPOCH" \
         --owner=0 --group=0 --numeric-owner \
