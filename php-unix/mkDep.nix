@@ -55,12 +55,19 @@ let
 
   # Linux: also accumulate PBS_DEPS_LDPATH so per-dep scripts (curl,
   # PHP) can opt into a runtime LD_LIBRARY_PATH for the duration of a
-  # configure step. Darwin doesn't use this — its in-build executions
-  # rely on absolute install_names baked in by mkDep's postBuildHook.
+  # configure or build step. Darwin must NOT do this: setting
+  # DYLD_LIBRARY_PATH=$PBS_DEPS/lib for the whole `make` invocation
+  # diverts symbol resolution for any nixpkgs build-tool dylibs that
+  # happen to share basenames with our deps (libintl→libiconv,
+  # libreadline→libncursesw, …) and produces "Symbol not found"
+  # aborts. Darwin in-build executions resolve their deps through the
+  # absolute /nix/store install_names baked in by the postBuildHook
+  # below, so PBS_DEPS_LDPATH simply isn't needed.
   appendDepFlags = lib.concatMapStringsSep "\n    " (dep: ''
     export CFLAGS="$CFLAGS -I${dep}/include"
     export CPPFLAGS="$CPPFLAGS -I${dep}/include"
-    export LDFLAGS="$LDFLAGS -L${dep}/lib"
+    export LDFLAGS="$LDFLAGS -L${dep}/lib"'' + lib.optionalString (!darwin) ''
+
     export PBS_DEPS_LDPATH="${dep}/lib''${PBS_DEPS_LDPATH:+:$PBS_DEPS_LDPATH}"'') deps;
 
   exportExtra = lib.concatStringsSep "\n    "
