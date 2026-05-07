@@ -7,12 +7,11 @@ Modeled on [`python-build-standalone`](https://github.com/astral-sh/python-build
 (PBS) — the substrate for [uv](https://github.com/astral-sh/uv)'s Python
 installs — but for PHP.
 
-The motivating problem: [`static-php-cli`](https://github.com/crazywhalecc/static-php-cli)
-produces a fully static PHP that **cannot `dlopen` extensions like xdebug**.
-That makes it unusable for development workflows that depend on runtime-
-loaded extensions. This project solves that by keeping PHP dynamically
-linked, bundling its C deps in `lib/`, and pointing every RPATH at
-`$ORIGIN/../lib`.
+The motivating problem: existing portable PHP builds tend to be fully
+static, which means they **cannot `dlopen` extensions like xdebug**. That
+makes them unusable for development workflows that depend on runtime-loaded
+extensions. This project solves that by keeping PHP dynamically linked,
+bundling its C deps in `lib/`, and pointing every RPATH at `$ORIGIN/../lib`.
 
 ## What you get
 
