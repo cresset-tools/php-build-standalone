@@ -54,8 +54,8 @@ mkDep {
     # Linux's iconv comes from glibc — no path. Darwin uses our bundled
     # GNU libiconv since apple-sdk strips the system iconv headers.
     PBS_PHP_ICONV_ARG = if stdenv.isDarwin
-      then "--with-iconv=${libiconv}"
-      else "--with-iconv";
+      then "--with-iconv=shared,${libiconv}"
+      else "--with-iconv=shared";
   } // lib.optionalAttrs stdenv.isDarwin {
     # nixpkgs darwin.libresolv provides build-time -L/<store>/lib +
     # libresolv.dylib for ld to satisfy `-lresolv` (used by ext/standard/dns).

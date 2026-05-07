@@ -1,17 +1,44 @@
-# Aggregator derivation. Takes a list of per-dep derivations (zlib,
-# openssl, ...), merges their lib/, include/, share/ trees into a single
-# $out, runs the platform finalize driver (finalize-linux.sh: patchelf
-# + audit gates; finalize-darwin.sh: install_name_tool + codesign +
+# Aggregator derivation. Takes two lists of per-dep derivations:
+#   bundledDeps    — C-library deps (zlib, openssl, …). Each must carry
+#                    passthru.storeName. Installed under
+#                    $PBS_INSTALL/store/<storeName>/.
+#   interpreterDeps — PHP itself and extensions (php, xdebug). Their files
+#                    (bin/, lib/extensions/, lib/php/, etc/php/, include/php/,
+#                    share/) go directly to the install root.
+#
+# After merging, runs the platform finalize driver (finalize-linux.sh:
+# patchelf + audit gates; finalize-darwin.sh: install_name_tool + codesign +
 # audit gates). Both drivers source finalize-common.sh for the shared
 # .la / .pc / text-file detoxification phases.
-{ pkgs, deps, toolchain, phpVersion ? "0.0.0-unknown" }:
+{ pkgs, bundledDeps, interpreterDeps, toolchain, phpVersion ? "0.0.0-unknown" }:
 let
   inherit (pkgs) stdenv lib;
   finalizer = if stdenv.isDarwin then ./finalize-darwin.sh else ./finalize-linux.sh;
+
+  # Build a newline-separated list of "storeName nixStorePath" pairs for
+  # all bundled deps. finalize-linux.sh reads this to build the
+  # soname→storeName map without re-doing dep discovery in shell.
+  # Trailing newline is required so `while IFS=' ' read -r k v` in the
+  # finalize scripts reads the last line. concatMapStringsSep puts \n between
+  # entries but not after the last one; append it explicitly.
+  storeManifest = (lib.concatMapStringsSep "\n" (dep:
+    "${dep.passthru.storeName} ${dep}"
+  ) bundledDeps) + "\n";
+
+  # Expose the store-manifest file as a Nix string literal embedded in the
+  # build so finalize.sh can read it without a separate derivation.
+  storeManifestFile = pkgs.writeText "pbs-store-manifest" storeManifest;
+
+  deps = bundledDeps ++ interpreterDeps;
 in
 pkgs.stdenvNoCC.mkDerivation {
   pname = "pbs-tree";
   version = phpVersion;
+  # Expose the store manifest file so closure.nix can reuse it without
+  # re-deriving it. The manifest maps storeName → nixStorePath for every
+  # bundled C-lib dep; closure.nix uses it to build the soname→storeName
+  # index and walk transitive DT_NEEDED closures.
+  passthru.storeManifestFile = storeManifestFile;
 
   dontUnpack = true;
   dontConfigure = true;
@@ -36,27 +63,8 @@ pkgs.stdenvNoCC.mkDerivation {
 
     export PBS_INSTALL="$out"
     export PBS_FINALIZE_COMMON="${./finalize-common.sh}"
+    export PBS_STORE_MANIFEST="${storeManifestFile}"
     mkdir -p "$PBS_INSTALL"
-
-    # Merge each dep's tree into $out. cp -a preserves the symlink chains
-    # (libz.so → libz.so.1 → libz.so.1.3.1) which downstream consumers
-    # rely on. cp -a ALSO preserves source mode bits — and source dirs
-    # come from /nix/store which is read-only — so we chmod the dest
-    # writable AFTER each dep's cp, before the next dep tries to add
-    # subdirs into a now-read-only $PBS_INSTALL/lib.
-    ${pkgs.lib.concatMapStringsSep "\n" (dep: ''
-      echo "merging ${dep.pname or dep.name}..."
-      if [ -d ${dep}/lib ];     then mkdir -p "$PBS_INSTALL/lib";     cp -a ${dep}/lib/.     "$PBS_INSTALL/lib/"; fi
-      if [ -d ${dep}/include ]; then mkdir -p "$PBS_INSTALL/include"; cp -a ${dep}/include/. "$PBS_INSTALL/include/"; fi
-      if [ -d ${dep}/bin ];     then mkdir -p "$PBS_INSTALL/bin";     cp -a ${dep}/bin/.     "$PBS_INSTALL/bin/"; fi
-      # Merge sbin/ INTO bin/ — we don't ship a separate sbin tree (PHP's
-      # default puts php-fpm here; we redirect via --sbindir but handle the
-      # leftover case for robustness).
-      if [ -d ${dep}/sbin ];    then mkdir -p "$PBS_INSTALL/bin";     cp -a ${dep}/sbin/.    "$PBS_INSTALL/bin/"; fi
-      if [ -d ${dep}/share ];   then mkdir -p "$PBS_INSTALL/share";   cp -a ${dep}/share/.   "$PBS_INSTALL/share/"; fi
-      if [ -d ${dep}/etc ];     then mkdir -p "$PBS_INSTALL/etc";     cp -a ${dep}/etc/.     "$PBS_INSTALL/etc/"; fi
-      chmod -R u+w "$PBS_INSTALL"
-    '') deps}
 
     # NOTE: we do NOT bundle libstdc++.so.6 / libgcc_s.so.1 from the
     # toolchain. PBS explicitly avoids this — its validator allows only
@@ -66,6 +74,32 @@ pkgs.stdenvNoCC.mkDerivation {
     # static-links them into ICU's .so files. Tarball stays glibc-only on
     # the consumer side. Darwin uses the system-stable libc++ with no
     # bundling either.
+
+    # Bundled C-lib deps: each goes into store/<storeName>/ as a named,
+    # content-addressed subtree. cp -a preserves symlink chains
+    # (libz.so → libz.so.1 → libz.so.1.3.1) which downstream consumers
+    # rely on. chmod -R u+w after each copy because /nix/store is
+    # read-only and a subsequent dep may need to add files into a subdir.
+    ${lib.concatMapStringsSep "\n" (dep: ''
+      echo "installing bundled dep ${dep.passthru.storeName}..."
+      mkdir -p "$PBS_INSTALL/store/${dep.passthru.storeName}"
+      cp -a ${dep}/. "$PBS_INSTALL/store/${dep.passthru.storeName}/"
+      chmod -R u+w "$PBS_INSTALL/store/${dep.passthru.storeName}"
+    '') bundledDeps}
+
+    # Interpreter outputs (php, xdebug, …): merge directly into the
+    # install root. bin/, lib/extensions/, lib/php/, etc/php/, include/php/,
+    # share/ all land at $PBS_INSTALL/<dir>/.
+    ${lib.concatMapStringsSep "\n" (dep: ''
+      echo "merging interpreter output ${dep.pname or dep.name}..."
+      if [ -d ${dep}/lib ];     then mkdir -p "$PBS_INSTALL/lib";     cp -a ${dep}/lib/.     "$PBS_INSTALL/lib/"; fi
+      if [ -d ${dep}/include ]; then mkdir -p "$PBS_INSTALL/include"; cp -a ${dep}/include/. "$PBS_INSTALL/include/"; fi
+      if [ -d ${dep}/bin ];     then mkdir -p "$PBS_INSTALL/bin";     cp -a ${dep}/bin/.     "$PBS_INSTALL/bin/"; fi
+      if [ -d ${dep}/sbin ];    then mkdir -p "$PBS_INSTALL/bin";     cp -a ${dep}/sbin/.    "$PBS_INSTALL/bin/"; fi
+      if [ -d ${dep}/share ];   then mkdir -p "$PBS_INSTALL/share";   cp -a ${dep}/share/.   "$PBS_INSTALL/share/"; fi
+      if [ -d ${dep}/etc ];     then mkdir -p "$PBS_INSTALL/etc";     cp -a ${dep}/etc/.     "$PBS_INSTALL/etc/"; fi
+      chmod -R u+w "$PBS_INSTALL"
+    '') interpreterDeps}
 
     bash ${finalizer}
 

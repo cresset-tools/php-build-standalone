@@ -131,50 +131,61 @@ let
     export PBS_LIB_EXT=${if darwin then "dylib" else "so"}
     export PBS_RPATH_VAR=${if darwin then "DYLD_LIBRARY_PATH" else "LD_LIBRARY_PATH"}
   '';
+
+  drv = pkgs.stdenvNoCC.mkDerivation {
+    pname = "pbs-${name}";
+    inherit version src;
+
+    nativeBuildInputs = toolchainPkgs ++ extraInputs;
+
+    dontUnpack = true;
+    dontConfigure = true;
+    dontInstall = true;
+    # nixpkgs default fixupPhase would patchShebangsAuto (fatal for
+    # phpize/php-config), shrink RPATHs (re-flips DT_RPATH↔DT_RUNPATH),
+    # and re-strip after our finalize already did. tree.nix's finalize
+    # is the single source of truth.
+    dontFixup = true;
+
+    buildPhase = ''
+      runHook preBuild
+
+      export PBS_TOOLCHAIN="${toolchain}"
+      ${exportSysroot}
+
+      export PBS_SRC_${envName}="$src"
+      export PBS_VER_${envName}="${version}"
+
+      export PBS_SOURCES="$NIX_BUILD_TOP/sources"
+      export PBS_DEPS="$out"
+      mkdir -p "$PBS_SOURCES" "$PBS_DEPS"
+
+      ${exportDeps}
+
+      ${exportPlatformVars}
+      source ${setupEnv}
+
+      ${appendDepFlags}
+
+      ${exportExtra}
+
+      ${preBuildHook}
+
+      bash ${buildScript}
+
+      ${resolvedPostBuildHook}
+
+      runHook postBuild
+    '';
+
+    # storeName: public content-addressed identifier for this bundled dep.
+    # Consumed by tree.nix to install under store/<storeName>/ instead of
+    # the flat lib/ merge. Format: <name>-<version>-<8-char-nix-hash>.
+    # The 8-char suffix is the first 8 chars of the 32-char Nix store hash
+    # (chars 11–18 of the outPath basename "/nix/store/<hash>-pbs-…").
+    # Deterministic: the Nix derivation hash encodes every build input.
+    passthru.storeName =
+      "${name}-${version}-${builtins.substring 11 8 (baseNameOf drv.outPath)}";
+  };
 in
-pkgs.stdenvNoCC.mkDerivation {
-  pname = "pbs-${name}";
-  inherit version src;
-
-  nativeBuildInputs = toolchainPkgs ++ extraInputs;
-
-  dontUnpack = true;
-  dontConfigure = true;
-  dontInstall = true;
-  # nixpkgs default fixupPhase would patchShebangsAuto (fatal for
-  # phpize/php-config), shrink RPATHs (re-flips DT_RPATH↔DT_RUNPATH),
-  # and re-strip after our finalize already did. tree.nix's finalize
-  # is the single source of truth.
-  dontFixup = true;
-
-  buildPhase = ''
-    runHook preBuild
-
-    export PBS_TOOLCHAIN="${toolchain}"
-    ${exportSysroot}
-
-    export PBS_SRC_${envName}="$src"
-    export PBS_VER_${envName}="${version}"
-
-    export PBS_SOURCES="$NIX_BUILD_TOP/sources"
-    export PBS_DEPS="$out"
-    mkdir -p "$PBS_SOURCES" "$PBS_DEPS"
-
-    ${exportDeps}
-
-    ${exportPlatformVars}
-    source ${setupEnv}
-
-    ${appendDepFlags}
-
-    ${exportExtra}
-
-    ${preBuildHook}
-
-    bash ${buildScript}
-
-    ${resolvedPostBuildHook}
-
-    runHook postBuild
-  '';
-}
+  drv

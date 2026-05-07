@@ -8,7 +8,7 @@
 #                            Darwin: libresolv setup + iconv autoconf priming.
 #   PBS_PHP_POST_INSTALL   — Linux: noop. Darwin: rewrite libresolv install_name.
 #   PBS_PHP_AUDIT_EXTRA    — Linux: DT_NEEDED bare-soname check. Darwin: noop.
-#   PBS_PHP_ICONV_ARG      — Linux: "--with-iconv". Darwin: "--with-iconv=$PBS_DEP_LIBICONV".
+#   PBS_PHP_ICONV_ARG      — Linux: "--with-iconv=shared". Darwin: "--with-iconv=shared,$PBS_DEP_LIBICONV".
 #
 # Inherits CC, CFLAGS, LDFLAGS from setup-env-{linux,darwin}.sh; mkDep.nix
 # auto-appends -I${dep}/include and -L${dep}/lib for every dep on our
@@ -93,36 +93,36 @@ source "$PBS_PHP_PRE_CONFIGURE"
   --with-config-file-path="$PBS_DEPS/etc/php" \
   --with-config-file-scan-dir="$PBS_DEPS/etc/php/conf.d" \
   --with-zlib="$PBS_DEP_ZLIB" \
-  --with-openssl="$PBS_DEP_OPENSSL" \
+  --with-openssl="shared,$PBS_DEP_OPENSSL" \
   --with-libxml="$PBS_DEP_LIBXML2" \
-  --enable-dom \
-  --enable-xml \
-  --enable-xmlreader \
-  --enable-xmlwriter \
-  --enable-simplexml \
-  --enable-mbstring \
+  --enable-dom=shared \
+  --enable-xml=shared \
+  --enable-xmlreader=shared \
+  --enable-xmlwriter=shared \
+  --enable-simplexml=shared \
+  --enable-mbstring=shared \
   --enable-mysqlnd \
-  --with-mysqli=mysqlnd \
-  --enable-pdo \
-  --with-pdo-mysql=mysqlnd \
-  --with-pdo-sqlite="$PBS_DEP_SQLITE" \
-  --with-sqlite3="$PBS_DEP_SQLITE" \
-  --with-sodium="$PBS_DEP_LIBSODIUM" \
-  --with-bz2="$PBS_DEP_BZIP2" \
-  --with-curl="$PBS_DEP_LIBCURL" \
-  --enable-intl \
-  --with-zip \
-  --enable-gd \
+  --with-mysqli="shared,mysqlnd" \
+  --enable-pdo=shared \
+  --with-pdo-mysql="shared,mysqlnd" \
+  --with-pdo-sqlite="shared,$PBS_DEP_SQLITE" \
+  --with-sqlite3="shared,$PBS_DEP_SQLITE" \
+  --with-sodium="shared,$PBS_DEP_LIBSODIUM" \
+  --with-bz2="shared,$PBS_DEP_BZIP2" \
+  --with-curl="shared,$PBS_DEP_LIBCURL" \
+  --enable-intl=shared \
+  --with-zip=shared \
+  --enable-gd=shared \
   --with-jpeg="$PBS_DEP_LIBJPEG_TURBO" \
   --with-webp="$PBS_DEP_LIBWEBP" \
   --with-freetype="$PBS_DEP_FREETYPE" \
-  --enable-fileinfo \
-  --enable-filter \
-  --enable-phar \
-  --enable-posix \
-  --enable-session \
-  --enable-tokenizer \
-  --enable-ctype \
+  --enable-fileinfo=shared \
+  --enable-filter=shared \
+  --enable-phar=shared \
+  --enable-posix=shared \
+  --enable-session=shared \
+  --enable-tokenizer=shared \
+  --enable-ctype=shared \
   "$PBS_PHP_ICONV_ARG" \
   --with-libedit="$PBS_DEP_LIBEDIT" \
   --enable-opcache \
@@ -148,6 +148,44 @@ if [ ! -f "$PBS_DEPS/bin/phar.phar" ]; then
   exit 1
 fi
 
+# Generate conf.d fragments for every always-shipped shared extension.
+# Ordering ensures extensions are loaded after their dependencies:
+#   10-* : zend_extensions (opcache) — must precede regular extensions
+#   20-* : extensions with no cross-extension deps
+#   30-* : pdo (driver extensions depend on it)
+#   35-* : pdo_mysql, pdo_sqlite (depend on pdo)
+#   40-* : mysqli, sqlite3 (depend on mysqlnd/libsqlite, not on pdo)
+#   50-* : xmlreader, xmlwriter, simplexml (depend on dom being loaded)
+mkdir -p "$PBS_DEPS/etc/php/conf.d"
+_ini() { printf '%s\n' "$2" > "$PBS_DEPS/etc/php/conf.d/$1"; }
+_ini 10-opcache.ini    "zend_extension=opcache"
+_ini 20-mbstring.ini   "extension=mbstring"
+_ini 20-intl.ini       "extension=intl"
+_ini 20-curl.ini       "extension=curl"
+_ini 20-sodium.ini     "extension=sodium"
+_ini 20-bz2.ini        "extension=bz2"
+_ini 20-zip.ini        "extension=zip"
+_ini 20-gd.ini         "extension=gd"
+_ini 20-fileinfo.ini   "extension=fileinfo"
+_ini 20-filter.ini     "extension=filter"
+_ini 20-phar.ini       "extension=phar"
+_ini 20-posix.ini      "extension=posix"
+_ini 20-session.ini    "extension=session"
+_ini 20-tokenizer.ini  "extension=tokenizer"
+_ini 20-ctype.ini      "extension=ctype"
+_ini 20-iconv.ini      "extension=iconv"
+_ini 20-openssl.ini    "extension=openssl"
+_ini 20-xml.ini        "extension=xml"
+_ini 20-dom.ini        "extension=dom"
+_ini 30-pdo.ini        "extension=pdo"
+_ini 35-pdo_mysql.ini  "extension=pdo_mysql"
+_ini 35-pdo_sqlite.ini "extension=pdo_sqlite"
+_ini 40-mysqli.ini     "extension=mysqli"
+_ini 40-sqlite3.ini    "extension=sqlite3"
+_ini 50-xmlreader.ini  "extension=xmlreader"
+_ini 50-xmlwriter.ini  "extension=xmlwriter"
+_ini 50-simplexml.ini  "extension=simplexml"
+
 # Confirm readline (libedit-backed) is compiled into the binary. PHP
 # builds ext/readline statically into the CLI (no readline.so), so we
 # verify via php -m rather than looking for an extension .so file.
@@ -156,6 +194,28 @@ if ! env "$PBS_RPATH_VAR=$PBS_DEPS/lib${PBS_DEPS_LDPATH:+:$PBS_DEPS_LDPATH}" "$P
   exit 1
 fi
 echo "readline OK (libedit-backed)"
+
+# Verify every always-shipped extension loads. Uses `php -m` which picks
+# up conf.d fragments generated above. Failure names the missing extension
+# explicitly so it's easy to bisect from build logs.
+_php_m=$(env "$PBS_RPATH_VAR=$PBS_DEPS/lib${PBS_DEPS_LDPATH:+:$PBS_DEPS_LDPATH}" "$PBS_DEPS/bin/php" -m 2>&1)
+_check_ext() {
+  local ext="$1"
+  if ! printf '%s\n' "$_php_m" | grep -qi "^${ext}$"; then
+    echo "FATAL: always-shipped extension '$ext' not listed in php -m" >&2
+    echo "       php -m output:" >&2
+    printf '%s\n' "$_php_m" >&2
+    exit 1
+  fi
+}
+for _ext in mbstring intl curl pdo pdo_mysql pdo_sqlite sqlite3 sodium \
+            bz2 zip gd fileinfo filter phar posix session tokenizer \
+            ctype iconv dom xml xmlreader xmlwriter simplexml mysqli \
+            openssl; do
+  _check_ext "$_ext"
+  echo "  ext OK: $_ext"
+done
+echo "all always-shipped extensions OK"
 
 # Sanity: a request-bearing run (script file argument) must shut down
 # cleanly. The 0004-relocate-extension-dir-startup patch has historically

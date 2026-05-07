@@ -62,12 +62,28 @@ done
 
 # 4. xdebug must dlopen and report its version. This is the central use
 #    case the project exists for — static-php-cli can't do this.
+#
+#    Phase 3: xdebug ships as a separate per-extension tarball, not inside
+#    the interpreter tarball. The smoke test accepts both layouts:
+#      (a) xdebug.so present in extension_dir → loaded, version verified.
+#      (b) xdebug.so absent (interpreter-only smoke run) → gate skipped with
+#          a notice. The per-extension tarball smoke test covers (b) separately.
+#
+#    XDEBUG_SO can be set by the caller to an explicit path for layout (b)
+#    test scenarios, e.g. XDEBUG_SO=/xdebug-ext/lib/extensions/.../xdebug.so
 emit "xdebug load"
-out=$("$PHP" -dzend_extension=xdebug \
-              -r 'echo "xdebug=", phpversion("xdebug"), "\n";') \
-    || die "xdebug load failed"
-printf '%s\n' "$out"
-case "$out" in xdebug=*) : ;; *) die "xdebug did not report a version: $out" ;; esac
+ext_dir=$("$PHP" -r 'echo ini_get("extension_dir");' 2>/dev/null)
+_xdebug_so="${XDEBUG_SO:-$ext_dir/xdebug.so}"
+if [ -f "$_xdebug_so" ]; then
+    out=$("$PHP" -dzend_extension="$_xdebug_so" \
+                  -r 'echo "xdebug=", phpversion("xdebug"), "\n";') \
+        || die "xdebug load failed"
+    printf '%s\n' "$out"
+    case "$out" in xdebug=*) : ;; *) die "xdebug did not report a version: $out" ;; esac
+else
+    emit "NOTICE: xdebug.so not found at $_xdebug_so — interpreter-only smoke run, skipping xdebug dlopen gate"
+    emit "NOTICE: run with XDEBUG_SO=<path> or extract the per-extension tarball alongside /php to test xdebug"
+fi
 
 # 4b. opcache (zend_extension, shipped but not auto-loaded) must dlopen.
 #     Resolved via the bundled extension_dir + the short-name 'opcache'.
@@ -102,5 +118,17 @@ case "$ext_dir" in
     /php/lib/extensions/*) : ;;
     *) die "extension_dir=$ext_dir did not resolve under /php" ;;
 esac
+
+# 8. V2 store layout: bundled C-library deps live under store/ not lib/.
+#    Confirm store/ exists and has at least the openssl and zlib dirs.
+emit "store layout: store/ contains content-addressed dep dirs"
+[ -d /php/store ] || die "store/ directory missing (V2 layout)"
+[ -d /php/store/openssl-3.5.6-wxm1p9wc ] || \
+    ls /php/store/ | grep -q '^openssl-' || \
+    die "no openssl store path found under store/"
+[ -d /php/store/zlib-1.3.1-xr8a5w5j ] || \
+    ls /php/store/ | grep -q '^zlib-' || \
+    die "no zlib store path found under store/"
+emit "store/ contains $(ls /php/store/ | wc -l) dep dirs"
 
 emit "ALL GATES PASSED"

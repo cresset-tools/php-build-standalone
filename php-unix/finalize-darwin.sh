@@ -1,8 +1,13 @@
 #!/usr/bin/env bash
 # Finalize a Darwin staging tree: rewrite install names + LC_LOAD_DYLIB
-# entries to be relocatable, add @loader_path/.. rpaths, run shared
-# text-file detoxification, ad-hoc codesign, then audit. Operates
-# in-place on $PBS_INSTALL.
+# entries to be relocatable, add per-binary @loader_path/… store-path
+# rpaths, run shared text-file detoxification, ad-hoc codesign, then
+# audit. Operates in-place on $PBS_INSTALL.
+#
+# Phase 2: each Mach-O gets LC_RPATH entries pointing at
+# @loader_path/<rel>/store/<storeName>/lib for each store path that
+# provides one of its LC_LOAD_DYLIB sonames (parallel to the Linux
+# $ORIGIN/../store/<name>/lib RPATH strategy).
 #
 # Why ad-hoc codesign at the end:
 #   On aarch64 macOS the linker auto-emits an ad-hoc signature on every
@@ -20,6 +25,7 @@ set -euo pipefail
 
 : "${PBS_INSTALL:?}"
 : "${PBS_FINALIZE_COMMON:?must be set by tree.nix}"
+: "${PBS_STORE_MANIFEST:?must be set by tree.nix}"
 
 source "$PBS_FINALIZE_COMMON"
 
@@ -36,6 +42,81 @@ is_macho() {
 
 is_dylib() {
   file -b "$1" 2>/dev/null | grep -q 'Mach-O.* dynamically linked shared library'
+}
+
+# ---- Build soname → storeName lookup table (Darwin) ----
+# Same structure as finalize-linux.sh. Uses LC_ID_DYLIB (otool -D) to
+# get the canonical install name (analogous to DT_SONAME on Linux).
+
+declare -A PBS_SONAME_STORE
+
+SYSTEM_DYLIBS_PREFIX=(
+  "/usr/lib/" "/System/"
+)
+
+_is_system_dylib() {
+  local name="$1"
+  for pfx in "${SYSTEM_DYLIBS_PREFIX[@]}"; do
+    [[ "$name" == "${pfx}"* ]] && return 0
+  done
+  return 1
+}
+
+_build_soname_map() {
+  echo
+  echo "=== finalize: building soname→storeName map (Darwin) ==="
+  while IFS=' ' read -r storeName nixPath; do
+    [ -n "$storeName" ] || continue
+    [ -d "$nixPath/lib" ] || continue
+    while IFS= read -r -d '' dylib; do
+      [ -L "$dylib" ] && continue
+      is_dylib "$dylib" || continue
+      local soname
+      soname="$("$OTOOL" -D "$dylib" 2>/dev/null | tail -n1 | tr -d ' ')"
+      [ -n "$soname" ] || continue
+      _is_system_dylib "$soname" && continue
+      local base
+      base="$(basename "$soname")"
+      PBS_SONAME_STORE["$base"]="$storeName"
+    done < <(find "$nixPath/lib" -name "*.dylib" -print0 2>/dev/null)
+  done < "$PBS_STORE_MANIFEST"
+
+  echo "  mapped ${#PBS_SONAME_STORE[@]} bundled sonames"
+}
+
+# ---- Compute LC_RPATH set for one Mach-O ----
+# Returns a newline-separated list of @loader_path-relative rpath strings.
+
+_compute_rpaths() {
+  local f="$1"
+  local rel="${f#$PBS_INSTALL/}"
+  local dir_part
+  dir_part="$(dirname "$rel")"
+  local hops
+  hops=$(echo "$dir_part" | tr -cd '/' | wc -c)
+  hops=$((hops + 1))
+
+  local prefix=""
+  local i
+  for ((i = 0; i < hops; i++)); do
+    prefix="${prefix}../"
+  done
+  prefix="${prefix%/}"
+
+  declare -A seen_stores
+  while IFS= read -r dep; do
+    [ -n "$dep" ] || continue
+    case "$dep" in
+      "/usr/lib/"*|"/System/"*|"@rpath/"*|"@loader_path/"*|"@executable_path/"*) ;;
+      *) local base; base="$(basename "$dep")"
+         local sn="${PBS_SONAME_STORE[$base]:-}"
+         [ -n "$sn" ] && seen_stores["$sn"]=1 ;;
+    esac
+  done < <("$OTOOL" -L "$f" 2>/dev/null | awk 'NR>1 {print $1}')
+
+  for sn in $(echo "${!seen_stores[@]}" | tr ' ' '\n' | sort); do
+    echo "@loader_path/${prefix}/store/${sn}/lib"
+  done
 }
 
 # ---- Darwin phases ----
@@ -58,15 +139,7 @@ _install_name_one() {
     "$INSTALL_NAME_TOOL" -id "@rpath/$base" "$f"
   fi
 
-  # 2. Rewrite every LC_LOAD_DYLIB that isn't already portable to
-  #    @rpath/<basename>. Three classes of non-portable load command:
-  #      a. /nix/store/...-pbs-* — build-time absolute path.
-  #      b. unqualified bare filename like `libicuuc.75.dylib` — emitted
-  #         by ICU's autotools build and our hand-rolled bzip2. dyld
-  #         looks these up in DYLD_FALLBACK_*, not at @rpath, so they
-  #         would fail to load on the consumer.
-  #    Skip system libs (/usr/lib/*, /System/*) and already-rewritten
-  #    @rpath/@loader_path/@executable_path entries.
+  # 2. Rewrite every LC_LOAD_DYLIB that isn't already portable.
   while IFS= read -r dep; do
     [ -n "$dep" ] || continue
     case "$dep" in
@@ -77,38 +150,33 @@ _install_name_one() {
         "$INSTALL_NAME_TOOL" -change "$dep" "@rpath/$depbase" "$f"
         ;;
       *)
-        # Bare filename. install_name_tool's -change needs the EXACT
-        # current value, which is the unqualified name.
         "$INSTALL_NAME_TOOL" -change "$dep" "@rpath/$dep" "$f"
         ;;
     esac
   done < <("$OTOOL" -L "$f" 2>/dev/null | awk 'NR>1 {print $1}')
 
-  # 3. Add LC_RPATH = @loader_path/../lib (for bin/* loading lib/*) and
-  #    @loader_path (for lib/* loading sibling lib/*). Strip any other
-  #    LC_RPATH that snuck in from the build host.
+  # 3. Replace all existing LC_RPATH entries with per-binary store-path set.
   while IFS= read -r rp; do
     [ -n "$rp" ] || continue
-    case "$rp" in
-      "@loader_path/../lib"|"@loader_path") ;;
-      *) "$INSTALL_NAME_TOOL" -delete_rpath "$rp" "$f" 2>/dev/null || true ;;
-    esac
+    "$INSTALL_NAME_TOOL" -delete_rpath "$rp" "$f" 2>/dev/null || true
   done < <("$OTOOL" -l "$f" 2>/dev/null \
             | awk '/cmd LC_RPATH/{flag=1; next} flag && /path /{print $2; flag=0}')
 
-  "$INSTALL_NAME_TOOL" -add_rpath "@loader_path/../lib" "$f" 2>/dev/null || true
-  "$INSTALL_NAME_TOOL" -add_rpath "@loader_path"        "$f" 2>/dev/null || true
+  # Add one LC_RPATH entry per store path providing a dependency.
+  while IFS= read -r rp; do
+    [ -n "$rp" ] || continue
+    "$INSTALL_NAME_TOOL" -add_rpath "$rp" "$f" 2>/dev/null || true
+  done < <(_compute_rpaths "$f")
+
+  # Always add @loader_path as a fallback so sibling dylibs in the same
+  # directory resolve without an explicit per-entry (e.g. PHP extension
+  # .so files that dlopen each other).
+  "$INSTALL_NAME_TOOL" -add_rpath "@loader_path" "$f" 2>/dev/null || true
 
   patched=$((patched + 1))
 }
 
 darwin_strip_toolchain_leaks() {
-  # PHP records its configure invocation in bin/php-config (CFLAGS/
-  # CPPFLAGS/LDFLAGS lines) and in include/php/main/build-defs.h
-  # (CONFIGURE_COMMAND macro). Both reference build-time include/lib
-  # paths of every dep in nativeBuildInputs that we passed via
-  # -isystem / -L flags — including darwin.libresolv which we need for
-  # headers but don't ship as part of the tarball. Strip them.
   for f in "$PBS_INSTALL/bin/php-config" "$PBS_INSTALL/include/php/main/build-defs.h"; do
     [ -f "$f" ] || continue
     sed -i -E 's| -L/nix/store/[a-z0-9]{32}-[^/[:space:]"]*/lib||g' "$f"
@@ -120,9 +188,6 @@ darwin_strip_toolchain_leaks() {
 darwin_strip_machos() {
   echo
   echo "=== finalize: strip Mach-Os ==="
-  # strip -x removes non-global symbols (smaller). install_name_tool
-  # already ran above; codesign runs after this, so the strip-induced
-  # signature invalidation is OK.
   walk_files _darwin_strip_one
 }
 _darwin_strip_one() {
@@ -133,10 +198,6 @@ _darwin_strip_one() {
 darwin_codesign() {
   echo
   echo "=== finalize: ad-hoc codesign ==="
-  # --force overwrites any existing (now-invalid) signature.
-  # --sign - is the literal dash, meaning ad-hoc (no identity, no keys).
-  # --preserve-metadata=entitlements,requirements,flags keeps the
-  # linker-emitted entitlement set if any.
   signed=0
   walk_files _codesign_one
   echo "signed $signed Mach-Os"
@@ -148,8 +209,8 @@ _codesign_one() {
 }
 
 darwin_audit_rpath_allowlist() {
-  # Every Mach-O's LC_RPATH set is a subset of the allowlist
-  # (@loader_path/../lib, @loader_path). No build-host paths.
+  # Every Mach-O's LC_RPATH must be either @loader_path or
+  # @loader_path/<rel>/store/<storeName>/lib. No build-host paths.
   local bad=""
   walk_files _audit_rpath
   if [ -n "$bad" ]; then
@@ -163,7 +224,8 @@ _audit_rpath() {
   while IFS= read -r rp; do
     [ -n "$rp" ] || continue
     case "$rp" in
-      "@loader_path/../lib"|"@loader_path") ;;
+      "@loader_path") ;;
+      "@loader_path/"*/store/*/lib) ;;
       *) bad+="$1: $rp"$'\n' ;;
     esac
   done < <("$OTOOL" -l "$1" 2>/dev/null \
@@ -171,8 +233,6 @@ _audit_rpath() {
 }
 
 darwin_audit_load_dylib() {
-  # Every LC_LOAD_DYLIB is @rpath/..., /usr/lib/..., or /System/... —
-  # never an absolute build-host path.
   local bad=""
   walk_files _audit_load
   if [ -n "$bad" ]; then
@@ -208,6 +268,8 @@ _audit_codesign_one() {
 }
 
 # ---- Phase dispatch ----
+
+_build_soname_map
 
 run_phases \
   darwin_install_name_walk \

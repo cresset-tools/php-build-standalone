@@ -114,6 +114,12 @@ pkgs.stdenvNoCC.mkDerivation {
     # so it needs write permission, even when the parent is unchanged).
     chmod -R u+w "$staging/install"
 
+    # Phase 3: xdebug ships via its own per-extension tarball. Remove it
+    # from the interpreter tarball so consumers don't accidentally load it
+    # from the wrong path and to keep the interpreter-tarball closure tight.
+    # xdebug is a zend_extension and has no conf.d fragment to remove.
+    find "$staging/install/lib/extensions" -name "xdebug.so" -delete 2>/dev/null || true
+
     # Reproducible tar: --sort=name + clamp mtime via SOURCE_DATE_EPOCH.
     export SOURCE_DATE_EPOCH=1704067200
     tar --sort=name \
