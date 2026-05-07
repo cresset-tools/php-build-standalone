@@ -128,6 +128,21 @@ source "$PBS_PHP_PRE_CONFIGURE"
   --enable-opcache \
   PKG_CONFIG_PATH="$PBS_DEP_LIBZIP/lib/pkgconfig:$PBS_DEP_ICU/lib/pkgconfig:$PBS_DEP_LIBPNG/lib/pkgconfig:$PBS_DEP_LIBWEBP/lib/pkgconfig:$PBS_DEP_FREETYPE/lib/pkgconfig:$PBS_DEP_LIBJPEG_TURBO/lib/pkgconfig:$PBS_DEP_OPENSSL/lib/pkgconfig:$PBS_DEP_LIBCURL/lib/pkgconfig:$PBS_DEP_LIBXML2/lib/pkgconfig:$PBS_DEP_ONIGURUMA/lib/pkgconfig:$PBS_DEP_ZLIB/lib/pkgconfig:$PBS_DEP_SQLITE/lib/pkgconfig:$PBS_DEP_LIBSODIUM/lib/pkgconfig:$PBS_DEP_BZIP2/lib/pkgconfig:$PBS_DEP_NGHTTP2/lib/pkgconfig:$PBS_DEP_LIBEDIT/lib/pkgconfig:$PBS_DEP_NCURSES/lib/pkgconfig"
 
+# Detoxify build-defs.h BEFORE compile. configure has just substituted
+# /nix/store/<hash>-pbs-* paths into CONFIGURE_COMMAND, PHP_PREFIX,
+# PHP_EXTENSION_DIR, PHP_CONFIG_FILE_PATH, etc. Compiling now would bake
+# those raw store paths into bin/php's rodata, where they'd surface in
+# `php -i` output ("Configure Command =>  ... '--prefix=/nix/store/...'").
+# finalize-common.sh's text-file detoxify rewrites the *installed* header
+# but the binary is already compiled by then.
+#
+# Same regex as common_detoxify_text_files — single source of truth for
+# the sentinel-substitution pattern. Sentinel-substituting before compile
+# means the binary's rodata, the installed header, and php-config all
+# agree on /__PBS_PREFIX__, and the actual configure args (--enable-fpm,
+# shared/static choices, every --with-* flag) stay visible in `php -i`.
+sed -i -E 's|/nix/store/[a-z0-9]{32}-pbs-[^/[:space:]"'"'"']*|/__PBS_PREFIX__|g' main/build-defs.h
+
 # $PBS_RPATH_VAR is LD_LIBRARY_PATH on Linux, DYLD_LIBRARY_PATH on Darwin.
 # ext/phar/Makefile.frag's pharcmd target invokes the freshly-built
 # sapi/cli/php to generate ext/phar/phar.php and phar.phar via
