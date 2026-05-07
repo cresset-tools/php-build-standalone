@@ -85,10 +85,16 @@ _build_soname_map() {
 }
 
 # ---- Compute LC_RPATH set for one Mach-O ----
-# Returns a newline-separated list of @loader_path-relative rpath strings.
-
+# Writes a newline-separated list of @loader_path-relative rpath strings
+# into the global _RPATHS_RESULT. Must be called in the main shell, not
+# a subshell — bash associative arrays (PBS_SONAME_STORE) don't propagate
+# into command-substitution subshells, so a `<( _compute_rpaths )` form
+# would see an empty soname index and produce zero rpath entries (which
+# is exactly what broke the macOS leg silently in CI).
 _compute_rpaths() {
   local f="$1"
+  _RPATHS_RESULT=""
+
   local rel="${f#$PBS_INSTALL/}"
   local dir_part
   dir_part="$(dirname "$rel")"
@@ -115,7 +121,7 @@ _compute_rpaths() {
   done < <("$OTOOL" -L "$f" 2>/dev/null | awk 'NR>1 {print $1}')
 
   for sn in $(echo "${!seen_stores[@]}" | tr ' ' '\n' | sort); do
-    echo "@loader_path/${prefix}/store/${sn}/lib"
+    _RPATHS_RESULT+="@loader_path/${prefix}/store/${sn}/lib"$'\n'
   done
 }
 
@@ -163,10 +169,14 @@ _install_name_one() {
             | awk '/cmd LC_RPATH/{flag=1; next} flag && /path /{print $2; flag=0}')
 
   # Add one LC_RPATH entry per store path providing a dependency.
+  # _compute_rpaths writes to _RPATHS_RESULT in the current shell so it
+  # can read PBS_SONAME_STORE (bash associative arrays don't cross
+  # subshells, including command-substitution / process-substitution).
+  _compute_rpaths "$f"
   while IFS= read -r rp; do
     [ -n "$rp" ] || continue
     "$INSTALL_NAME_TOOL" -add_rpath "$rp" "$f" 2>/dev/null || true
-  done < <(_compute_rpaths "$f")
+  done <<< "$_RPATHS_RESULT"
 
   # Always add @loader_path as a fallback so sibling dylibs in the same
   # directory resolve without an explicit per-entry (e.g. PHP extension

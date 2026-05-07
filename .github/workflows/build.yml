@@ -82,7 +82,10 @@ jobs:
         uses: DeterminateSystems/flakehub-cache-action@v3.19.1
 
       - name: Build tarball
-        run: nix build ".#tarball-${{ matrix.minor }}" --print-build-logs
+        # Each nix build uses its own -o symlink so subsequent builds
+        # don't clobber prior results — the upload steps below need
+        # both the interpreter tarball and the release tree to coexist.
+        run: nix build ".#tarball-${{ matrix.minor }}" -o result-tarball --print-build-logs
 
       - name: Smoke-test the artifact
         # Extract to a fresh prefix and verify the basics: PHP runs, the
@@ -100,7 +103,7 @@ jobs:
           smoke_root="$RUNNER_TEMP/smoke"
           mkdir -p "$smoke_root"
           tar --use-compress-program=unzstd \
-              -xf result/php-*.tar.zst -C "$smoke_root"
+              -xf result-tarball/php-*.tar.zst -C "$smoke_root"
           PHP="$smoke_root/install/bin/php"
           echo "::group::php -v"
           "$PHP" -v
@@ -134,10 +137,10 @@ jobs:
           echo "::endgroup::"
 
       - name: Build closures
-        run: nix build ".#closures-${{ matrix.minor }}" --print-build-logs
+        run: nix build ".#closures-${{ matrix.minor }}" -o result-closures --print-build-logs
 
       - name: Build extension-xdebug
-        run: nix build ".#extension-xdebug-${{ matrix.minor }}" --print-build-logs
+        run: nix build ".#extension-xdebug-${{ matrix.minor }}" -o result-extension --print-build-logs
 
       - name: Build release
         run: nix build ".#release-${{ matrix.minor }}" -o result-release --print-build-logs
@@ -148,8 +151,8 @@ jobs:
           # Per-(minor × target) name so the matrix legs don't collide.
           name: php-tarball-${{ matrix.php }}-${{ matrix.target }}
           path: |
-            result/php-*.tar.zst
-            result/php-*.json
+            result-tarball/php-*.tar.zst
+            result-tarball/php-*.json
           if-no-files-found: error
 
       - name: Upload release tree as workflow artifact
