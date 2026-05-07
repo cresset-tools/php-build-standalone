@@ -109,15 +109,24 @@ _compute_rpaths() {
   done
   prefix="${prefix%/}"
 
+  # _install_name_one runs LC_LOAD_DYLIB rewrites BEFORE this function,
+  # so by the time we run, every bundled dep already shows as
+  # @rpath/<basename>. We need to look up THAT basename in
+  # PBS_SONAME_STORE — a naive "skip @rpath/*" filter (which made sense
+  # for raw build-time inputs) would skip every dep we care about and
+  # leave the binary with zero LC_RPATH entries.
   declare -A seen_stores
+  local dep base sn
   while IFS= read -r dep; do
     [ -n "$dep" ] || continue
     case "$dep" in
-      "/usr/lib/"*|"/System/"*|"@rpath/"*|"@loader_path/"*|"@executable_path/"*) ;;
-      *) local base; base="$(basename "$dep")"
-         local sn="${PBS_SONAME_STORE[$base]:-}"
-         [ -n "$sn" ] && seen_stores["$sn"]=1 ;;
+      "/usr/lib/"*|"/System/"*|"@loader_path/"*|"@executable_path/"*) continue ;;
+      "@rpath/"*) base="${dep#@rpath/}" ;;
+      */*)        base="$(basename "$dep")" ;;
+      *)          base="$dep" ;;
     esac
+    sn="${PBS_SONAME_STORE[$base]:-}"
+    [ -n "$sn" ] && seen_stores["$sn"]=1
   done < <("$OTOOL" -L "$f" 2>/dev/null | awk 'NR>1 {print $1}')
 
   for sn in $(echo "${!seen_stores[@]}" | tr ' ' '\n' | sort); do
