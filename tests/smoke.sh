@@ -85,11 +85,16 @@ else
     emit "NOTICE: run with XDEBUG_SO=<path> or extract the per-extension tarball alongside /php to test xdebug"
 fi
 
-# 4b. opcache (zend_extension, shipped but not auto-loaded) must dlopen.
-#     Resolved via the bundled extension_dir + the short-name 'opcache'.
+# 4b. opcache (zend_extension) must register. On 8.1-8.4 it ships as
+#     opcache.so loaded by the 10-opcache.ini conf.d fragment; on 8.5+
+#     it's built statically into bin/php and no conf.d fragment is
+#     emitted. Both paths show up to userland identically as
+#     "Zend OPcache" via extension_loaded(), so the gate asks PHP
+#     directly without -dzend_extension (which on 8.5 would emit a
+#     "Failed loading" startup warning to stdout because opcache.so
+#     doesn't exist).
 emit "opcache load"
-out=$("$PHP" -dzend_extension=opcache \
-              -r 'echo extension_loaded("Zend OPcache") ? "opcache=ok\n" : "opcache=missing\n";') \
+out=$("$PHP" -r 'echo extension_loaded("Zend OPcache") ? "opcache=ok\n" : "opcache=missing\n";') \
     || die "opcache load failed"
 printf '%s\n' "$out"
 case "$out" in opcache=ok) : ;; *) die "opcache did not register: $out" ;; esac
