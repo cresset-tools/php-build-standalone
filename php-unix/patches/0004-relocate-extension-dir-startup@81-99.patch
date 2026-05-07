@@ -7,6 +7,16 @@
 # overridden it.  This preserves user configuration while ensuring a relocated
 # tarball resolves extensions from <install_root>/lib/extensions/... rather
 # than the Nix store path baked in at build time.
+#
+# We mutate ini_entry->value directly rather than calling
+# zend_alter_ini_entry_chars(): the latter is meant for per-request INI
+# overrides and lazily populates EG(modified_ini_directives) so the change can
+# be unwound in zend_ini_deactivate at request shutdown.  Calling it at MINIT
+# means that hashtable is allocated before any request exists; by the time the
+# first request shuts down the storage backing it has been recycled by the
+# request memory pool, and zend_ini_deactivate dereferences a NULL arData.
+# Direct mutation skips the modification-tracking path entirely, leaving the
+# entry indistinguishable from one that was registered with a different default.
 --- a/main/main.c	2026-05-05 18:45:40.048255740 +0000
 +++ b/main/main.c	2026-05-05 18:46:20.034794700 +0000
 @@ -45,6 +45,7 @@
@@ -17,10 +27,10 @@
  #include "php_syslog.h"
  #include "fopen_wrappers.h"
  #include "ext/standard/php_standard.h"
-@@ -2228,6 +2229,28 @@
+@@ -2228,6 +2229,38 @@
  	/* Register Zend ini entries */
  	zend_register_standard_ini_entries();
- 
+
 +	/* PBS: relocation override for extension_dir.
 +	 * Take the suffix after the build-time prefix from PHP_EXTENSION_DIR
 +	 * (typically "/lib/extensions/no-debug-non-zts-<API>") and rebase it
@@ -31,14 +41,24 @@
 +			const char *suffix = strstr(PHP_EXTENSION_DIR, "/lib/extensions/");
 +			if (suffix) {
 +				zend_string *key = zend_string_init("extension_dir", sizeof("extension_dir")-1, 0);
-+				zend_string *cur = zend_ini_get_value(key);
-+				if (cur && strcmp(ZSTR_VAL(cur), PHP_EXTENSION_DIR) == 0) {
-+					char pbs_ext[MAXPATHLEN];
-+					snprintf(pbs_ext, sizeof(pbs_ext), "%s%s", pbs_root, suffix);
-+					zend_alter_ini_entry_chars(key, pbs_ext, strlen(pbs_ext),
-+					                            PHP_INI_SYSTEM, PHP_INI_STAGE_STARTUP);
-+				}
++				zend_ini_entry *entry = zend_hash_find_ptr(EG(ini_directives), key);
 +				zend_string_release(key);
++				if (entry && entry->value &&
++				    zend_string_equals_cstr(entry->value, PHP_EXTENSION_DIR, sizeof(PHP_EXTENSION_DIR)-1)) {
++					char pbs_ext[MAXPATHLEN];
++					int n = snprintf(pbs_ext, sizeof(pbs_ext), "%s%s", pbs_root, suffix);
++					if (n > 0 && (size_t)n < sizeof(pbs_ext)) {
++						zend_string *new_val = zend_string_init(pbs_ext, n, 1);
++						zend_string *old_val = entry->value;
++						entry->value = new_val;
++						if (entry->on_modify) {
++							entry->on_modify(entry, new_val, entry->mh_arg1,
++							                 entry->mh_arg2, entry->mh_arg3,
++							                 ZEND_INI_STAGE_STARTUP);
++						}
++						zend_string_release(old_val);
++					}
++				}
 +			}
 +		}
 +	}

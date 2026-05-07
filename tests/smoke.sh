@@ -34,6 +34,19 @@ fi
 emit "php -v"
 "$PHP" -v || die "php -v failed"
 
+# 2b. Running a script file must shut down cleanly. `php -v` skips the
+#     request lifecycle and so doesn't exercise zend_deactivate /
+#     zend_ini_deactivate; only a real script invocation does. A regression
+#     in the extension_dir relocation patch (or anything else that mutates
+#     INI at MINIT) shows up here as exit 139 on an otherwise trivial run.
+emit "request shutdown clean"
+script=$(mktemp /tmp/php-smoke-XXXX.php)
+printf '<?php echo "ok\\n";\n' > "$script"
+out=$("$PHP" "$script" 2>&1); rc=$?
+rm -f "$script"
+[ "$rc" -eq 0 ] || die "php script.php exited rc=$rc (139 = zend_ini_deactivate segfault); output: $out"
+[ "$out" = "ok" ] || die "php script.php produced unexpected output: $out"
+
 # 3. php -m must list the bundled extensions that are auto-loaded. Note:
 #    opcache and xdebug are zend_extensions and are NOT auto-loaded — they
 #    have dedicated gates below that exercise dlopen via -dzend_extension.

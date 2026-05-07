@@ -157,6 +157,23 @@ if ! env "$PBS_RPATH_VAR=$PBS_DEPS/lib${PBS_DEPS_LDPATH:+:$PBS_DEPS_LDPATH}" "$P
 fi
 echo "readline OK (libedit-backed)"
 
+# Sanity: a request-bearing run (script file argument) must shut down
+# cleanly. The 0004-relocate-extension-dir-startup patch has historically
+# broken request shutdown by populating EG(modified_ini_directives) at
+# MINIT, which then segfaults in zend_ini_deactivate. `php -v` and `php -m`
+# bypass the request lifecycle and miss this; `php script.php` exercises it.
+sanity_script="$(mktemp)"
+printf '<?php echo "ok\\n";\n' > "$sanity_script"
+sanity_out=$(env "$PBS_RPATH_VAR=$PBS_DEPS/lib${PBS_DEPS_LDPATH:+:$PBS_DEPS_LDPATH}" "$PBS_DEPS/bin/php" -n "$sanity_script" 2>&1)
+sanity_rc=$?
+rm -f "$sanity_script"
+if [ "$sanity_rc" -ne 0 ] || [ "$sanity_out" != "ok" ]; then
+  echo "FATAL: php script.php exited rc=$sanity_rc with output: $sanity_out" >&2
+  echo "       (rc=139 indicates the zend_ini_deactivate regression — see patches/0004-relocate-extension-dir-startup)" >&2
+  exit 1
+fi
+echo "request shutdown OK"
+
 # PHP's install drops a few things we don't need or that bake build-time
 # paths and would fail the audit:
 #   - share/man/    — references build-time prefix in some places
