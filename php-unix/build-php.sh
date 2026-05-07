@@ -158,7 +158,14 @@ fi
 #   50-* : xmlreader, xmlwriter, simplexml (depend on dom being loaded)
 mkdir -p "$PBS_DEPS/etc/php/conf.d"
 _ini() { printf '%s\n' "$2" > "$PBS_DEPS/etc/php/conf.d/$1"; }
-_ini 10-opcache.ini    "zend_extension=opcache"
+# PHP 8.5 made opcache always-static (built into bin/php); the
+# --enable-opcache configure flag is ignored on that branch and no
+# opcache.so is produced. Only emit the loader fragment if the .so
+# actually exists, so 8.5 doesn't end up with a dangling reference.
+ext_dir=$(find "$PBS_DEPS/lib/extensions" -maxdepth 1 -mindepth 1 -type d | head -n1)
+if [ -n "$ext_dir" ] && [ -f "$ext_dir/opcache.so" ]; then
+  _ini 10-opcache.ini    "zend_extension=opcache"
+fi
 _ini 20-mbstring.ini   "extension=mbstring"
 _ini 20-intl.ini       "extension=intl"
 _ini 20-curl.ini       "extension=curl"
