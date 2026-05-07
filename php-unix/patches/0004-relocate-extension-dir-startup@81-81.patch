@@ -1,0 +1,59 @@
+# PHP 8.1 variant of 0004-relocate-extension-dir-startup.
+#
+# Identical to the @82-99 patch except for the equality check on the
+# current extension_dir value: zend_string_equals_cstr() was added in
+# PHP 8.2. On 8.1 we expand the same comparison inline via ZSTR_LEN /
+# ZSTR_VAL + memcmp. The rest of the relocation logic — including the
+# direct ini_entry->value mutation that avoids the
+# EG(modified_ini_directives) regression in zend_ini_deactivate — is
+# unchanged from the @82-99 variant.
+--- a/main/main.c	2026-05-05 18:45:40.048255740 +0000
++++ b/main/main.c	2026-05-05 18:46:20.034794700 +0000
+@@ -45,6 +45,7 @@
+ #include "php_ini.h"
+ #include "php_globals.h"
+ #include "php_main.h"
++#include "pbs_relocate.h"
+ #include "php_syslog.h"
+ #include "fopen_wrappers.h"
+ #include "ext/standard/php_standard.h"
+@@ -2228,6 +2229,39 @@
+ 	/* Register Zend ini entries */
+ 	zend_register_standard_ini_entries();
+
++	/* PBS: relocation override for extension_dir.
++	 * Take the suffix after the build-time prefix from PHP_EXTENSION_DIR
++	 * (typically "/lib/extensions/no-debug-non-zts-<API>") and rebase it
++	 * on the runtime install root. Skips if php.ini already overrode. */
++	{
++		char pbs_root[MAXPATHLEN];
++		if (pbs_install_root(pbs_root, sizeof(pbs_root))) {
++			const char *suffix = strstr(PHP_EXTENSION_DIR, "/lib/extensions/");
++			if (suffix) {
++				zend_string *key = zend_string_init("extension_dir", sizeof("extension_dir")-1, 0);
++				zend_ini_entry *entry = zend_hash_find_ptr(EG(ini_directives), key);
++				zend_string_release(key);
++				if (entry && entry->value &&
++				    ZSTR_LEN(entry->value) == sizeof(PHP_EXTENSION_DIR)-1 &&
++				    memcmp(ZSTR_VAL(entry->value), PHP_EXTENSION_DIR, sizeof(PHP_EXTENSION_DIR)-1) == 0) {
++					char pbs_ext[MAXPATHLEN];
++					int n = snprintf(pbs_ext, sizeof(pbs_ext), "%s%s", pbs_root, suffix);
++					if (n > 0 && (size_t)n < sizeof(pbs_ext)) {
++						zend_string *new_val = zend_string_init(pbs_ext, n, 1);
++						zend_string *old_val = entry->value;
++						entry->value = new_val;
++						if (entry->on_modify) {
++							entry->on_modify(entry, new_val, entry->mh_arg1,
++							                 entry->mh_arg2, entry->mh_arg3,
++							                 ZEND_INI_STAGE_STARTUP);
++						}
++						zend_string_release(old_val);
++					}
++				}
++			}
++		}
++	}
++
+ #ifdef ZEND_WIN32
+ 	/* Until the current ini values was setup, the current cp is 65001.
+ 		If the actual ini values are different, some stuff needs to be updated.
