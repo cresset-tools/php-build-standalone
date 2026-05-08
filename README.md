@@ -159,7 +159,13 @@ sysroot is needed.
 `mkDep.nix` is the single derivation factory; per-dep wrappers
 (`<dep>.nix`) call it with their dep list, and platform branching
 (toolchain pkg list, sysroot exports, install_name normalization on Darwin)
-lives inside `mkDep` rather than scattered across shell scripts.
+lives inside `mkDep` rather than scattered across shell scripts. About
+half the bundled deps fit `mkDep`'s built-in `builder = "autotools"`
+template (extract → `./configure` → `make install` → cleanup → audit,
+driven by declarative knobs like `configureFlags` / `postInstallCleanup`
+/ `auditLibs`); the rest (`bzip2`, `ncurses`, `openssl`, `libcurl`,
+`libxml2`, `icu`, plus the cmake-based `libjpeg-turbo` / `libzip`)
+still use a per-dep `build-<dep>.sh` for genuinely-custom logic.
 
 ```
    ┌──────────────────────────────────────────────────────────┐
@@ -171,7 +177,9 @@ lives inside `mkDep` rather than scattered across shell scripts.
                             ▼
    ┌──────────────────────────────────────────────────────────┐
    │  Per-dep derivations (17 + libiconv on Darwin)           │
-   │    build-<dep>.sh + <dep>.nix → $out/lib/<dep>.{so,dylib}│
+   │    <dep>.nix → mkDep autotools template, OR              │
+   │    <dep>.nix + build-<dep>.sh for custom-logic deps      │
+   │       → $out/lib/<dep>.{so,dylib}                        │
    └──────────────────────────────────────────────────────────┘
                             │
                             ▼
@@ -299,10 +307,20 @@ php-unix/                      single source tree; platform branching is
   setup-env-linux.sh             Linux CC/CXX/LDFLAGS/PBS_SYSROOT exports
   setup-env-darwin.sh            Darwin equivalents (no sysroot)
   mkDep.nix                      derivation factory; threads toolchain +
-                                 platform branches
-  build-<dep>.sh                 per-dep configure/make/install (OS-agnostic
-                                 where possible)
-  <dep>.nix                      calls mkDep with deps list
+                                 platform branches; carries a built-in
+                                 autotools template (extract → configure
+                                 → make install → cleanup → audit) driven
+                                 by declarative knobs in <dep>.nix
+  build-<dep>.sh                 per-dep configure/make/install for the
+                                 ~8 deps that don't fit the autotools
+                                 template (bzip2, ncurses, openssl,
+                                 libcurl, libxml2, icu, libjpeg-turbo,
+                                 libzip) — OS-agnostic where possible
+  <dep>.nix                      calls mkDep — either with builder =
+                                 "autotools" + configureFlags /
+                                 postInstallCleanup / auditLibs, or
+                                 with deps list dispatching to a
+                                 per-dep build-<dep>.sh
   patches/                       range-suffixed PHP source patches
                                  (NNNN-name@LO-HI.patch — auto-dispatched)
   prepare-php.sh                 dispatches patches + drops main/pbs_relocate.h

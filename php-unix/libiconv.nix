@@ -1,10 +1,11 @@
 # Darwin-only libiconv bundled-dep derivation. Linux uses glibc's iconv
 # directly; macOS's apple-sdk strips legacy libiconv headers, so we bundle
-# GNU libiconv. Build commands live in build-libiconv.sh.
-#
-# build-libiconv.sh has no -darwin suffix because libiconv is Darwin-only;
-# mkDep-darwin's pathExists fallback resolves to the unsuffixed file.
+# GNU libiconv. The libiconv build is part of the Darwin closure only —
+# the Linux release derivation does not pull this in.
 { mkDep }:
 mkDep {
   name = "libiconv";
+  builder = "autotools";
+  postInstallCleanup = [ "bin" "share" ];
+  auditLibs = [ "libiconv" ];
 }

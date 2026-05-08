@@ -7,19 +7,58 @@
 #   - Auto-appends -I${dep}/include and -L${dep}/lib for each dep input
 #   - Exports PBS_DEP_<NAME>=<store-path> for build scripts that need explicit
 #     paths (e.g. openssl's `./Configure ... -L$PBS_DEP_ZLIB/lib`)
-#   - Calls the per-dep build-<name>.sh script unchanged
+#   - Either (a) runs the standard autotools-shared-lib sequence inline
+#     (extract → ./configure → make → make install → cleanup → audit),
+#     driven by the declarative knobs below, OR (b) calls a per-dep
+#     build-<name>.sh script when the dep needs custom logic (bzip2,
+#     ncurses, openssl, libcurl, libxml2, icu, …).
 #   - Runs an optional postBuildHook (used by Darwin to normalize
 #     install_names on the just-installed dylibs)
 #
 # Inputs:
 #   name           — short key matching sources.<name>
-#   buildScript    — path to the per-dep shell script
+#   builder        — "autotools" runs the inline template; null falls
+#                    through to buildScript. The template covers ~half
+#                    of our deps; deps with multi-pass make targets,
+#                    partial installs, or non-autoconf configures keep
+#                    using buildScript.
+#   buildScript    — path to the per-dep shell script. Defaults to
+#                    ./build-<name>.sh when builder is null; null when
+#                    builder is set.
 #   deps           — list of pbs-* derivations this dep needs at build time
 #   extraEnv       — attrset of additional env vars to export before the script
 #   extraInputs    — additional nativeBuildInputs (nasm, perl, etc.)
 #   src            — optional override; defaults to fetchurl of sources.<name>
-#   preBuildHook   — bash snippet to run BEFORE the build script
-#   postBuildHook  — bash snippet to run AFTER the build script
+#   preBuildHook   — bash snippet to run BEFORE the build step
+#   postBuildHook  — bash snippet to run AFTER the build step
+#
+# autotools-builder knobs (only meaningful when builder == "autotools"):
+#   srcSubdir      — directory the tarball extracts into, relative to
+#                    $PBS_SOURCES. Either a string, or a function
+#                    `version -> string`. Defaults to "<name>-<version>".
+#                    Override when upstream's tarball name doesn't match
+#                    our internal key (oniguruma → "onig-${v}").
+#   srcGlob        — alternative to srcSubdir for tarballs whose extract
+#                    directory isn't deterministic from our `version`
+#                    (sqlite's autoconf tarball uses a packed-numeric
+#                    form: 3.47.2 → sqlite-autoconf-3470200/). The glob
+#                    is shell-expanded after extraction; exactly one
+#                    match is assumed. Mutually exclusive with srcSubdir.
+#   configureProgram — path to configure, relative to srcSubdir.
+#                    Defaults to "./configure".
+#   configureDefaults — when true (default), prepend
+#                    --disable-static --enable-shared to configureFlags.
+#                    Set false for hand-rolled configures (zlib) that
+#                    use a different shared/static spelling.
+#   configureFlags — list of extra ./configure args. --prefix and
+#                    --libdir are always emitted.
+#   postInstallCleanup — list of paths under $PBS_DEPS to `rm -rf`
+#                    after `make install`. Use for stripping bin/,
+#                    share/, leftover .a archives, etc.
+#   auditLibs      — list of bare lib names (e.g. "libz", "libsodium")
+#                    to existence-check and run pbs_audit_lib on.
+#                    The .${PBS_LIB_EXT} suffix is appended automatically.
+#                    Empty list disables the audit (rare; ICU-shaped).
 #
 # Platform branching (Linux vs Darwin) lives in three places:
 #   - toolchain pkg list (toolchain.nix vs toolchain-pkgs-darwin.nix)
@@ -28,7 +67,8 @@
 #     Linux gets an empty default)
 { pkgs, sources, toolchain }:
 { name
-, buildScript ? ./. + "/build-${name}.sh"
+, builder ? null
+, buildScript ? if builder == null then ./. + "/build-${name}.sh" else null
 , deps ? []
 , extraEnv ? {}
 , extraInputs ? []
@@ -36,6 +76,13 @@
 , src ? pkgs.fetchurl { url = sources.${name}.url; sha256 = sources.${name}.sha256; }
 , preBuildHook ? ""
 , postBuildHook ? null  # null → use platform default; "" → opt out
+, srcSubdir ? v: "${name}-${v}"
+, srcGlob ? null
+, configureProgram ? "./configure"
+, configureDefaults ? true
+, configureFlags ? []
+, postInstallCleanup ? []
+, auditLibs ? []
 }:
 let
   inherit (pkgs) lib stdenv;
@@ -116,6 +163,68 @@ let
          then defaultDarwinPostBuild
          else "";
 
+  # Autotools-shared-lib template body. Inlined into buildPhase when
+  # builder == "autotools". The shape is the same boilerplate used by
+  # ~half the per-dep build-*.sh scripts: fresh extract, configure with
+  # --prefix/--libdir, parallel make, install, cleanup, lib audit.
+  # Per-dep knobs (configureFlags, postInstallCleanup, auditLibs, etc.)
+  # control the parts that legitimately vary.
+  defaultConfigureFlags =
+    lib.optionals configureDefaults [ "--disable-static" "--enable-shared" ];
+  allConfigureFlags =
+    [ ''--prefix="$PBS_DEPS"'' ''--libdir="$PBS_DEPS/lib"'' ]
+    ++ defaultConfigureFlags
+    ++ configureFlags;
+  configureLine =
+    "${configureProgram} \\\n      "
+    + lib.concatStringsSep " \\\n      " allConfigureFlags;
+
+  cleanupLines = lib.concatMapStringsSep "\n    "
+    (p: ''rm -rf "$PBS_DEPS/${p}"'') postInstallCleanup;
+
+  auditLines = lib.concatMapStringsSep "\n    " (libname: ''
+    _lib="$PBS_DEPS/lib/${libname}.''${PBS_LIB_EXT}"
+    [ -e "$_lib" ] || { echo "FATAL: $_lib not produced" >&2; exit 1; }
+    pbs_audit_lib "$_lib" ${libname}'') auditLibs;
+
+  resolvedSrcSubdir =
+    if builtins.isFunction srcSubdir then srcSubdir version else srcSubdir;
+
+  extractStep =
+    if srcGlob != null then ''
+      rm -rf "$PBS_SOURCES"/${srcGlob}
+      mkdir -p "$PBS_SOURCES"
+      tar -xf "$PBS_SRC_${envName}" -C "$PBS_SOURCES"
+      _src_dir=$(echo "$PBS_SOURCES"/${srcGlob})
+    '' else ''
+      _src_dir="$PBS_SOURCES/${resolvedSrcSubdir}"
+      rm -rf "$_src_dir"
+      mkdir -p "$PBS_SOURCES"
+      tar -xf "$PBS_SRC_${envName}" -C "$PBS_SOURCES"
+    '';
+
+  autotoolsBody = ''
+    # --- mkDep autotools template (see mkDep.nix for rationale) ---
+    ${extractStep}
+    cd "$_src_dir"
+
+    ${configureLine}
+
+    make -j"$NIX_BUILD_CORES"
+    make install
+
+    ${cleanupLines}
+
+    ${auditLines}
+    echo "${name} OK"
+    # --- end autotools template ---
+  '';
+
+  buildBody =
+    if builder == "autotools" then autotoolsBody
+    else if builder == null then "bash ${buildScript}"
+    else throw "mkDep: unknown builder ${builder}";
+
   # Linux exports PBS_SYSROOT (used by build-php.sh's libstdc++.a path);
   # Darwin has no sysroot.
   exportSysroot = lib.optionalString (!darwin) ''
@@ -171,7 +280,7 @@ let
 
       ${preBuildHook}
 
-      bash ${buildScript}
+      ${buildBody}
 
       ${resolvedPostBuildHook}
 
