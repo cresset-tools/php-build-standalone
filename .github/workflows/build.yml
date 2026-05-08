@@ -1,19 +1,30 @@
 # Build every supported PHP minor on push and PR. On version tags
-# (refs/tags/v*), the release job assembles and publishes the full
-# release-bundle tree (interpreter tarballs, per-extension tarballs,
-# per-store-path tarballs, and index.json) as GitHub Release assets.
+# (refs/tags/v*), the publish job assembles and publishes the full
+# distribution tree to two destinations:
+#   - GitHub Pages (index tree: index.json + targets/**/*.json)
+#   - GitHub Releases (blobs sharded into blobs-00..blobs-ff releases)
 #
 # Job graph:
-#   build-tarball   — 5-minor × 2-OS matrix; builds tarball-<minor>,
-#                     closures-<minor>, extension-xdebug-<minor>,
-#                     release-<minor> per leg; uploads artifacts.
-#   distro-matrix   — Ubuntu only; runs tests/run-matrix.sh for each
-#                     PHP minor against 15 glibc distros + 1 musl
-#                     expected-fail (Alpine).
-#   assemble        — 2-OS matrix (ubuntu-latest, macos-26); builds
-#                     release-bundle and uploads it per platform.
-#   release         — tags only; downloads both release-bundle artifacts,
-#                     flattens and renames them, publishes to GH Release.
+#   build-tarball              — 5-minor × 2-OS matrix; builds tarball-<minor>,
+#                                closures-<minor>, extension-xdebug-<minor>,
+#                                release-<minor> per leg; uploads artifacts.
+#   distro-matrix              — Ubuntu only; runs tests/run-matrix.sh for each
+#                                PHP minor against 15 glibc distros + 1 musl
+#                                expected-fail (Alpine).
+#   assemble                   — 2-OS matrix (ubuntu-latest, macos-26); builds
+#                                release-bundle and uploads it per platform.
+#   verify-reproducible-index  — runs in parallel with assemble; builds
+#                                release-bundle twice and byte-diffs the trees.
+#   publish                    — tags only; downloads both release-bundle
+#                                artifacts, merges them, substitutes URL
+#                                placeholders, signs the root with cosign
+#                                keyless OIDC, pushes the index tree to
+#                                gh-pages, and shards blobs across per-prefix
+#                                GitHub Releases (blobs-XX).
+#   verify-publish             — runs after publish; fetches the live index
+#                                and verifies sha256 integrity of every
+#                                section and manifest, plus HEAD-checks all
+#                                blob URLs.
 #
 # A full clean build of one minor takes ~15 minutes — most of that is the
 # 17 C dependencies plus PHP itself plus xdebug. FlakeHub Cache shares
@@ -224,15 +235,70 @@ jobs:
           path: result/
           if-no-files-found: error
 
-  release:
-    name: publish GitHub Release
+  # Phase 9 — Reproducibility audit.
+  # Runs in parallel with assemble (needs only build-tarball). Builds
+  # release-bundle twice using --rebuild so Nix re-derives the same
+  # derivation and rejects it if the output bytes differ. The diff is a
+  # belt-and-braces check on top of Nix's content-addressed store.
+  verify-reproducible-index:
+    name: reproducibility audit
+    runs-on: ubuntu-latest
+    needs: [build-tarball]
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Nix
+        uses: DeterminateSystems/determinate-nix-action@v3
+
+      - name: Set up FlakeHub Cache
+        uses: DeterminateSystems/flakehub-cache-action@v3.19.1
+
+      - name: Build release-bundle (first pass)
+        run: nix build .#release-bundle -o result-1 --print-build-logs
+
+      - name: Build release-bundle (second pass — --rebuild)
+        # --rebuild re-derives the derivation from scratch. Nix checks that
+        # the new output is content-equal to the already-stored one; if not,
+        # it fails here with "hash mismatch in fixed-output derivation".
+        run: nix build .#release-bundle --rebuild -o result-2 --print-build-logs
+
+      - name: Byte-diff the two outputs
+        run: diff -r result-1/ result-2/
+
+  # Phase 5 + 7 — Root signing and publish to two-domain layout.
+  #
+  # Merges the Linux and Darwin release-bundle trees into one unified
+  # distribution tree, then:
+  #   1. Substitutes {INDEX_BASE} and {BLOB_BASE} placeholders in all
+  #      *.json files. Index files go to GitHub Pages; blob URLs point at
+  #      the per-shard GitHub Releases (blobs-XX, one per sha256[0:2]).
+  #   2. Signs index.json with cosign keyless (Sigstore OIDC), producing
+  #      index.json.sig as a Sigstore bundle file.
+  #   3. Pushes the index tree (everything except blobs/) to gh-pages so
+  #      https://<owner>.github.io/<repo>/index.json is live.
+  #   4. Ensures all 256 blobs-XX GH Releases exist (no-op on subsequent
+  #      publishes), then uploads every blob to its shard with --clobber
+  #      for idempotence (content-addressed ⟹ same sha256 = same bytes).
+  publish:
+    name: publish index + blobs
     runs-on: ubuntu-latest
     needs: [build-tarball, distro-matrix, assemble]
     if: startsWith(github.ref, 'refs/tags/v')
     permissions:
       contents: write
       id-token: write
+      pages: write
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
+      - uses: actions/checkout@v4
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+
       - name: Download Linux release-bundle
         uses: actions/download-artifact@v4
         with:
@@ -245,39 +311,187 @@ jobs:
           name: release-bundle-darwin
           path: bundles/darwin/
 
-      - name: Flatten and stage release assets
-        # Flatten each bundle tree: path/to/file → path__to__file. Double
-        # underscore (rather than single) so legitimate underscores in
-        # version strings don't create ambiguous round-trips. index.json
-        # from each platform is kept separate.
+      - name: Merge Linux + Darwin trees
+        # Both bundles share the same index.json schema and generated timestamp
+        # (SOURCE_DATE_EPOCH is fixed in index.nix) but have disjoint
+        # targets/<triple> subtrees. The merge is:
+        #   - Union targets/ directories (no conflicts — target triples differ)
+        #   - Union blobs/ directories (content-addressed; collisions are fine)
+        #   - Deep-merge the two index.json roots: same schema/generated,
+        #     .targets maps are disjoint so they can be merged with jq.
         run: |
           set -euo pipefail
-          mkdir -p staging
+          mkdir -p merged/blobs
 
-          for platform in linux darwin; do
-            src="bundles/$platform"
-            if [ -f "$src/index.json" ]; then
-              cp "$src/index.json" "staging/index-${platform}.json"
-            fi
-            find "$src" -type f ! -name 'index.json' | while IFS= read -r f; do
-              prefix="${src}/"
-              rel="${f#"$prefix"}"
-              flat="${rel//\//__}"
-              cp "$f" "staging/$flat"
-            done
-          done
+          # Copy Linux tree first
+          cp -r bundles/linux/. merged/
 
-          echo "Staged files:"
-          find staging -type f | sort
-          collisions=$(find staging -type f -printf '%f\n' | sort | uniq -d)
-          if [ -n "$collisions" ]; then
-            echo "FAIL: basename collisions in staging/:"
-            echo "$collisions"
-            exit 1
+          # Merge Darwin targets/ (disjoint triples, no overwrite)
+          if [ -d bundles/darwin/targets ]; then
+            cp -rn bundles/darwin/targets/. merged/targets/
           fi
 
-      - name: Publish GitHub Release
-        uses: softprops/action-gh-release@v2
+          # Merge Darwin blobs/ (content-addressed; --no-clobber is safe)
+          if [ -d bundles/darwin/blobs ]; then
+            cp -rn bundles/darwin/blobs/. merged/blobs/ 2>/dev/null || true
+          fi
+
+          # Merge the two index.json roots: deep-merge .targets maps.
+          # Both have identical schema and generated values (deterministic build).
+          jq -s '
+            .[0] as $linux | .[1] as $darwin |
+            $linux | .targets = ($linux.targets + $darwin.targets)
+          ' bundles/linux/index.json bundles/darwin/index.json > merged/index.json
+
+          echo "Merged tree:"
+          echo "  targets: $(jq '.targets | keys | length' merged/index.json)"
+          echo "  blobs:   $(find merged/blobs -type f 2>/dev/null | wc -l)"
+
+      - name: Split into index tree and blob tree
+        run: |
+          set -euo pipefail
+          # index_tree/ gets everything except blobs/ — this is what goes to Pages.
+          rsync -a --exclude='blobs/' merged/ index_tree/
+          echo "Index tree files: $(find index_tree -type f | wc -l)"
+
+      - name: Substitute URL placeholders
+        # Rewrites {INDEX_BASE} → the GitHub Pages URL for this repo, and
+        # {BLOB_BASE}/blobs/<XX>/<HASH> → the per-shard GH Release download URL.
+        # sed uses | as delimiter to avoid escaping / in URLs.
+        # The blob rewrite handles the two-path-component pattern (prefix/hash)
+        # so each blob URL resolves to the correct blobs-XX release asset.
+        run: |
+          set -euo pipefail
+          OWNER="${{ github.repository_owner }}"
+          REPO_NAME="${{ github.event.repository.name }}"
+          INDEX_BASE="https://${OWNER}.github.io/${REPO_NAME}"
+          BLOB_RELEASES="https://github.com/${{ github.repository }}/releases/download"
+
+          # First pass: substitute {INDEX_BASE}
+          find index_tree -name '*.json' -exec \
+            sed -i "s|{INDEX_BASE}|${INDEX_BASE}|g" {} +
+
+          # Second pass: substitute {BLOB_BASE}/blobs/<XX>/<HASH>
+          # Pattern: {BLOB_BASE}/blobs/<two-hex-chars>/<64-hex-chars>
+          # Replacement: $BLOB_RELEASES/blobs-<XX>/<HASH>
+          # We use Python for this rewrite because sed RE backreferences are
+          # fragile across BSD/GNU; Python's re module handles it cleanly.
+          python3 - "$BLOB_RELEASES" <<'PYEOF'
+          import sys, re, os, pathlib
+
+          blob_releases = sys.argv[1]
+          pattern = re.compile(
+              r'\{BLOB_BASE\}/blobs/([0-9a-f]{2})/([0-9a-f]{64})'
+          )
+
+          def rewrite(m):
+              prefix, sha256 = m.group(1), m.group(2)
+              return f"{blob_releases}/blobs-{prefix}/{sha256}"
+
+          for p in pathlib.Path("index_tree").rglob("*.json"):
+              text = p.read_text()
+              new_text = pattern.sub(rewrite, text)
+              if new_text != text:
+                  p.write_text(new_text)
+          PYEOF
+
+          echo "URL substitution complete"
+          grep -r 'BLOB_BASE\|INDEX_BASE' index_tree/ && \
+            { echo "FAIL: unsubstituted placeholders remain"; exit 1; } || true
+
+      - name: Sign index.json (cosign keyless via OIDC)
+        # Produces a Sigstore bundle (index.json.sig) alongside index.json.
+        # The bundle contains the signature, signing certificate, and
+        # Rekor transparency log inclusion proof. The CLI verifies this
+        # bundle using the GitHub Actions OIDC issuer + the workflow identity.
+        # Signing happens AFTER all substitutions so the signed bytes are final.
+        run: |
+          cosign sign-blob --yes \
+            --bundle index_tree/index.json.sig \
+            index_tree/index.json
+
+      - name: Push index tree to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v4
         with:
-          files: staging/*
-          fail_on_unmatched_files: true
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: index_tree
+          # Keep the history small — each publish is a snapshot.
+          force_orphan: true
+          user_name: github-actions[bot]
+          user_email: github-actions[bot]@users.noreply.github.com
+          commit_message: "publish index @ ${{ github.ref_name }}"
+
+      - name: Ensure all 256 blobs-XX GH Releases exist
+        # One-time bootstrap per repo; subsequent runs hit the `|| true` and skip.
+        # Each release is a permanent content-addressed blob shard — never deleted.
+        run: |
+          set -euo pipefail
+          for i in $(seq 0 255); do
+            tag="$(printf 'blobs-%02x' "$i")"
+            gh release view "$tag" &>/dev/null || \
+              gh release create "$tag" \
+                --title "Blob shard $tag" \
+                --notes "Content-addressed blob shard ${tag}. Do not delete." \
+                --prerelease || true
+          done
+
+      - name: Upload blobs to sharded GH Releases
+        # For each blob at merged/blobs/<XX>/<HASH>, upload to the blobs-XX
+        # release. --clobber makes re-upload of bit-identical content idempotent.
+        run: |
+          set -euo pipefail
+          blob_count=0
+          find merged/blobs -type f | while IFS= read -r blob; do
+            prefix="$(basename "$(dirname "$blob")")"
+            tag="blobs-${prefix}"
+            gh release upload "$tag" "$blob" --clobber
+            blob_count=$(( blob_count + 1 ))
+          done
+          echo "Blobs uploaded"
+
+  # Phase 8 — Validation harness.
+  # Runs after publish; fetches the live published index from GitHub Pages
+  # and verifies the full integrity chain: root sha256-dispatch → sections
+  # → manifests → blob HEAD checks + sampled blob GET+verify.
+  verify-publish:
+    name: validate published index
+    runs-on: ubuntu-latest
+    needs: [publish]
+    if: startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      GITHUB_REPOSITORY_OWNER: ${{ github.repository_owner }}
+      GITHUB_REPOSITORY: ${{ github.repository }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+
+      - name: Wait for Pages to propagate
+        # GitHub Pages deployments can take up to ~60 s after the push job
+        # completes. Poll until index.json is reachable (max 5 min).
+        run: |
+          set -euo pipefail
+          OWNER="${{ github.repository_owner }}"
+          REPO_NAME="${{ github.event.repository.name }}"
+          BASE_URL="https://${OWNER}.github.io/${REPO_NAME}"
+          for i in $(seq 1 30); do
+            code="$(curl -sI -o /dev/null -w '%{http_code}' "$BASE_URL/index.json")"
+            if [ "$code" = "200" ]; then
+              echo "Pages reachable after $((i * 10)) s"
+              break
+            fi
+            echo "Waiting ($i/30) — HTTP $code"
+            sleep 10
+          done
+
+      - name: Validate index
+        run: |
+          set -euo pipefail
+          OWNER="${{ github.repository_owner }}"
+          REPO_NAME="${{ github.event.repository.name }}"
+          BASE_URL="https://${OWNER}.github.io/${REPO_NAME}"
+          bash tests/validate-index.sh "$BASE_URL"

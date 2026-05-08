@@ -239,91 +239,15 @@
           # across variants is enforced inside index.nix (collision = build error).
           index = pkgs.callPackage ./php-unix/index.nix {
             releases = allReleases;
+            yanksFile = ./yanks.json;
           };
 
-          # release-bundle: one directory tree containing index.json plus every
-          # artifact from every variant, laid out at the paths recorded in the
-          # index. Rsync this to the static host; it IS the distribution tree.
-          #
-          # Store-path dedup: same-storeName files are identical by construction
-          # (the dedup violation gate in index.nix would have already failed).
-          # We copy store-path tarballs once per storeName (last write wins but
-          # content is identical, so it doesn't matter which release provides it).
-          release-bundle = pkgs.stdenvNoCC.mkDerivation {
-            pname = "pbs-release-bundle";
-            version = sources.phpVersions.${sources.latestPhp}.version;
-
-            dontUnpack = true;
-            dontConfigure = true;
-            dontBuild = true;
-            dontFixup = true;
-
-            nativeBuildInputs = with pkgs; [ coreutils jq gnused ];
-
-            installPhase = ''
-              runHook preInstall
-
-              mkdir -p "$out"
-
-              # Copy index.json first.
-              cp ${index}/index.json "$out/index.json"
-
-              # Copy artifacts from every release, following the path scheme
-              # recorded in index.json.
-              ${pkgs.lib.concatMapStringsSep "\n" (relDrv: ''
-                rel_dir="${relDrv}"
-
-                # Interpreter tarball + json: php/<minor>/
-                # Read minor from the .json (authoritative); copy both.
-                for f in "$rel_dir"/php-*.json; do
-                  [ -f "$f" ] || continue
-                  base_json="$(basename "$f")"
-                  base_noext="''${base_json%.json}"
-                  minor="$(jq -r '.php_version | split(".") | .[0:2] | join(".")' "$f")"
-                  mkdir -p "$out/php/$minor"
-                  cp "$f" "$out/php/$minor/$base_json"
-                  tarball="''${f%.json}.tar.zst"
-                  [ -f "$tarball" ] && cp "$tarball" "$out/php/$minor/$base_noext.tar.zst"
-                done
-
-                # Extension tarball + json: extensions/<name>/<ver>/
-                # Read version from the .json manifest (authoritative), then
-                # place both .json and .tar.zst under the same versioned dir.
-                for f in "$rel_dir"/*+php*.json; do
-                  [ -f "$f" ] || continue
-                  base_json="$(basename "$f")"
-                  base_noext="''${base_json%.json}"
-                  ext_name="$(jq -r '.name' "$f")"
-                  ext_ver="$(jq -r '.version' "$f")"
-                  mkdir -p "$out/extensions/$ext_name/$ext_ver"
-                  cp "$f" "$out/extensions/$ext_name/$ext_ver/$base_json"
-                  tarball="''${f%.json}.tar.zst"
-                  [ -f "$tarball" ] && cp "$tarball" "$out/extensions/$ext_name/$ext_ver/$base_noext.tar.zst"
-                done
-
-                # Store-path tarballs: store/
-                for f in "$rel_dir"/*.tar.zst; do
-                  [ -f "$f" ] || continue
-                  base="$(basename "$f")"
-                  # Skip interpreter and extension tarballs (already handled above)
-                  case "$base" in
-                    php-*) continue ;;
-                    *+php*) continue ;;
-                  esac
-                  # Store-path tarball: <storeName>.tar.zst
-                  mkdir -p "$out/store"
-                  # Idempotent: if already present (deduped), skip (content is identical).
-                  [ -f "$out/store/$base" ] || cp "$f" "$out/store/$base"
-                done
-
-              '') allReleases}
-
-              echo "release-bundle layout:"
-              find "$out" -maxdepth 3 -type f | sort | head -60
-
-              runHook postInstall
-            '';
-          };
+          # release-bundle: the full publishable distribution tree, produced
+          # entirely by index.nix. index already lays out index.json,
+          # targets/<target>/sections/..., targets/<target>/manifests/...,
+          # and blobs/<prefix>/<sha256>. release-bundle is a thin symlink so
+          # `nix build .#release-bundle` and `nix build .#index` are equivalent.
+          release-bundle = index;
 
         in variantAttrs // sharedAttrs // {
           # `nix build` (no attribute) → tarball for the latest PHP.
