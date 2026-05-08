@@ -116,20 +116,6 @@
                 storeManifestFile = tree.passthru.storeManifestFile;
               };
 
-              # Per-extension tarball for xdebug. xdebug is the Phase 3
-              # canary: first extension shipped via the per-ext pipeline.
-              # confFragment is null because xdebug is a zend_extension and
-              # must NOT be auto-loaded; users opt in explicitly at runtime.
-              extXdebug = pkgs.callPackage ./php-unix/tarball-extension.nix {
-                inherit tree closures phpMinor;
-                bundledDeps = sharedDeps;
-                extDrv    = xdebug;
-                extName   = "xdebug";
-                extVersion = xdebugSpec.version;
-                phpVersion = phpSpec.version;
-                confFragment = null;
-              };
-
               # Per-store-path tarballs for every bundled C-lib dep.
               # Stored as a list parallel to sharedDeps; each element is a
               # derivation producing <storeName>.tar.zst + <storeName>.sha256.
@@ -138,6 +124,23 @@
               storePathTarballList =
                 map (dep: pkgs.callPackage ./php-unix/tarball-store-path.nix { inherit dep; })
                     sharedDeps;
+
+              # Per-extension tarball for xdebug. xdebug is the Phase 3
+              # canary: first extension shipped via the per-ext pipeline.
+              # confFragment is null because xdebug is a zend_extension and
+              # must NOT be auto-loaded; users opt in explicitly at runtime.
+              # storePathTarballs is parallel to bundledDeps so the manifest
+              # generator can read each store path's tarball sha256 sidecar.
+              extXdebug = pkgs.callPackage ./php-unix/tarball-extension.nix {
+                inherit tree closures phpMinor;
+                bundledDeps = sharedDeps;
+                storePathTarballs = storePathTarballList;
+                extDrv    = xdebug;
+                extName   = "xdebug";
+                extVersion = xdebugSpec.version;
+                phpVersion = phpSpec.version;
+                confFragment = null;
+              };
 
               # Release aggregate: collects every artifact for this PHP variant
               # into a single $out directory, ready for upload. CI can

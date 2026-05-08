@@ -33,17 +33,17 @@
 { pkgs, tree, closures, extDrv, extName, extVersion
 , phpVersion   # "8.5.5" — full version from phpSpec.version
 , phpMinor     # "8.5"
-, bundledDeps  # list of all bundled dep derivations (for cross-ref)
+, bundledDeps  # list of bundled dep derivations (carry passthru.storeName +
+               # version, used to split a storeName into name/version/hash
+               # fields for the manifest)
+, storePathTarballs  # list of pbs-store-* derivations parallel to bundledDeps;
+                     # each $out contains <storeName>.sha256 (sha256 of the
+                     # actual tar.zst the CLI will download).
 , target ? "x86_64-unknown-linux-gnu"
 , confFragment ? null  # null → no conf.d; non-null → include this .ini content
 }:
 let
   inherit (pkgs) stdenv lib;
-
-  # Build a name→dep attrset for fast cross-reference when constructing the
-  # manifest closure array. Key is passthru.storeName.
-  depByStoreName = builtins.listToAttrs
-    (map (d: { name = d.passthru.storeName; value = d; }) bundledDeps);
 
   # Platform fields — conditional on host platform to match tarball.nix
   # convention (see tarball.nix lines 34-36 for the Darwin field names).
@@ -134,17 +134,20 @@ pkgs.stdenvNoCC.mkDerivation {
       store_ver="''${without_hash##*-}"
       store_name="''${without_hash%-*}"
 
-      # Compute sha256 of the per-store-path tarball would require the
-      # tarball to already exist; instead we sha256 the store path's
-      # content directory to produce a stable content hash.
-      # We look up the actual nix store path from PBS_STORE_MANIFEST.
-      nix_path="$(grep "^$storeName " ${pkgs.writeText "store-manifest" (
-        (builtins.concatStringsSep "\n" (map (d: "${d.passthru.storeName} ${d}") bundledDeps)) + "\n"
-      )} | awk '{print $2}')"
-      if [ -n "$nix_path" ]; then
-        sp_sha256="$(find "$nix_path" -type f | sort | xargs sha256sum 2>/dev/null | sha256sum | awk '{print $1}')"
+      # Read sha256 of the per-store-path .tar.zst from its sidecar.
+      # The sidecar (<storeName>.sha256) is produced by tarball-store-path.nix
+      # and carries the sha256 of the *tarball bytes* — the same value the
+      # CLI computes after fetching {INDEX_BASE}/store/<storeName>.tar.zst.
+      # Anything else (e.g. a tree-content hash) would never match what the
+      # CLI sees on the wire and would fail every closure-entry verification.
+      sp_sha256_file="$(grep "^$storeName " ${pkgs.writeText "store-tarball-manifest" (
+        (builtins.concatStringsSep "\n" (map (spt: "${spt.passthru.storeName} ${spt}") storePathTarballs)) + "\n"
+      )} | awk '{print $2}')/$storeName.sha256"
+      if [ -f "$sp_sha256_file" ]; then
+        sp_sha256="$(cat "$sp_sha256_file")"
       else
-        sp_sha256="unknown"
+        echo "FATAL: sha256 sidecar missing for $storeName at $sp_sha256_file" >&2
+        exit 1
       fi
 
       entry="{\"name\":\"$store_name\",\"version\":\"$store_ver\",\"hash\":\"$store_hash\",\"sha256\":\"$sp_sha256\",\"url\":\"{INDEX_BASE}/store/$storeName.tar.zst\"}"

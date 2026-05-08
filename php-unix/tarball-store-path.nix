@@ -51,4 +51,8 @@ pkgs.stdenvNoCC.mkDerivation {
 
     runHook postInstall
   '';
+
+  # Surface storeName so consumers (tarball-extension.nix) can build a
+  # storeName → tarball-derivation lookup without re-deriving the name.
+  passthru = { inherit storeName; };
 }
