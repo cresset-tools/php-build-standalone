@@ -35,6 +35,13 @@ mkDep {
   };
   configureFlags = [
     "--disable-readline"
+    # autosetup defaults to NO SONAME on libsqlite3.so. Without an
+    # SONAME the linker stamps consumers (PHP's sqlite3.so / pdo_sqlite.so)
+    # with DT_NEEDED=libsqlite3.so (the file basename), and finalize's
+    # soname→storeName map has no entry for the unversioned basename —
+    # the RPATH audit fails. "legacy" restores the historical
+    # libsqlite3.so.0 SONAME that autotools 3.47.x emitted by default.
+    "--soname=legacy"
   ];
   postInstallCleanup = [ "bin" ];
   auditLibs = [ "libsqlite3" ];
