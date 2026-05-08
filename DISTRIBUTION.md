@@ -19,10 +19,11 @@ at the blob layer and all immutable once published:
 
 1. **Interpreter** — a tarball plus closure manifest for a complete
    PHP install (`bin/php` + always-shipped extensions + `store/`
-   seed). One per (PHP version × platform × TS-flavor).
+   seed). One per (PHP version × target × flavor), where flavor =
+   thread-safety × debug-build.
 2. **Extension** — a closure manifest plus a `.so` tarball for a
    single extension built against a single PHP ABI. One per
-   (extension × extension-version × PHP minor × platform × TS-flavor).
+   (extension × extension-version × PHP minor × target × flavor).
 3. **Store-path blob** — a tarball containing exactly one
    `<name>-<version>-<hash>/` store directory (a bundled C library
    closure node). Referenced by hash from any number of interpreter
@@ -30,14 +31,55 @@ at the blob layer and all immutable once published:
 
 Tags:
 
-- Interpreter: `php-<version>-<os>-<arch>-<libc>-<ts>`
-  (e.g. `php-8.3.12-linux-x86_64-glibc-nts`).
-- Extension: `<ext>-<extver>+php<minor>-<os>-<arch>-<libc>-<ts>`
-  (e.g. `xdebug-3.5.1+php83-linux-x86_64-glibc-nts`). The `+` is a
-  deliberate parser cue distinguishing extension version from PHP
-  ABI.
+- Interpreter: `php-<version>-<target>-<flavor>`
+  (e.g. `php-8.3.12-x86_64-unknown-linux-gnu-nts`).
+- Extension: `<ext>-<extver>+php<minor>-<target>-<flavor>`
+  (e.g. `xdebug-3.5.1+php83-x86_64-unknown-linux-gnu-nts`). The `+`
+  is a deliberate parser cue distinguishing extension version from
+  PHP ABI.
 - Store-path blob: `<name>-<version>-<hash>` where `<hash>` is the
   derivation hash from `DESIGN.md`'s "Architectural core".
+
+`<target>` is a Rust-style target triple
+(`<arch>-<vendor>-<os>-<env>`) — the same identifier used by the
+build matrix in `.github/workflows/build.yml` and emitted into
+manifests by `tarball.nix`. It encodes `(arch, os, libc)` in a
+single token: `x86_64-unknown-linux-gnu` is x86_64 Linux glibc,
+`x86_64-unknown-linux-musl` is x86_64 Linux musl,
+`aarch64-apple-darwin` is Apple Silicon macOS. Using the triple
+instead of separate `os`/`arch`/`libc` fields keeps the tag
+unambiguous and matches existing tooling in the build pipeline.
+
+Two facets *not* encoded by the triple are surfaced separately:
+
+- **`libc_min`** — minimum glibc/musl version the artifact targets
+  (the manylinux-style symbol floor). Not part of the triple
+  because the triple identifies the libc *family*, not the version
+  the binary was linked against.
+- **`<flavor>`** — PHP build flavor, encoding both thread-safety
+  and debug-vs-release. Part of the tag but not the triple, since
+  target triples don't carry language-runtime build modes.
+
+`<flavor>` takes one of four values:
+
+| flavor       | thread-safe | debug | typical use |
+|--------------|-------------|-------|-------------|
+| `nts`        | no          | no    | default; CLI/FPM workloads |
+| `nts-debug`  | no          | yes   | extension developers, leak hunting |
+| `zts`        | yes         | no    | embedded scenarios needing TS |
+| `zts-debug`  | yes         | yes   | TS extension development |
+
+Debug is a real ABI axis (not a packaging detail) because PHP's
+`ZEND_MODULE_API_NO` differs between debug and non-debug builds —
+an extension built against a debug interpreter will not load into
+a non-debug interpreter of the same version, and vice versa. The
+flavor token is part of the tag so resolution can match without
+parsing the manifest.
+
+Most published artifacts will be `nts`. The `*-debug` variants are
+optional; whether the official channel ships them is a packaging
+decision, but the protocol must support them so third-party
+indices and developer-built artifacts have a place in the schema.
 
 ## Server layout
 
@@ -46,13 +88,14 @@ The tree is split across two hostnames served by the same origin
 
 ```
 https://index.example.com/                         # CDN-fronted, JSON only
-  index.json                                       # root manifest
-  sections/
-    interpreter/php.json                           # all PHP runtimes
-    extension/<name>.json                          # one per extension name
-  manifests/
-    php/<version>/<tag>.json                       # interpreter manifest
-    ext/<name>/<extver>/<tag>.json                 # extension manifest
+  index.json                                       # root: per-target section dispatch
+  targets/<target>/
+    sections/
+      interpreter/php.json                         # this target's PHP runtimes
+      extension/<name>.json                        # this target's extension X
+    manifests/
+      php/<version>/<tag>.json                     # interpreter manifest
+      ext/<name>/<extver>/<tag>.json               # extension manifest
 
 https://blobs.example.com/                         # direct origin, no CDN
   blobs/
@@ -64,20 +107,30 @@ the index generator emits these at publish time. Clients never need
 to know the split is two domains — they just follow URLs from the
 manifest.
 
-Four properties this layout enforces:
+Five properties this layout enforces:
 
-- **Per-extension partitioning.** Publishing a new version of
-  `xdebug` rewrites exactly `sections/extension/xdebug.json` and the
-  root `index.json`. No other section changes; clients tracking other
-  extensions skip the section refetch entirely.
+- **Per-target partitioning.** Section files live under
+  `targets/<target>/`, and the root's section dispatch is grouped
+  by target. A client running on `x86_64-unknown-linux-gnu` reads
+  only its target's slice of the root and only ever fetches
+  section files under its own target prefix.
+- **Per-extension partitioning.** Within a target, publishing a new
+  version of `xdebug` rewrites exactly that target's
+  `sections/extension/xdebug.json`, plus the root's per-target
+  hash entry for that section. No other section changes; clients
+  tracking other extensions skip the section refetch entirely.
 - **Content-addressed blobs.** Tarballs live under `blobs/` keyed by
   sha256, never by tag. Re-uploading a bit-identical artifact is a
   no-op; CDN cache keys are stable across rebuilds; per-store-path
   dedup at the local store has a one-to-one server-side counterpart.
+  Blobs are shared across targets (a blob is content-addressed; if
+  two targets happen to produce a bit-identical blob, the dedup
+  applies).
 - **Manifests are addressable but enumerated through sections.** The
-  manifest JSON files at `manifests/.../<tag>.json` are reachable by
-  URL but the source of truth for "what manifests exist" is the
-  section index. Clients never list directories.
+  manifest JSON files at `targets/<target>/manifests/.../<tag>.json`
+  are reachable by URL but the source of truth for "what manifests
+  exist" is the per-target section index. Clients never list
+  directories.
 - **Index/blob domain separation.** Indexes are small, frequent, and
   latency-sensitive (CDN-friendly); blobs are large, infrequent,
   and bandwidth-dominated (CDN-irrelevant and TOS-encumbered on
@@ -86,50 +139,73 @@ Four properties this layout enforces:
 
 ## Root manifest (`index.json`)
 
-Small, ETagged, always re-fetched on sync:
+Small, ETagged, always re-fetched on sync. Carries one section
+dispatch table per supported target:
 
 ```json
 {
   "schema": 1,
   "generated": "2026-05-08T12:00:00Z",
-  "sections": {
-    "interpreter/php":    {"sha256": "ab12…", "size": 41280},
-    "extension/xdebug":   {"sha256": "cd34…", "size":  5120},
-    "extension/redis":    {"sha256": "ef56…", "size":  4900},
-    "extension/imagick":  {"sha256": "0a1b…", "size":  6400}
+  "targets": {
+    "x86_64-unknown-linux-gnu": {
+      "sections": {
+        "interpreter/php":    {"sha256": "11aa…", "size": 7280},
+        "extension/xdebug":   {"sha256": "22bb…", "size": 1120},
+        "extension/redis":    {"sha256": "33cc…", "size":  900},
+        "extension/imagick":  {"sha256": "44dd…", "size": 1400}
+      }
+    },
+    "aarch64-apple-darwin": {
+      "sections": { … }
+    }
   },
   "signature": "…"
 }
 ```
 
-The `sections` map is the dispatch table. Section names are stable
-(`extension/<name>` does not move). Hashes are over the section
-file's exact bytes, computed at publish time by the index generator.
+The `targets` map is the dispatch table. Target keys are stable
+(target triples are not renamed). Section names within each target
+are also stable. Hashes are over each section file's exact bytes,
+computed at publish time by the index generator.
 
-The root file's expected size at full saturation: ~50 entries × ~80
-bytes per row ≈ 4 KB. It stays small no matter how many extension
-versions or PHP versions exist, because it indexes *names*, not
-artifacts.
+Section URLs are not stored in the root — clients construct them
+from the documented path scheme:
+
+```
+targets/<target>/sections/<section>.json
+```
+
+This keeps the root smaller and makes the path scheme part of the
+protocol rather than per-publish data.
+
+Root file size at full saturation: ~6 targets × ~50 sections × ~80
+bytes per row ≈ 24 KB. Still small enough to refetch every sync;
+ETag-based 304s on the unchanged case keep wire cost near zero.
+
+A client only reads its own target's sub-map; the other targets'
+entries pass through untouched (the signature still covers them).
 
 ## Section index (per extension, plus one for interpreters)
 
-Each section enumerates every artifact for one name. Example
-`sections/extension/xdebug.json`:
+Each section enumerates every artifact for one name *within one
+target*. Example
+`targets/x86_64-unknown-linux-gnu/sections/extension/xdebug.json`:
 
 ```json
 {
   "schema": 1,
   "name": "xdebug",
   "kind": "extension",
+  "target": "x86_64-unknown-linux-gnu",
   "artifacts": [
     {
-      "tag": "xdebug-3.5.1+php83-linux-x86_64-glibc-nts",
+      "tag": "xdebug-3.5.1+php83-x86_64-unknown-linux-gnu-nts",
       "version": "3.5.1",
       "abi": {"php": "8.3", "zend_module_api_no": "20230831", "ts": false, "debug": false},
-      "platform": {"os": "linux", "arch": "x86_64",
-                   "libc": "glibc", "libc_min": "2.17"},
+      "flavor": "nts",
+      "libc_min": "2.17",
       "manifest": {
-        "url": "../../manifests/ext/xdebug/3.5.1/xdebug-3.5.1+php83-linux-x86_64-glibc-nts.json",
+        "url": "../../manifests/ext/xdebug/3.5.1/xdebug-3.5.1+php83-x86_64-unknown-linux-gnu-nts.json",
         "sha256": "…"
       },
       "yanked": false,
@@ -140,11 +216,20 @@ Each section enumerates every artifact for one name. Example
 }
 ```
 
+The section's `target` is implicit in its location and stated
+explicitly in the file for self-description; per-row `target` would
+be redundant and is omitted. Per-row `flavor` remains because a
+single target still has up to four flavors.
+
 The section is the level at which the CLI does artifact resolution.
-Given an `(extension, php-minor, platform)` triple and the section
-index, picking the right manifest is a single linear scan over a few
-hundred rows at most — fast enough that no further indexing is
-needed inside a section.
+Given a `(php-minor, flavor)` tuple (target is already fixed by the
+section's location) and the section index, picking the right
+manifest is a single linear scan over a few dozen rows. The CLI
+determines its host's target triple at startup (matching how
+`rustup` resolves toolchains) and reads the running interpreter's
+flavor from `php -i` (`Thread Safety`, `Debug Build`); within the
+target's section, rows are filtered by exact-match on `flavor` and
+`abi.php`.
 
 The manifest itself (per `DESIGN.md`'s closure-coherence model) is
 what links an extension to its `.so` blob and its store-path
@@ -169,43 +254,57 @@ Name-partitioning aligns with how the CLI consumes the index
 (`composer.json` lists extensions, not PHP minors), and aligns with
 the publishing cadence (one extension at a time gets updated).
 
-The interpreter section stays single-file — there's only one
-"interpreter name" in the system, and PHP version × platform fan-out
-is small enough (a few dozen entries) that further partitioning is
-not worth the protocol complexity.
+The interpreter section stays single-file per target — there's
+only one "interpreter name" in the system, and within a target the
+PHP version × flavor fan-out is small enough (a few dozen entries)
+that further partitioning is not worth the protocol complexity.
 
 ## Client update protocol
 
 ```
 sync():
-    root = GET /dist/index.json   with If-None-Match: <cached etag>
-    if 304: return                 # nothing changed at all
+    # Tier 1: root
+    root = GET /index.json   with If-None-Match: <cached etag>
+    if 304: return           # nothing changed at all
 
-    for (section_name, meta) in root.sections:
-        cached = local_section_cache[section_name]
+    target_entry = root.targets[host_target]
+    if target_entry is None:
+        fail "no published artifacts for {host_target}"
+
+    # Tier 2: sections (only fetch what the user resolves against;
+    # see "lazy section fetching" below)
+    for (section_name, meta) in target_entry.sections:
+        cached = local_cache.sections[host_target][section_name]
         if cached and cached.sha256 == meta.sha256:
-            continue              # this section unchanged
-        body = GET /dist/sections/<section_name>.json
+            continue
+        body = GET targets/<host_target>/sections/<section_name>.json
         verify sha256(body) == meta.sha256
-        local_section_cache[section_name] = (body, meta.sha256)
-
-    persist(local_section_cache)
+        local_cache.sections[host_target][section_name] = (body, meta.sha256)
 ```
 
 Properties:
 
 - **First sync**: one root + N section fetches, where N is the
-  number of distinct names. ~1 round trip per extension the user
-  cares about (assuming the CLI lazily fetches sections only on
-  resolution; see below).
-- **Steady-state sync**: one root fetch + zero section fetches when
-  nothing changed, or one section fetch per upstream publish event.
+  number of distinct names the client cares about. The other
+  targets' section files are never fetched.
+- **Steady-state sync**: one root revalidation. If the root's
+  ETag matches, done. If it changed, the client diffs section
+  hashes within its own target sub-map and refetches only changed
+  sections. Other targets' hashes change unobservably to this
+  client.
+- **Cross-target isolation in the wire path.** A publish that
+  only touches `aarch64-apple-darwin` causes the root to change
+  (its darwin sub-map's hashes bump), but an `x86_64-linux`
+  client's section hashes within `targets[x86_64-unknown-linux-gnu]`
+  are byte-identical to before, so the client fetches no section
+  files. The root itself is the only ~24 KB that crosses the wire
+  in that case.
 - **No directory listings.** The root is the only enumeration
-  surface; section files are the only fan-out surface.
-- **No range requests, no deltas.** Section files are small enough
-  (~few KB) that whole-file refetch on change is cheaper than
-  maintaining a delta protocol. The two-tier hash structure is what
-  bounds the cost, not byte-level deltas inside a section.
+  surface.
+- **No range requests, no deltas.** Section files are small
+  enough (~few KB) that whole-file refetch on change is cheaper
+  than maintaining a delta protocol. The hash structure is what
+  bounds the cost, not byte-level deltas inside any one file.
 
 The CLI may further optimize by **lazy section fetching**: don't
 download `extension/xdebug.json` until the user actually asks for
@@ -347,7 +446,7 @@ A published artifact can be yanked but never deleted (deletion would
 break reproducibility for users who pinned to it):
 
 ```json
-{ "tag": "xdebug-3.5.1+php83-…", "yanked": true,
+{ "tag": "xdebug-3.5.1+php83-x86_64-unknown-linux-gnu-nts", "yanked": true,
   "yanked_reason": "regression in coverage driver", … }
 ```
 
@@ -365,10 +464,10 @@ The CLI:
 The trust chain runs root-down:
 
 - Root `index.json` is signed (Sigstore / cosign). The signature
-  covers the entire root file, and therefore covers every section's
-  expected sha256 transitively.
+  covers the entire root file, including every target's per-section
+  hash table.
 - Sections are not independently signed — their integrity comes
-  from the root's section hashes.
+  from the root's `targets[<target>].sections[<name>].sha256`.
 - Manifests are not independently signed — their integrity comes
   from the section's manifest sha256.
 - Blobs are not independently signed — their integrity comes from
@@ -386,16 +485,21 @@ concern.
 
 ## Failure modes and recovery
 
+- **Unknown host target.** The root has no entry for the client's
+  target triple. CLI reports this clearly with the list of
+  available targets; not a sync failure, but resolution can't
+  proceed.
 - **Stale section cache after server-side rewrite.** The hash check
-  during section fetch surfaces it; the CLI invalidates and refetches.
+  during section fetch surfaces it; the CLI invalidates and
+  refetches.
 - **Blob URL 404.** Indicates index/blob desync (a manifest
   referenced a blob the publisher forgot to upload). The CLI
   reports the failure with both the manifest URL and the missing
   blob hash; recovery is server-side.
 - **Root signature failure.** The CLI refuses the entire sync and
   retains its previous local index state. No partial application.
-- **Section sha256 mismatch.** Same — refuse, retain previous state,
-  surface the hash divergence to the user.
+- **Section sha256 mismatch.** Same — refuse, retain previous
+  state, surface the hash divergence to the user.
 
 ## Generator responsibilities
 
@@ -403,15 +507,15 @@ The index generator is a single script that runs in CI per publish
 event:
 
 1. Walk the set of published artifacts (interpreter manifests,
-   extension manifests).
-2. Group manifests by section name (`interpreter/php`,
-   `extension/<name>`).
-3. For each section, emit a section JSON file; record its sha256.
-4. Emit `index.json` from the section hash table.
-5. Sign `index.json`.
-6. `rsync` the changed files (sections, manifests, new blobs, root)
-   to the Hetzner origin, writing the root last so observers never
-   see a root pointing at a section that hasn't landed yet.
+   extension manifests). Each carries a target triple.
+2. For each `(target, section name)`, group its artifacts and emit
+   a section JSON file at
+   `targets/<target>/sections/<section>.json`; record its sha256.
+3. Emit `index.json` from the per-target section-hash tables.
+4. Sign `index.json`.
+5. `rsync` the changed files to the origin, writing the root last
+   so observers never see a root pointing at a section file that
+   hasn't landed yet.
 
 The generator is deterministic on its inputs: same artifact set, byte-
 identical index. This matters for the audit trail — comparing two
@@ -426,11 +530,6 @@ generations of the index is a meaningful diff, not a noise diff.
   ETag so clients revalidate cheaply via 304s. Cloudflare honors
   these directly on the index domain; the blob origin honors them
   for downstream HTTP caches.
-- **Per-architecture filtering.** The current section format
-  enumerates all platforms in one file. If extension fan-out grows
-  (every ext × every PHP minor × ~6 platforms), the per-section
-  size could justify a second axis (e.g. `extension/xdebug/<os>.json`).
-  Not needed at projected scale; flagged for future revisit.
 - **Origin backups.** Blobs are reproducible from the build pipeline
   (re-derivable from source + recipe), so backup-of-record is the
   artifact build outputs, not the origin disk. Origin disk loss
