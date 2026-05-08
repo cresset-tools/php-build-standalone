@@ -2,8 +2,8 @@
 
 A relocatable, dynamically-linked PHP build with bundled C dependencies and
 [`$ORIGIN`-based RPATHs](https://man7.org/linux/man-pages/man8/ld.so.8.html).
-Produces a portable `.tar.zst` consumable on a recent glibc Linux host.
-Modeled on [`python-build-standalone`](https://github.com/astral-sh/python-build-standalone)
+Produces a portable `.tar.zst` consumable on a recent glibc Linux host or
+macOS 11+ (aarch64). Modeled on [`python-build-standalone`](https://github.com/astral-sh/python-build-standalone)
 (PBS) — the substrate for [uv](https://github.com/astral-sh/uv)'s Python
 installs — but for PHP.
 
@@ -27,18 +27,27 @@ Build a specific PHP minor instead with `.#tarball-<minor>` (underscore, not dot
 — the Nix CLI treats `.` as an attribute-path separator):
 
 ```sh
-nix build .#tarball-8_1   # → php-8.1.31-x86_64-unknown-linux-gnu.tar.zst
+nix build .#tarball-8_1   # → php-8.1.31-<target>.tar.zst
 nix build .#tarball-8_2   # → 8.2.26
 nix build .#tarball-8_3   # → 8.3.14
 nix build .#tarball-8_4   # → 8.4.3
 nix build .#tarball-8_5   # → 8.5.5  (same as the default)
 ```
 
-Extract any of them anywhere, run `bin/php`.
+`<target>` is `x86_64-unknown-linux-gnu` on Linux or `aarch64-apple-darwin`
+on macOS. Extract any of them anywhere, run `bin/php`.
+
+Beyond the interpreter tarball, there's a per-extension distribution layer
+(content-addressed `store/<name>-<ver>-<hash>/` layout, per-extension `.tar.zst`
++ JSON manifest declaring the closure of bundled C-lib store paths it needs).
+xdebug is the canary: `nix build .#extension-xdebug-8_4`. `nix build .#release-bundle`
+emits the full cross-variant directory tree (`index.json` + every artifact)
+ready to rsync to a static host. See [`DESIGN.md`](DESIGN.md) for the
+distribution model.
 
 ### Host requirements
 
-The binary is dynamically linked against an old glibc. Specifically:
+**Linux** binaries are dynamically linked against an old glibc:
 
 - **Glibc 2.17 or newer** — verified with `objdump -T bin/php`, the highest
   required symbol version is `GLIBC_2.17`. That's the
@@ -58,6 +67,11 @@ The binary is dynamically linked against an old glibc. Specifically:
 The 2.17 floor comes from a clang-18 + CentOS 7 sysroot toolchain (PBS-style
 "modern compiler against old sysroot") — see [How it works](#how-it-works).
 
+**macOS** binaries target `MACOSX_DEPLOYMENT_TARGET=11.0` (Big Sur), aarch64
+only. Apple's libc is ABI-stable across releases so no sysroot is needed —
+the toolchain is a thin wrapper around nixpkgs's `clang`. `@rpath/`-relative
+`LC_RPATH` entries do the equivalent of `$ORIGIN` on Linux.
+
 ### Bundled
 
 - **PHP 8.1.31 / 8.2.26 / 8.3.14 / 8.4.3 / 8.5.5** — five separate variants,
@@ -75,7 +89,11 @@ The 2.17 floor comes from a clang-18 + CentOS 7 sysroot toolchain (PBS-style
 - 17 bundled C libraries: zlib 1.3.1, openssl 3.5.6, libxml2 2.13.5, sqlite 3.47.2,
   oniguruma 6.9.10, libsodium 1.0.20, bzip2 1.0.8, libpng 1.6.44, libjpeg-turbo 3.0.4,
   libwebp 1.4.0, freetype 2.13.3, nghttp2 1.64.0, libzip 1.10.1, ICU 75.1, libcurl 8.11.0,
-  ncurses 6.5, libedit 20240808-3.1
+  ncurses 6.5, libedit 20240808-3.1. macOS adds libiconv 1.17 (apple-sdk strips
+  the legacy iconv headers; glibc provides iconv natively). Each C library installs
+  to its own content-addressed `store/<name>-<ver>-<hash>/` subtree; PHP and the
+  extensions reference them via per-binary RPATHs that list only the deps each ELF
+  actually needs.
 
 ### Consumer-side dependency surface
 
@@ -129,22 +147,31 @@ PHP-build-standalone uses Nix as a **toolchain provider only** — pinned
 clang / lld / autotools / cmake via a `flake.nix` — but the output is a
 plain `.tar.zst` that doesn't need Nix to consume.
 
-The compiler is a wrapped `llvmPackages_18.clang-unwrapped` driving against
-a CentOS 7 sysroot (glibc 2.17, devtoolset-11 libstdc++/libgcc), assembled
-from RPMs in `php-unix/sysroot.nix`. This is the PBS trick: modern compiler,
-old C runtime — so the resulting binaries link against modern bundled deps
-but only require GLIBC_2.17 from the host.
+On Linux, the compiler is a wrapped `llvmPackages_18.clang-unwrapped`
+driving against a CentOS 7 sysroot (glibc 2.17, devtoolset-11
+libstdc++/libgcc), assembled from RPMs in `php-unix/sysroot.nix`. This is
+the PBS trick: modern compiler, old C runtime — so the resulting binaries
+link against modern bundled deps but only require GLIBC_2.17 from the host.
+On macOS, the toolchain is a thin shell wrapper around nixpkgs's `clang`
+with `MACOSX_DEPLOYMENT_TARGET=11.0`; Apple's libc is ABI-stable so no
+sysroot is needed.
+
+`mkDep.nix` is the single derivation factory; per-dep wrappers
+(`<dep>.nix`) call it with their dep list, and platform branching
+(toolchain pkg list, sysroot exports, install_name normalization on Darwin)
+lives inside `mkDep` rather than scattered across shell scripts.
 
 ```
    ┌──────────────────────────────────────────────────────────┐
    │  flake.nix (pinned via flake.lock)                       │
-   │    stdenvNoCC + clang-18 wrapper + CentOS 7 sysroot      │
+   │    Linux: clang-18 wrapper + CentOS 7 sysroot            │
+   │    Darwin: nixpkgs clang + MACOSX_DEPLOYMENT_TARGET=11.0 │
    └──────────────────────────────────────────────────────────┘
                             │
                             ▼
    ┌──────────────────────────────────────────────────────────┐
-   │  Per-dep derivations (17 of them, each in own /nix/store)│
-   │    build-<dep>.sh + <dep>.nix → .so files in $out/lib/   │
+   │  Per-dep derivations (17 + libiconv on Darwin)           │
+   │    build-<dep>.sh + <dep>.nix → $out/lib/<dep>.{so,dylib}│
    └──────────────────────────────────────────────────────────┘
                             │
                             ▼
@@ -162,14 +189,20 @@ but only require GLIBC_2.17 from the host.
                             │
                             ▼
    ┌──────────────────────────────────────────────────────────┐
-   │  tree.nix: merge all per-dep $outs into one install/     │
-   │    finalize.sh: strip + patchelf RPATHs to $ORIGIN/../lib│
-   │                 detoxify .pc files + audit gates         │
+   │  tree.nix: merge per-dep $outs into one install/         │
+   │    bundled C deps → install/store/<name>-<ver>-<hash>/   │
+   │    php + extensions → install/{bin,lib,etc,include}/     │
+   │  finalize-{linux,darwin}.sh:                             │
+   │    strip → patchelf/install_name → per-binary RPATHs     │
+   │    → .pc detoxify → audit gates                          │
    └──────────────────────────────────────────────────────────┘
                             │
                             ▼
    ┌──────────────────────────────────────────────────────────┐
-   │  tarball.nix: tar + zstd + JSON metadata                 │
+   │  tarball.nix          → interpreter .tar.zst + JSON      │
+   │  tarball-extension.nix → per-extension .tar.zst + manifest│
+   │  tarball-store-path.nix → per-store-path .tar.zst        │
+   │  index.nix            → cross-variant index.json         │
    └──────────────────────────────────────────────────────────┘
 ```
 
@@ -205,20 +238,35 @@ Current patch set:
 | 0006 | `@81-99` | `sapi/fpm/fpm/fpm_conf.c`: relocate PHP_PREFIX / PHP_SYSCONFDIR |
 | 0007 | `@81-81` | `configure`: bump intl's C++ standard probe from `c++11` to `c++17` (ICU 75 needs it; 8.2+ auto-detects via pkg-config) |
 
-### Audit gates (in `php-unix/finalize.sh`)
+### Audit gates
 
-The tarball can't ship until all five pass:
+`php-unix/finalize-linux.sh` and `finalize-darwin.sh` both source
+`finalize-common.sh` for shared phases (`.la` / `.pc` detoxify, text-file
+`/nix/store` scrub, phpize/php-config sentinel rewrite). The tarball can't
+ship until every gate passes.
 
-- **A**: no `/nix/store` paths in any text file
+Linux gates:
+
+- **A** (common): no `/nix/store` paths in any text file
 - **B**: no `DT_RUNPATH` (only `DT_RPATH`, immune to `LD_LIBRARY_PATH`)
-- **C**: every RPATH is exactly `$ORIGIN/../lib`
+- **C**: every RPATH is `$ORIGIN`-relative
 - **D-pre**: `DT_NEEDED` entries are bare sonames, never absolute paths
 - **D**: dynamically-linked executables have `.interp = /lib64/ld-linux-x86-64.so.2`
+- **E**: every `DT_NEEDED` soname actually resolves through the encoded
+  RPATH (catches "RPATH set but pointing at the wrong store path")
 
-## v1 limitations
+Darwin runs the analogous walks (`@rpath`-relative `LC_RPATH` audit, no
+absolute `LC_LOAD_DYLIB` paths, codesign verification) plus the same
+text-file gate.
 
-- **`phpinfo()` Configuration File Path display** still shows the build-time
-  path (cosmetic; the actual ini search resolves correctly via `bin/php --ini`).
+## Limitations
+
+- **`phpinfo()` build-time path display** shows the sentinel
+  `/__PBS_PREFIX__/etc/php` rather than the resolved runtime path. Cosmetic
+  — the actual ini search and `php --ini` output resolve through
+  `/proc/self/exe` correctly. The sentinel is the same one used in
+  `bin/phpize` / `bin/php-config` and downstream-consumed text files; it's
+  preserved in the binary's rodata so no `/nix/store` build paths leak.
 - **No CA bundle baked in** — built with `--without-ca-bundle --with-ca-fallback`.
   Code that needs explicit trust roots passes `CURLOPT_CAINFO` or sets
   `openssl.cafile` ini.
@@ -232,32 +280,55 @@ The tarball can't ship until all five pass:
 
 ```
 flake.nix                      fans out one variant per phpVersions entry;
-                               outputs: tarball-<minor>, tree-<minor>,
-                               php-<minor>, xdebug-<minor>, plus shared deps
+                               outputs per minor: tarball-<m>, tree-<m>,
+                               php-<m>, xdebug-<m>, closures-<m>,
+                               extension-xdebug-<m>, storePath-<dep>-<m>,
+                               release-<m>; plus index, release-bundle
 flake.lock                     pinned nixpkgs revision
-php-unix/
-  sources.nix                  shared dep sources + phpVersions /
-                               xdebugVersions / latestPhp maps
-  sysroot.nix                  CentOS 7 RPM-based glibc-2.17 sysroot
-  clang-toolchain.nix          wrapped clang-18 + lld targeting the sysroot
-  toolchain.nix                pkgs in nativeBuildInputs
-  setup-env.sh                 sourced by every build-*.sh
-  mkDep.nix                    derivation factory
-  build-<dep>.sh               per-dep configure/make/install
-  <dep>.nix                    calls mkDep with deps list
-  patches/                     range-suffixed PHP source patches
-                               (NNNN-name@LO-HI.patch — auto-dispatched)
-  prepare-php.sh               dispatches patches + drops main/pbs_relocate.h
-  build-php.sh                 configures + builds PHP
-  build-xdebug.sh              builds xdebug via the shipped phpize
-  tree.nix                     merges per-dep $outs, runs finalize.sh
-  finalize.sh                  strip → patchelf → detoxify → audit
-  tarball.nix                  tar + zstd + JSON metadata
+DESIGN.md                      content-addressed store + extension
+                               distribution model
+php-unix/                      single source tree; platform branching is
+                               on the Nix side (mkDep.nix, php.nix)
+  sources.nix                    per-dep {url, sha256, version} +
+                                 phpVersions / xdebugVersions / latestPhp
+  sysroot.nix                    CentOS 7 RPM-based glibc-2.17 sysroot (Linux)
+  clang-toolchain.nix            wrapped clang-18 + lld targeting sysroot
+  toolchain-darwin.nix           thin nixpkgs-clang wrapper (Darwin)
+  toolchain.nix                  Linux build-tool pkg list
+  toolchain-pkgs-darwin.nix      Darwin build-tool pkg list
+  setup-env-linux.sh             Linux CC/CXX/LDFLAGS/PBS_SYSROOT exports
+  setup-env-darwin.sh            Darwin equivalents (no sysroot)
+  mkDep.nix                      derivation factory; threads toolchain +
+                                 platform branches
+  build-<dep>.sh                 per-dep configure/make/install (OS-agnostic
+                                 where possible)
+  <dep>.nix                      calls mkDep with deps list
+  patches/                       range-suffixed PHP source patches
+                                 (NNNN-name@LO-HI.patch — auto-dispatched)
+  prepare-php.sh                 dispatches patches + drops main/pbs_relocate.h
+  build-php.sh                   configures + builds PHP, detoxifies
+                                 build-defs.h before compile
+  build-php-pre-configure-{linux,darwin}.sh  platform pre-configure snippets
+  build-php-post-install-{darwin,noop}.sh    Darwin libresolv install_name fix
+  build-php-audit-extra-{linux,noop}.sh      Linux DT_NEEDED bare-soname check
+  php.nix                        calls mkDep with all deps + extraEnv
+  build-xdebug.sh                builds xdebug via the shipped phpize
+  xdebug.nix                     calls mkDep with deps=[php]
+  tree.nix                       merges per-dep $outs, runs finalize driver
+  finalize-common.sh             shared .la/.pc/text detoxify + phpize rewrite
+  finalize-linux.sh              strip → patchelf → audits A–E
+  finalize-darwin.sh             install_name + LC_RPATH walks + codesign
+  closure.nix                    walks finalized tree, emits closures.json
+  tarball.nix                    interpreter .tar.zst + JSON metadata
+  tarball-extension.nix          per-extension .tar.zst + manifest
+  tarball-store-path.nix         per-store-path .tar.zst + .sha256
+  index.nix                      cross-variant index.json (interpreters +
+                                 extensions + store_paths)
 tests/
-  distros.txt                  expected pass/fail per distro image
-  run-matrix.sh                extract once, mount RO into each container
-                               (PHP_TARBALL=path overrides the default lookup)
-  smoke.sh                     POSIX-sh per-container smoke gates
+  distros.txt                    expected pass/fail per distro image
+  run-matrix.sh                  extract once, mount RO into each container
+                                 (PHP_TARBALL=path overrides default lookup)
+  smoke.sh                       POSIX-sh per-container smoke gates
 ```
 
 ## Acknowledgments
