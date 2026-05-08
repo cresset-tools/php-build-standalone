@@ -17,11 +17,22 @@
 #   - readline is on-by-default and still uses --disable-readline.
 # We pass only --disable-readline; bin/ is dropped because PHP doesn't
 # ship the sqlite3 CLI.
+#
+# LD: autosetup's `cc-check-tools ld ar` step hard-errors if no `ld`
+# binary is reachable. The Linux toolchain ships `ld` (a symlink to
+# lld), but the Darwin toolchain doesn't — clang invokes the system
+# linker directly via its driver. Setting LD=$CC satisfies the
+# configure-time probe on both platforms; sqlite's Makefile.in actually
+# uses CC for the link step, so the value of LD is purely cosmetic at
+# build time.
 { mkDep }:
 mkDep {
   name = "sqlite";
   builder = "autotools";
   srcGlob = "sqlite-autoconf-*";
+  extraEnv = {
+    LD = "$CC";
+  };
   configureFlags = [
     "--disable-readline"
   ];
