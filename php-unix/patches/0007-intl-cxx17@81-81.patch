@@ -22,11 +22,12 @@
 # is no second site to disambiguate against.
 --- a/configure
 +++ b/configure
-@@ -48754,7 +48754,7 @@
-
-
--  ax_cxx_compile_alternatives="11 0x"  ax_cxx_compile_cxx11_required=truednl
-+  ax_cxx_compile_alternatives="17 0x"  ax_cxx_compile_cxx11_required=truednl
+@@ -49618,7 +49618,7 @@
+   e)
+     { printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: no" >&5
+ printf "%s\n" "no" >&6; }
+-      ax_cxx_compile_alternatives="11 0x"  ax_cxx_compile_cxx11_required=truednl
++      ax_cxx_compile_alternatives="17 0x"  ax_cxx_compile_cxx11_required=truednl
    ac_ext=cpp
  ac_cpp='$CXXCPP $CPPFLAGS'
  ac_compile='$CXX -c $CXXFLAGS $CPPFLAGS conftest.$ac_ext >&5'
