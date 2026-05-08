@@ -16,9 +16,9 @@
 
 {
   zlib = {
-    url = "https://github.com/madler/zlib/releases/download/v1.3.1/zlib-1.3.1.tar.gz";
-    sha256 = "9a93b2b7dfdac77ceba5a558a580e74667dd6fede4585b91eefb60f03b72df23";
-    version = "1.3.1";
+    url = "https://github.com/madler/zlib/releases/download/v1.3.2/zlib-1.3.2.tar.gz";
+    sha256 = "bb329a0a2cd0274d05519d61c667c062e06990d72e125ee2dfa8de64f0119d16";
+    version = "1.3.2";
   };
 
   # OpenSSL 3.5.x is the current LTS line (supported through 2030). PBS
@@ -32,17 +32,17 @@
   # libxml2 — foundational for dom/xml/xmlreader/xmlwriter/simplexml
   # extensions. Use the 2.13.x stable line. PHP 8.4 requires >= 2.9.4.
   libxml2 = {
-    url = "https://download.gnome.org/sources/libxml2/2.13/libxml2-2.13.5.tar.xz";
-    sha256 = "74fc163217a3964257d3be39af943e08861263c4231f9ef5b496b6f6d4c7b2b6";
-    version = "2.13.5";
+    url = "https://download.gnome.org/sources/libxml2/2.13/libxml2-2.13.9.tar.xz";
+    sha256 = "a2c9ae7b770da34860050c309f903221c67830c86e4a7e760692b803df95143a";
+    version = "2.13.9";
   };
 
   # sqlite — for pdo_sqlite. The autoconf tarball name encodes the version
   # numerically (3470200 = 3.47.2), see build-sqlite.sh.
   sqlite = {
-    url = "https://www.sqlite.org/2024/sqlite-autoconf-3470200.tar.gz";
-    sha256 = "f1b2ee412c28d7472bc95ba996368d6f0cdcf00362affdadb27ed286c179540b";
-    version = "3.47.2";
+    url = "https://www.sqlite.org/2026/sqlite-autoconf-3530100.tar.gz";
+    sha256 = "83e6b2020a034e9a7ad4a72feea59e1ad52f162e09cbd26735a3ffb98359fc4f";
+    version = "3.53.1";
   };
 
   # oniguruma — regex engine for mbstring. NOTE: the tarball extracts
@@ -55,9 +55,9 @@
 
   # libsodium — modern crypto for the sodium extension.
   libsodium = {
-    url = "https://download.libsodium.org/libsodium/releases/libsodium-1.0.20.tar.gz";
-    sha256 = "ebb65ef6ca439333c2bb41a0c1990587288da07f6c7fd07cb3a18cc18d30ce19";
-    version = "1.0.20";
+    url = "https://download.libsodium.org/libsodium/releases/libsodium-1.0.22.tar.gz";
+    sha256 = "adbdd8f16149e81ac6078a03aca6fc03b592b89ef7b5ed83841c086191be3349";
+    version = "1.0.22";
   };
 
   # bzip2 — for phar. Hand-rolled Makefile (not autotools); has separate
@@ -70,9 +70,9 @@
 
   # libpng — for gd extension. Depends on zlib.
   libpng = {
-    url = "https://download.sourceforge.net/libpng/libpng-1.6.44.tar.gz";
-    sha256 = "8c25a7792099a0089fa1cc76c94260d0bb3f1ec52b93671b572f8bb61577b732";
-    version = "1.6.44";
+    url = "https://download.sourceforge.net/libpng/libpng-1.6.58.tar.gz";
+    sha256 = "8c9b05b675ca7301a458df2c2e46f26e1d41ff36b8863f8c33530bc58c2e6225";
+    version = "1.6.58";
   };
 
   # libjpeg-turbo — for gd extension. cmake-based; SIMD disabled (would
@@ -80,44 +80,44 @@
   # not the TurboJPEG one — we drop libturbojpeg.so to keep the tarball
   # lean and avoid /nix/store-leak in tjbench's RPATH.
   libjpeg-turbo = {
-    url = "https://github.com/libjpeg-turbo/libjpeg-turbo/releases/download/3.0.4/libjpeg-turbo-3.0.4.tar.gz";
-    sha256 = "99130559e7d62e8d695f2c0eaeef912c5828d5b84a0537dcb24c9678c9d5b76b";
-    version = "3.0.4";
+    url = "https://github.com/libjpeg-turbo/libjpeg-turbo/releases/download/3.1.4.1/libjpeg-turbo-3.1.4.1.tar.gz";
+    sha256 = "ecae8008e2cc9ade2f2c1bb9d5e6d4fb73e7c433866a056bd82980741571a022";
+    version = "3.1.4.1";
   };
 
   # libwebp — for gd extension. Internal libsharpyuv.so also gets built
   # (since libwebp 1.3.0); finalize.sh treats it like any other .so.
   libwebp = {
-    url = "https://storage.googleapis.com/downloads.webmproject.org/releases/webp/libwebp-1.4.0.tar.gz";
-    sha256 = "61f873ec69e3be1b99535634340d5bde750b2e4447caa1db9f61be3fd49ab1e5";
-    version = "1.4.0";
+    url = "https://storage.googleapis.com/downloads.webmproject.org/releases/webp/libwebp-1.6.0.tar.gz";
+    sha256 = "e4ab7009bf0629fd11982d4c2aa83964cf244cffba7347ecd39019a9e38c4564";
+    version = "1.6.0";
   };
 
   # FreeType — for gd's TTF rendering (imagettftext et al). Depends on
   # zlib + bzip2 for compressed font tables. We disable libpng/harfbuzz/
   # brotli to keep the dep graph tractable for v1.
   freetype = {
-    url = "https://download.savannah.gnu.org/releases/freetype/freetype-2.13.3.tar.xz";
-    sha256 = "0550350666d427c74daeb85d5ac7bb353acba5f76956395995311a9c6f063289";
-    version = "2.13.3";
+    url = "https://download.savannah.gnu.org/releases/freetype/freetype-2.14.3.tar.xz";
+    sha256 = "36bc4f1cc413335368ee656c42afca65c5a3987e8768cc28cf11ba775e785a5f";
+    version = "2.14.3";
   };
 
   # nghttp2 — HTTP/2 protocol library; libcurl uses it for HTTP/2 support.
   # We build with --enable-lib-only to skip the C++ apps (nghttp/nghttpd/
   # h2load) that pull in libev/libxml2/jansson/jemalloc.
   nghttp2 = {
-    url = "https://github.com/nghttp2/nghttp2/releases/download/v1.64.0/nghttp2-1.64.0.tar.gz";
-    sha256 = "20e73f3cf9db3f05988996ac8b3a99ed529f4565ca91a49eb0550498e10621e8";
-    version = "1.64.0";
+    url = "https://github.com/nghttp2/nghttp2/releases/download/v1.69.0/nghttp2-1.69.0.tar.gz";
+    sha256 = "c866b7477cbb7512ab6863a685027adbb1bb8da8fc3bab7429ed43d3281d5aa9";
+    version = "1.69.0";
   };
 
   # libzip — for the zip extension. cmake-based; uses zlib + bzip2 +
   # openssl (the latter for AES-encrypted entries). Skips lzma/zstd
   # which we don't bundle.
   libzip = {
-    url = "https://github.com/nih-at/libzip/releases/download/v1.10.1/libzip-1.10.1.tar.gz";
-    sha256 = "9669ae5dfe3ac5b3897536dc8466a874c8cf2c0e3b1fdd08d75b273884299363";
-    version = "1.10.1";
+    url = "https://github.com/nih-at/libzip/releases/download/v1.11.4/libzip-1.11.4.tar.gz";
+    sha256 = "82e9f2f2421f9d7c2466bbc3173cd09595a88ea37db0d559a9d0a2dc60dc722e";
+    version = "1.11.4";
   };
 
   # ICU — for the intl extension. First C++ dep. We static-link libstdc++
@@ -126,9 +126,9 @@
   # build-time icupkg tool can run without LD_LIBRARY_PATH gymnastics.
   # Tarball extracts to icu/ rather than icu-<ver>/; build script renames.
   icu = {
-    url = "https://github.com/unicode-org/icu/releases/download/release-75-1/icu4c-75_1-src.tgz";
-    sha256 = "cb968df3e4d2e87e8b11c49a5d01c787bd13b9545280fc6642f826527618caef";
-    version = "75.1";
+    url = "https://github.com/unicode-org/icu/releases/download/release-77-1/icu4c-77_1-src.tgz";
+    sha256 = "588e431f77327c39031ffbb8843c0e3bc122c211374485fa87dc5f3faff24061";
+    version = "77.1";
   };
 
   # libcurl — for the curl extension. Wired with OpenSSL (TLS), nghttp2
@@ -136,18 +136,18 @@
   # are explicitly disabled so configure doesn't auto-detect host system
   # libs.
   libcurl = {
-    url = "https://curl.se/download/curl-8.11.0.tar.gz";
-    sha256 = "264537d90e58d2b09dddc50944baf3c38e7089151c8986715e2aaeaaf2b8118f";
-    version = "8.11.0";
+    url = "https://curl.se/download/curl-8.20.0.tar.gz";
+    sha256 = "fc5819cad3f9f5482669adcdc49a782c15f36d2a0715b395b06d9173593d2dc0";
+    version = "8.20.0";
   };
 
   # ncurses — terminfo/terminal-capability library; needed by libedit as its
   # terminfo backend. We bundle it so the tarball works on minimal containers
   # that lack a system ncurses (Alpine musl, Ubuntu minimal, etc.).
   ncurses = {
-    url = "https://ftp.gnu.org/gnu/ncurses/ncurses-6.5.tar.gz";
-    sha256 = "136d91bc269a9a5785e5f9e980bc76ab57428f604ce3e5a5a90cebc767971cc6";
-    version = "6.5";
+    url = "https://ftp.gnu.org/gnu/ncurses/ncurses-6.6.tar.gz";
+    sha256 = "355b4cbbed880b0381a04c46617b7656e362585d52e9cf84a67e2009b749ff11";
+    version = "6.6";
   };
 
   # libiconv — character set conversion library. Bundled on Darwin only:
@@ -159,9 +159,9 @@
   # and the resulting PHP links against our /nix-store-built libiconv,
   # which finalize then relocates to @rpath like every other dep.
   libiconv = {
-    url = "https://ftp.gnu.org/pub/gnu/libiconv/libiconv-1.17.tar.gz";
-    sha256 = "8f74213b56238c85a50a5329f77e06198771e70dd9a739779f4c02f65d971313";
-    version = "1.17";
+    url = "https://ftp.gnu.org/pub/gnu/libiconv/libiconv-1.19.tar.gz";
+    sha256 = "88dd96a8c0464eca144fc791ae60cd31cd8ee78321e67397e25fc095c4a19aa6";
+    version = "1.19";
   };
 
   # libedit — BSD editline library; provides line editing and history for
@@ -170,9 +170,9 @@
   # a PHP binary linked against it would impose GPL terms on the combined
   # work. Distros (Debian, Homebrew) make the same call.
   libedit = {
-    url = "https://thrysoee.dk/editline/libedit-20240808-3.1.tar.gz";
-    sha256 = "5f0573349d77c4a48967191cdd6634dd7aa5f6398c6a57fe037cc02696d6099f";
-    version = "20240808-3.1";
+    url = "https://thrysoee.dk/editline/libedit-20251016-3.1.tar.gz";
+    sha256 = "21362b00653bbfc1c71f71a7578da66b5b5203559d43134d2dd7719e313ce041";
+    version = "20251016-3.1";
   };
 
   # PHP version matrix. Each entry pairs a PHP major.minor with a specific
@@ -185,33 +185,33 @@
   # that floor so simplexml/dom/xml extensions build cleanly.
   phpVersions = {
     "8.1" = {
-      version = "8.1.31";
-      url = "https://www.php.net/distributions/php-8.1.31.tar.xz";
-      sha256 = "c4f244d46ba51c72f7d13d4f66ce6a9e9a8d6b669c51be35e01765ba58e7afca";
+      version = "8.1.34";
+      url = "https://www.php.net/distributions/php-8.1.34.tar.xz";
+      sha256 = "ffa9e0982e82eeaea848f57687b425ed173aa278fe563001310ae2638db5c251";
       xdebug = "3.5";
     };
     "8.2" = {
-      version = "8.2.26";
-      url = "https://www.php.net/distributions/php-8.2.26.tar.xz";
-      sha256 = "54747400cb4874288ad41a785e6147e2ff546cceeeb55c23c00c771ac125c6ef";
+      version = "8.2.31";
+      url = "https://www.php.net/distributions/php-8.2.31.tar.xz";
+      sha256 = "95eae411d594fe6f6e5678b76645dc13ae47d3c0a5325c1d969b58dea56ee45a";
       xdebug = "3.5";
     };
     "8.3" = {
-      version = "8.3.14";
-      url = "https://www.php.net/distributions/php-8.3.14.tar.xz";
-      sha256 = "58b4cb9019bf70c0cbcdb814c7df79b9065059d14cf7dbf48d971f8e56ae9be7";
+      version = "8.3.31";
+      url = "https://www.php.net/distributions/php-8.3.31.tar.xz";
+      sha256 = "66410cee07f4b2baeb0843140bb2a2b52ef930b5cf9b3d6e6d158b33aae8fa37";
       xdebug = "3.5";
     };
     "8.4" = {
-      version = "8.4.3";
-      url = "https://www.php.net/distributions/php-8.4.3.tar.xz";
-      sha256 = "5c42173cbde7d0add8249c2e8a0c19ae271f41d8c47d67d72bdf91a88dcc7e4b";
+      version = "8.4.21";
+      url = "https://www.php.net/distributions/php-8.4.21.tar.xz";
+      sha256 = "7cf5d8ab12c3b2016875bcfaec71bef1ef0b07bed6148f2c447577074431f984";
       xdebug = "3.5";
     };
     "8.5" = {
-      version = "8.5.5";
-      url = "https://www.php.net/distributions/php-8.5.5.tar.xz";
-      sha256 = "95bec382f4bd00570a8ef52a58ec04d8d9b9a90494781f1c106d1b274a3902f2";
+      version = "8.5.6";
+      url = "https://www.php.net/distributions/php-8.5.6.tar.xz";
+      sha256 = "826c600b7c6f956bd335558ca3bdbcab23b22126c1cc8d9348be2280a2204bb7";
       xdebug = "3.5";
     };
   };
