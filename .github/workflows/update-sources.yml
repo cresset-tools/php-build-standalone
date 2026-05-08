@@ -77,6 +77,12 @@ jobs:
       - name: Open / refresh pull request
         uses: peter-evans/create-pull-request@v6
         with:
+          # Default GITHUB_TOKEN is barred from triggering downstream
+          # workflows on its own pushes (anti-recursion safeguard), which
+          # would silently skip build.yml on the PR. BOT_PAT is a fine-
+          # grained PAT scoped to this repo (contents:write + PRs:write);
+          # branches it pushes trigger pull_request events normally.
+          token: ${{ secrets.BOT_PAT }}
           # Stable branch name: the action force-updates this branch on
           # subsequent runs, so a long-lived PR keeps moving forward
           # rather than the workflow opening a fresh PR every Monday.
