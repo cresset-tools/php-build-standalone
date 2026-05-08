@@ -301,16 +301,16 @@ it. Users who notice can add the entry; CI catching missing
 `php-<version>-<target>.tar.zst` + `.json` per build. Already in
 place; V2 doesn't change this.
 
-**Phase 2 (extensions):** static index, served from GitHub Pages or
-S3-equivalent. The index is a single file (`index.json` or sharded
-by PHP minor) listing every extension version + ABI + platform with
-its manifest URL. Manifests link to per-store-path tarballs by hash.
-The whole index is content-addressed at every level: paths by hash,
-artifacts by sha256, manifests immutable once published.
+**Phase 2 (extensions):** static two-tier index served from GitHub
+Pages, with blobs in object storage behind a custom domain. The
+root manifest enumerates section files keyed by name
+(`extension/<name>`, `interpreter/php`); sections enumerate
+artifacts; manifests link to per-store-path tarballs by hash. The
+whole tree is content-addressed at every level, so the CLI can
+detect what changed since its last sync via root-hash comparison
+without re-downloading the full index.
 
-The index format is small enough (extensions × PHP minors ×
-platforms ≈ low thousands of entries at full saturation) that a
-single JSON file suffices for the foreseeable future.
+Full protocol specification: `DISTRIBUTION.md`.
 
 ## Process-global C-library state
 
@@ -385,12 +385,10 @@ correctness guarantees, not a rewrite.
   enables byte-level dedup across versions (e.g. unchanged man
   pages between openssl 3.0.13 and 3.0.14). Default to single
   tarball; revisit if cold-cache install size becomes a problem.
-- **Index sharding.** When `index.json` exceeds a few MB, shard by
-  PHP minor, then by platform. The CLI reads only the shards it
-  needs.
-- **Signing.** Manifest + per-store-path artifacts should be
-  signed. Sigstore / cosign is the obvious fit; the index becomes
-  a trust anchor.
+- **Signing.** Sigstore / cosign over the root index manifest, with
+  the trust chain extending to sections, manifests, and blobs via
+  the content-addressing already specified. See `DISTRIBUTION.md`
+  for the full chain.
 - **Pre-existing system PHP coexistence.** When a user has a
   distro PHP at `/usr/bin/php` and `php-up`'s install at
   `~/.php-up/...`, mistaken cross-PATH invocations should fail
