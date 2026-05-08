@@ -7,12 +7,16 @@
 # from sources.sqlite.version, so we discover the directory via shell
 # glob.
 #
-# --disable-readline / --disable-editline: avoid configure auto-picking
-# up a host readline/editline (which would add a DT_NEEDED for
-# libreadline that our toolchain wouldn't carry).
-# --disable-tcl: harmless self-documenting flag (sqlite's TCL probe is
-# gated by --with-tcl=DIR, so this is a no-op but spells the intent).
-# bin/ is dropped because PHP doesn't ship the sqlite3 CLI.
+# Configure: sqlite >= 3.49 ships an autosetup-based ./configure (not GNU
+# autoconf). It rejects unknown options outright, so the older
+# --disable-tcl / --disable-editline spellings now fail. In autosetup:
+#   - tcl is opt-in only via --with-tcl=DIR, so omitting any flag is
+#     correct (no auto-detection of a host TCL).
+#   - editline is opt-in via --editline (default off), so we don't
+#     need to disable it.
+#   - readline is on-by-default and still uses --disable-readline.
+# We pass only --disable-readline; bin/ is dropped because PHP doesn't
+# ship the sqlite3 CLI.
 { mkDep }:
 mkDep {
   name = "sqlite";
@@ -20,8 +24,6 @@ mkDep {
   srcGlob = "sqlite-autoconf-*";
   configureFlags = [
     "--disable-readline"
-    "--disable-tcl"
-    "--disable-editline"
   ];
   postInstallCleanup = [ "bin" ];
   auditLibs = [ "libsqlite3" ];
