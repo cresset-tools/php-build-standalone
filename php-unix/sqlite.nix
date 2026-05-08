@@ -25,7 +25,8 @@
 # configure-time probe on both platforms; sqlite's Makefile.in actually
 # uses CC for the link step, so the value of LD is purely cosmetic at
 # build time.
-{ mkDep }:
+{ mkDep, pkgs }:
+let inherit (pkgs) lib stdenv; in
 mkDep {
   name = "sqlite";
   builder = "autotools";
@@ -35,12 +36,17 @@ mkDep {
   };
   configureFlags = [
     "--disable-readline"
-    # autosetup defaults to NO SONAME on libsqlite3.so. Without an
-    # SONAME the linker stamps consumers (PHP's sqlite3.so / pdo_sqlite.so)
-    # with DT_NEEDED=libsqlite3.so (the file basename), and finalize's
-    # soname→storeName map has no entry for the unversioned basename —
-    # the RPATH audit fails. "legacy" restores the historical
-    # libsqlite3.so.0 SONAME that autotools 3.47.x emitted by default.
+  ] ++ lib.optionals stdenv.isLinux [
+    # Linux only: autosetup defaults to NO SONAME on libsqlite3.so.
+    # Without one the linker stamps consumers (PHP's sqlite3.so /
+    # pdo_sqlite.so) with DT_NEEDED=libsqlite3.so (the file basename),
+    # and finalize-linux's soname→storeName map has no entry for the
+    # unversioned basename — the RPATH audit fails. "legacy" restores
+    # the libsqlite3.so.0 SONAME autotools 3.47.x emitted by default.
+    # Darwin uses Mach-O install_names instead of ELF SONAME, and
+    # autosetup hard-errors on --soname there ("This environment does
+    # not support SONAME"). The install_name is set unconditionally on
+    # Darwin, so no flag is needed.
     "--soname=legacy"
   ];
   postInstallCleanup = [ "bin" ];
