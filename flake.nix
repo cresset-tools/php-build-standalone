@@ -237,9 +237,20 @@
           # per-extension + interpreter manifests, reads .sha256 sidecars, and
           # emits a single index.json. Deduplication of store-path entries
           # across variants is enforced inside index.nix (collision = build error).
+          # frozenFiles: all *.json files under frozen/ — skips .gitkeep and
+          # any non-.json files.
+          frozenFiles =
+            let
+              frozenDir = ./frozen;
+              allFiles = pkgs.lib.filesystem.listFilesRecursive frozenDir;
+            in
+              builtins.filter
+                (f: pkgs.lib.hasSuffix ".json" (builtins.baseNameOf f))
+                allFiles;
           index = pkgs.callPackage ./php-unix/index.nix {
             releases = allReleases;
             yanksFile = ./yanks.json;
+            inherit frozenFiles;
           };
 
           # release-bundle: the full publishable distribution tree, produced
@@ -296,6 +307,14 @@
           rsync-publish-tree = mkApp "rsync-publish-tree"
             (with pkgs; [ rsync openssh coreutils ])
             ./scripts/rsync-publish-tree.sh;
+
+          freeze-publish-entries = mkApp "freeze-publish-entries"
+            (with pkgs; [ bash coreutils curl jq findutils ])
+            ./scripts/freeze-publish-entries.sh;
+
+          lint-frozen-coverage = mkApp "lint-frozen-coverage"
+            (with pkgs; [ bash coreutils git nix jq ])
+            ./scripts/lint-frozen-coverage.sh;
         });
 
       # Hacking shell. Same toolchain as the derivations consume, but

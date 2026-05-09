@@ -60,6 +60,18 @@ concurrency:
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
+  lint-frozen-coverage:
+    name: lint frozen coverage
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Install Nix
+        uses: DeterminateSystems/determinate-nix-action@v3
+      - name: Run lint
+        run: nix run .#lint-frozen-coverage
+
   build-tarball:
     name: build PHP ${{ matrix.php }} (${{ matrix.target }})
     runs-on: ${{ matrix.os }}

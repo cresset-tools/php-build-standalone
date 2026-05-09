@@ -448,6 +448,46 @@ diff between two publishes is meaningful.
 - The root `generated` timestamp is informational; the section
   hashes are what gates client behavior.
 
+## Frozen artifacts
+
+Frozen artifacts are older interpreter and extension builds that are no longer
+produced by the active build matrix but remain installable from the index. The
+primary cases are patch-version supersession (8.1.31 is replaced by 8.1.32 —
+users with an 8.1.31 lockfile must still be able to reproduce their
+environment) and minor-version EOL (when the 8.1 build matrix row is retired,
+all 8.1.x builds must remain reachable).
+
+Per-minor frozen manifests live in `frozen/php-<minor>.json`. Each file
+carries a `schema`, `minor`, and an `entries` array. Each entry records the
+full `section_entry` (the row that appears in the section's `artifacts[]`
+array, minus `frozen: true` which the generator adds) and the full `manifest`
+body verbatim. The `manifest` body carries a `{BLOB_BASE}` placeholder just as
+it was emitted at build time, so the frozen file is self-contained and the
+publish tree is complete even after the build matrix drops the minor.
+
+The workflow for a patch bump is:
+
+1. Before editing `sources.nix`, freeze the about-to-be-superseded patch:
+   ```sh
+   nix run .#freeze-publish-entries -- 'php-8.1.31-*' 'xdebug-*+php81-*' \
+     --reason 'superseded by 8.1.32'
+   git add frozen/php-8.1.json && git commit
+   ```
+2. Bump the version in `sources.nix` and commit as usual.
+
+The `lint-frozen-coverage` CI job (runs on every PR and push to `main`)
+enforces this ordering: if `sources.nix` has been bumped relative to
+`origin/main` but the prior patch has no frozen entry, the lint fails with a
+clear message and the exact freeze command to run.
+
+Frozen differs from yanked: a yanked artifact is one the operator wants users
+to avoid (it carries a regression or security issue). A frozen artifact is one
+that has simply been superseded and will receive no further security updates —
+it is still installable by users who have it pinned, and `php-up` treats it
+identically to any other artifact during lockfile replay. The CLI may surface
+the `frozen` flag as an informational note when the artifact resolves during
+fresh (non-lockfile) resolution.
+
 ## Yanking
 
 A published artifact can be yanked but never deleted (deletion would
@@ -516,12 +556,17 @@ event:
 
 1. Walk the set of published artifacts (interpreter manifests,
    extension manifests). Each carries a target triple.
-2. For each `(target, section name)`, group its artifacts and emit
-   a section JSON file at
-   `targets/<target>/sections/<section>.json`; record its sha256.
-3. Emit `index.json` from the per-target section-hash tables.
-4. Sign `index.json`.
-5. `rsync` the new index tree to a fresh versioned directory on the
+2. For each `(target, section name)`, group its artifacts.
+   2a. Splice frozen-file entries: for each `frozen/php-<minor>.json`,
+       write each entry's manifest body to its `manifest_relative_path`
+       under `targets/<target>/`, and add the `section_entry` (augmented
+       with `frozen: true`) to the appropriate section accumulator.
+       Fails if any tag appears in both a live build and a frozen file.
+3. Emit a section JSON file at `targets/<target>/sections/<section>.json`
+   for each `(target, section name)` group; record its sha256.
+4. Emit `index.json` from the per-target section-hash tables.
+5. Sign `index.json`.
+6. `rsync` the new index tree to a fresh versioned directory on the
    origin, then atomically flip the live `/srv/index` symlink to point
    at it (see "Hosting"). Blobs go to `/srv/blobs/` first; the symlink
    flip is the last step, so the new root never becomes visible while

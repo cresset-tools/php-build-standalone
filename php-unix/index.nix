@@ -29,7 +29,13 @@
 # yanksFile: optional path to a JSON file containing an array of yank objects.
 #   Each object has a required `tag` field and an optional `reason` field.
 #   Matching artifacts will have yanked: true and yanked_reason set.
-{ pkgs, releases, yanksFile ? null }:
+# frozenFiles: optional list of paths to frozen/php-<minor>.json files.
+#   Entries from these files are spliced into the section accumulators at
+#   generation time: the generator writes each entry's manifest body to its
+#   manifest_relative_path and adds the section_entry (augmented with
+#   frozen:true) to the appropriate section. Fails if any tag appears in
+#   both a live build and a frozen file, or in two frozen files.
+{ pkgs, releases, yanksFile ? null, frozenFiles ? [] }:
 let
   inherit (pkgs) lib;
 in
@@ -269,6 +275,77 @@ pkgs.runCommand "pbs-index" {
       done
 
     '') releases}
+
+    # ---- Phase 2a: splice frozen-file entries ----
+    # live_tags: set of tags already present from live builds, for overlap check.
+    declare -A live_tags
+    for key in "''${!section_artifacts[@]}"; do
+      while IFS= read -r t; do
+        live_tags["$t"]=1
+      done < <(echo "''${section_artifacts[$key]}" | jq -r '.[].tag')
+    done
+
+    # frozen_tags: set of tags seen across all frozen files, for dup check.
+    declare -A frozen_tags
+
+    ${lib.concatMapStringsSep "\n" (frozenFile: ''
+      frozen_file="${frozenFile}"
+      if [ ! -f "$frozen_file" ]; then
+        echo "FATAL: frozen file does not exist: $frozen_file" >&2
+        exit 1
+      fi
+
+      frozen_minor="$(jq -r '.minor' "$frozen_file")"
+      entry_count="$(jq '.entries | length' "$frozen_file")"
+
+      for ((fi=0; fi<entry_count; fi++)); do
+        fentry="$(jq --argjson i "$fi" '.entries[$i]' "$frozen_file")"
+        ftag="$(echo "$fentry" | jq -r '.tag')"
+        ftarget="$(echo "$fentry" | jq -r '.target')"
+        fkind="$(echo "$fentry" | jq -r '.kind')"
+        fname="$(echo "$fentry" | jq -r '.name')"
+        fmanifest_rel_path="$(echo "$fentry" | jq -r '.manifest_relative_path')"
+        fsection_entry="$(echo "$fentry" | jq -c '.section_entry')"
+        fmanifest_body="$(echo "$fentry" | jq -S '.manifest')"
+
+        # Overlap check: tag must not appear in both live and frozen
+        if [ -n "''${live_tags[$ftag]:-}" ]; then
+          echo "FATAL: tag '$ftag' appears in both a live build and frozen file $frozen_file" >&2
+          echo "       Resolve by removing the frozen entry (live build supersedes it)." >&2
+          exit 1
+        fi
+
+        # Dup check: tag must not appear in two frozen files
+        if [ -n "''${frozen_tags[$ftag]:-}" ]; then
+          echo "FATAL: tag '$ftag' appears in multiple frozen files (duplicate at $frozen_file)" >&2
+          exit 1
+        fi
+        frozen_tags["$ftag"]=1
+
+        # Integrity check: sha256 of jq -S manifest body must match section_entry.manifest.sha256
+        manifest_sha256_expected="$(echo "$fsection_entry" | jq -r '.manifest.sha256')"
+        manifest_sha256_actual="$(echo "$fmanifest_body" | sha256sum | awk '{print $1}')"
+        if [ "$manifest_sha256_expected" != "$manifest_sha256_actual" ]; then
+          echo "FATAL: frozen entry '$ftag' in $frozen_file: manifest sha256 mismatch" >&2
+          echo "  section_entry.manifest.sha256: $manifest_sha256_expected" >&2
+          echo "  computed sha256(jq -S .manifest): $manifest_sha256_actual" >&2
+          exit 1
+        fi
+
+        # Write manifest body to output tree
+        manifest_dest="$out/targets/$ftarget/$fmanifest_rel_path"
+        mkdir -p "$(dirname "$manifest_dest")"
+        echo "$fmanifest_body" > "$manifest_dest"
+
+        # Augment section_entry with frozen:true
+        augmented_entry="$(echo "$fsection_entry" | jq -S '. + {frozen: true}')"
+        # Apply yanks lookup to the frozen entry too
+        augmented_entry="$(yank_entry "$ftag" "$augmented_entry")"
+
+        section_key="$ftarget/$fkind/$fname"
+        add_artifact "$section_key" "$augmented_entry"
+      done
+    '') frozenFiles}
 
     # ---- Copy blobs ----
     for sha256 in "''${!blob_map[@]}"; do

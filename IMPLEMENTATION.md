@@ -253,6 +253,40 @@ floating jq output) before it pollutes the trust chain.
 
 **Effort:** few hours.
 
+## Phase 10 — Frozen artifact layer [implemented]
+
+**Deliverable:** EOL'd PHP minors and superseded patch versions remain
+installable from the index indefinitely, without the build matrix keeping
+their derivations alive.
+
+**Mechanism:** per-minor `frozen/php-<minor>.json` files carry the full
+`section_entry` and `manifest` body for each artifact to be preserved. The
+index generator (Phase 1) splices these into the section accumulators at
+generation time and writes the manifests to their `manifest_relative_path`
+in the output tree. The manifests carry `{BLOB_BASE}` placeholders just as
+they did at build time, so the blobs continue to be reachable after URL
+substitution.
+
+**Files affected:**
+- `frozen/` — new directory with a `.gitkeep`; one `php-<minor>.json` per
+  frozen minor.
+- `php-unix/index.nix` — new `frozenFiles ? []` parameter; Phase 2a splice
+  loop; overlap and duplicate-tag validation; per-entry integrity check
+  (sha256 of `jq -S .manifest` must match `section_entry.manifest.sha256`).
+- `flake.nix` — populate `frozenFiles` by walking `./frozen/*.json` via
+  `lib.filesystem.listFilesRecursive`; wire new `freeze-publish-entries` and
+  `lint-frozen-coverage` apps.
+- `scripts/freeze-publish-entries.sh` — captures live (or local) index
+  artifacts matching tag globs into the frozen files. Idempotent.
+- `scripts/lint-frozen-coverage.sh` — compares `sources.nix` against
+  `origin/main` via `nix eval`; fails if a patch bump lacks a frozen entry.
+- `.github/workflows/build.yml` — new `lint-frozen-coverage` job, runs on
+  every PR and push to `main`.
+- `DISTRIBUTION.md` — "Frozen artifacts" section added; "Generator
+  responsibilities" updated to describe the Phase 2a splice step.
+
+**Effort:** ~1 day. Implemented in the `distribution-doc` branch.
+
 ## Sequencing
 
 Phases 1, 3, 4 are one combined refactor of `php-unix/index.nix` —
@@ -268,17 +302,21 @@ depends on Phase 7. Phase 9 (reproducibility) depends on Phase 1
 but is otherwise independent and is cheap to land early as a
 correctness gate.
 
+Phase 10 (frozen artifacts) depends on Phase 1 (index generator
+must exist to be extended) and Phase 6 (yanks pattern is the model).
+
 ```
 Phase 1+2+3+4  ─┬─►  Phase 7  ─►  Phase 8
                 │
 Phase 5  ───────┤
                 │
-Phase 6  ───────┘
-
+Phase 6  ───────┼─►  Phase 10  (frozen artifacts)
+                │
 Phase 9  (any time after Phase 1, ideally early)
 ```
 
-Total estimated effort: ~5–7 working days for a focused engineer.
+Total estimated effort: ~5–7 working days for a focused engineer (Phases 1–9).
+Phase 10 adds ~1 day.
 
 ## Tracking
 
