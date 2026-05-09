@@ -335,20 +335,12 @@ jobs:
             merged/blobs/
           if-no-files-found: error
 
-      # TODO(hetzner): enable this step once the origin server is provisioned.
-      # Two rsync invocations match the two-vhost layout described in
-      # DISTRIBUTION.md "Hosting": one for the index tree → index.example.com,
-      # one for blobs → blobs.example.com. Index.json is rsynced last so
-      # observers never see a root that references a section file that hasn't
-      # landed yet (atomic-ish ordering at the file level).
-      #
-      # Prerequisites before enabling:
-      #   - Hetzner box provisioned, nginx vhosts configured
-      #   - SSH key added to secrets.PUBLISH_SSH_KEY
-      #   - $INDEX_HOST and $BLOB_HOST vars set to real hostnames
-      #   - Runner's public key authorised on the box
-      - name: Rsync to Hetzner origin (placeholder — not yet enabled)
-        if: false  # TODO(hetzner): remove this guard when the box exists
+      # Push the prepared tree to the cresset-tools/infra origin (CAX11 +
+      # Cloud Volume). Three passes per scripts/rsync-publish-tree.sh:
+      # blobs first (additive, content-addressed), then the new index
+      # tree to /srv/index-versions/<VERSION>/, then atomic symlink flip
+      # of /srv/index. Observers never see a half-applied state.
+      - name: Rsync to origin
         env:
           PUBLISH_SSH_KEY: ${{ secrets.PUBLISH_SSH_KEY }}
         run: nix run .#rsync-publish-tree -- index_tree merged/blobs "$INDEX_HOST" "$BLOB_HOST"
