@@ -22,7 +22,10 @@ fi
 TARBALL="$1"
 EXPECTED_VERSION="${2:-}"
 
-smoke_root="$(mktemp -d)"
+# Canonicalize the temp path: macOS /tmp is a symlink to /private/tmp, and
+# pbs_relocate's _NSGetExecutablePath path is realpath'd, so the prefix
+# match in the relocation gate below would otherwise miss.
+smoke_root="$(cd "$(mktemp -d)" && pwd -P)"
 trap 'rm -rf "$smoke_root"' EXIT
 
 echo "::group::extract $TARBALL"
