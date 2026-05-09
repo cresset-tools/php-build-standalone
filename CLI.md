@@ -208,7 +208,7 @@ flags are an error.
 |--------------------|----------------------------------------------------------------|-------------------|
 | `bougie init`      | Create a new project (`bougie.toml`, `.bougie/` skeleton).     | `uv init`         |
 | `bougie ext …`     | Add/remove/list PHP extensions; deferred to Composer + sync.   | `uv add`/`uv remove` |
-| `bougie sync`      | Resolve `composer.json` (+ overrides) and install everything.  | `uv sync`         |
+| `bougie sync`      | Install everything the project requires.                       | `uv sync`         |
 | `bougie run`       | Run a command in the project environment.                      | `uv run`          |
 | `bougie php …`     | Manage PHP interpreter installations.                          | `uv python …`     |
 | `bougie cache …`   | Manage the local cache and content-addressed store.            | `uv cache …`      |
