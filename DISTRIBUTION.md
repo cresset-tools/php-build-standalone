@@ -356,9 +356,17 @@ Day-one shape:
   tree. Static files, no application layer.
 - TLS via Let's Encrypt, auto-renewed (one cert per hostname).
 - CI publish step: `rsync` the regenerated index tree + any new
-  blobs to the server over SSH. Atomic per-file replacement; root
-  `index.json` is rewritten last so partial-publish states aren't
-  observable.
+  blobs to the server over SSH. The index tree is staged to a
+  versioned directory under `/srv/index-versions/<version>/` and a
+  `/srv/index` symlink is flipped via `ln -s` + `mv -T` (one
+  `rename(2)`) — observers see either the old version or the new
+  version, never a tree where the new root references files that
+  haven't landed yet. Blobs go to `/srv/blobs/` directly: they're
+  content-addressed and additive (existing blobs are never rewritten,
+  new ones land before the symlink flip so the new root never
+  references missing blobs). Old version directories stay around so
+  clients with a cached old root keep working until they refresh; GC
+  of old versions is a separate cron concern.
 - Standard hardening (ufw, unattended-upgrades, fail2ban, SSH key
   only). The blast radius is "users get stale or 503'd installs",
   not data loss — the canonical artifact set lives in the build
@@ -513,9 +521,11 @@ event:
    `targets/<target>/sections/<section>.json`; record its sha256.
 3. Emit `index.json` from the per-target section-hash tables.
 4. Sign `index.json`.
-5. `rsync` the changed files to the origin, writing the root last
-   so observers never see a root pointing at a section file that
-   hasn't landed yet.
+5. `rsync` the new index tree to a fresh versioned directory on the
+   origin, then atomically flip the live `/srv/index` symlink to point
+   at it (see "Hosting"). Blobs go to `/srv/blobs/` first; the symlink
+   flip is the last step, so the new root never becomes visible while
+   any of its referenced sections, manifests, or blobs are missing.
 
 The generator is deterministic on its inputs: same artifact set, byte-
 identical index. This matters for the audit trail — comparing two
