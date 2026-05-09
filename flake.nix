@@ -292,6 +292,10 @@
           sign-publish-index = mkApp "sign-publish-index"
             (with pkgs; [ cosign coreutils ])
             ./scripts/sign-publish-index.sh;
+
+          rsync-publish-tree = mkApp "rsync-publish-tree"
+            (with pkgs; [ rsync openssh coreutils ])
+            ./scripts/rsync-publish-tree.sh;
         });
 
       # Hacking shell. Same toolchain as the derivations consume, but

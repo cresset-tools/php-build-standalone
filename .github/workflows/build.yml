@@ -339,31 +339,4 @@ jobs:
         if: false  # TODO(hetzner): remove this guard when the box exists
         env:
           PUBLISH_SSH_KEY: ${{ secrets.PUBLISH_SSH_KEY }}
-        run: |
-          set -euo pipefail
-          mkdir -p ~/.ssh
-          echo "$PUBLISH_SSH_KEY" > ~/.ssh/publish_key
-          chmod 600 ~/.ssh/publish_key
-          SSH_OPTS="-i ~/.ssh/publish_key -o StrictHostKeyChecking=no"
-
-          # 1. Push everything in the index tree EXCEPT index.json first,
-          #    so sections and manifests are in place before the root updates.
-          rsync -az --delete \
-            -e "ssh $SSH_OPTS" \
-            --exclude='index.json' \
-            index_tree/ \
-            deploy@${INDEX_HOST}:/srv/index/
-
-          # 2. Push blobs (content-addressed; existing files are no-ops).
-          rsync -az \
-            -e "ssh $SSH_OPTS" \
-            merged/blobs/ \
-            deploy@${BLOB_HOST}:/srv/blobs/
-
-          # 3. Push index.json last — atomic-ish: root now points at sections
-          #    that are already present on disk.
-          rsync -az \
-            -e "ssh $SSH_OPTS" \
-            index_tree/index.json \
-            index_tree/index.json.sig \
-            deploy@${INDEX_HOST}:/srv/index/
+        run: nix run .#rsync-publish-tree -- index_tree merged/blobs "$INDEX_HOST" "$BLOB_HOST"
