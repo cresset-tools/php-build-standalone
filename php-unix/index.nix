@@ -31,22 +31,11 @@
 #   Matching artifacts will have yanked: true and yanked_reason set.
 { pkgs, releases, yanksFile ? null }:
 let
-  inherit (pkgs) stdenv lib;
+  inherit (pkgs) lib;
 in
-pkgs.stdenvNoCC.mkDerivation {
-  pname = "pbs-index";
-  version = "1";
-
-  dontUnpack = true;
-  dontConfigure = true;
-  dontBuild = true;
-  dontFixup = true;
-
+pkgs.runCommand "pbs-index" {
   nativeBuildInputs = with pkgs; [ jq coreutils findutils gnused ];
-
-  installPhase = ''
-    runHook preInstall
-
+} ''
     mkdir -p "$out"
 
     export SOURCE_DATE_EPOCH=1704067200
@@ -353,7 +342,4 @@ pkgs.stdenvNoCC.mkDerivation {
     echo "  targets:  $(jq '.targets | keys | length' "$out/index.json")"
     echo "  sections: $(jq '[.targets[].sections | keys | length] | add // 0' "$out/index.json")"
     echo "  blobs:    $(find "$out/blobs" -type f | wc -l)"
-
-    runHook postInstall
-  '';
-}
+''
