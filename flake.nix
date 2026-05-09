@@ -255,27 +255,6 @@
           inherit index release-bundle;
         });
 
-      # Reproducibility check: build the latest-PHP tree twice and diff.
-      # Usage: nix flake check
-      # This builds a tiny script derivation; the actual double-build is
-      # gated behind `--check` since rebuilding all C deps for a flake
-      # check is prohibitive. The per-CI pattern is:
-      #   nix build .#tree-8_5 && nix build .#tree-8_5 --rebuild
-      # A hash mismatch means --rebuild produces a different store path
-      # and the build fails (Nix checks for content equality).
-      checks = forEach (system:
-        let
-          pkgs = import nixpkgs { inherit system; };
-        in {
-          reproducibility-note = pkgs.writeText "reproducibility-note" ''
-            To verify reproducibility, run:
-              nix build .#tree-8_5
-              nix build .#tree-8_5 --rebuild
-            A divergent build fails here; --rebuild re-derives the same
-            derivation and Nix rejects it if the output differs.
-          '';
-        });
-
       # Hacking shell. Same toolchain as the derivations consume, but
       # interactive — useful for iterating on a build script before it
       # works inside a derivation.
