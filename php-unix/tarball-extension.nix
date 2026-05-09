@@ -17,18 +17,19 @@
 #   extensions (extension=), a fragment IS included when confFragment is
 #   non-null.
 #
-# Manifest schema (DESIGN.md lines 103-120):
+# Manifest schema:
 #   {
 #     "name": "xdebug",
 #     "version": "3.5.1+php8.5",
+#     "target_triple": "x86_64-unknown-linux-gnu",
 #     "abi": { "php": "8.5", "zend_module_api_no": "...", "ts": false, "debug": false },
 #     "platform": { "os": "linux", "arch": "x86_64", "libc": "glibc", "libc_min": "2.17" },
 #     "extension": { "path": "lib/extensions/no-debug-non-zts-.../xdebug.so", "sha256": "..." },
 #     "closure": []
 #   }
 #
-# URL placeholder: closure entries use {INDEX_BASE}/store/<storeName>.tar.zst.
-# The publish pipeline substitutes {INDEX_BASE} with the actual hosting base
+# URL placeholder: closure entries use {BLOB_BASE}/blobs/<sha256[0:2]>/<sha256>.
+# The publish pipeline substitutes {BLOB_BASE} with the actual blob hosting base
 # URL before upload. Do not bake in a specific domain here.
 { pkgs, tree, closures, extDrv, extName, extVersion
 , phpVersion   # "8.5.5" — full version from phpSpec.version
@@ -39,7 +40,7 @@
 , storePathTarballs  # list of pbs-store-* derivations parallel to bundledDeps;
                      # each $out contains <storeName>.sha256 (sha256 of the
                      # actual tar.zst the CLI will download).
-, target ? "x86_64-unknown-linux-gnu"
+, target ? if pkgs.stdenv.isDarwin then "aarch64-apple-darwin" else "x86_64-unknown-linux-gnu"
 , confFragment ? null  # null → no conf.d; non-null → include this .ini content
 }:
 let
@@ -64,6 +65,7 @@ let
   manifestTemplate = pkgs.writeText "ext-manifest.json.in" (builtins.toJSON {
     name = extName;
     version = "${extVersion}+php${phpMinor}";
+    target_triple = target;
     abi = {
       php = phpMinor;
       zend_module_api_no = "@ZEND_MODULE_API_NO@";
@@ -137,7 +139,7 @@ pkgs.stdenvNoCC.mkDerivation {
       # Read sha256 of the per-store-path .tar.zst from its sidecar.
       # The sidecar (<storeName>.sha256) is produced by tarball-store-path.nix
       # and carries the sha256 of the *tarball bytes* — the same value the
-      # CLI computes after fetching {INDEX_BASE}/store/<storeName>.tar.zst.
+      # CLI computes after fetching the blob at its content-addressed URL.
       # Anything else (e.g. a tree-content hash) would never match what the
       # CLI sees on the wire and would fail every closure-entry verification.
       sp_sha256_file="$(grep "^$storeName " ${pkgs.writeText "store-tarball-manifest" (
@@ -150,7 +152,9 @@ pkgs.stdenvNoCC.mkDerivation {
         exit 1
       fi
 
-      entry="{\"name\":\"$store_name\",\"version\":\"$store_ver\",\"hash\":\"$store_hash\",\"sha256\":\"$sp_sha256\",\"url\":\"{INDEX_BASE}/store/$storeName.tar.zst\"}"
+      # Content-addressed blob URL: {BLOB_BASE} is substituted at publish time.
+      sp_sha256_prefix="''${sp_sha256:0:2}"
+      entry="{\"name\":\"$store_name\",\"version\":\"$store_ver\",\"hash\":\"$store_hash\",\"sha256\":\"$sp_sha256\",\"url\":\"{BLOB_BASE}/blobs/$sp_sha256_prefix/$sp_sha256\"}"
 
       if [ $first -eq 1 ]; then
         closure_json_array="$closure_json_array$entry"

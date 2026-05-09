@@ -1,19 +1,38 @@
 # Build every supported PHP minor on push and PR. On version tags
-# (refs/tags/v*), the release job assembles and publishes the full
-# release-bundle tree (interpreter tarballs, per-extension tarballs,
-# per-store-path tarballs, and index.json) as GitHub Release assets.
+# (refs/tags/v*), the publish job assembles and signs the full
+# distribution tree and uploads it as a workflow artifact.
 #
 # Job graph:
-#   build-tarball   — 5-minor × 2-OS matrix; builds tarball-<minor>,
-#                     closures-<minor>, extension-xdebug-<minor>,
-#                     release-<minor> per leg; uploads artifacts.
-#   distro-matrix   — Ubuntu only; runs tests/run-matrix.sh for each
-#                     PHP minor against 15 glibc distros + 1 musl
-#                     expected-fail (Alpine).
-#   assemble        — 2-OS matrix (ubuntu-latest, macos-26); builds
-#                     release-bundle and uploads it per platform.
-#   release         — tags only; downloads both release-bundle artifacts,
-#                     flattens and renames them, publishes to GH Release.
+#   build-tarball              — 5-minor × 2-OS matrix; builds tarball-<minor>,
+#                                closures-<minor>, extension-xdebug-<minor>,
+#                                release-<minor> per leg; uploads artifacts.
+#   distro-matrix              — Ubuntu only; runs tests/run-matrix.sh for each
+#                                PHP minor against 15 glibc distros + 1 musl
+#                                expected-fail (Alpine).
+#   assemble                   — 2-OS matrix (ubuntu-latest, macos-26); builds
+#                                release-bundle and uploads it per platform.
+#   verify-reproducible-index  — runs in parallel with assemble; builds
+#                                release-bundle twice and byte-diffs the trees.
+#   publish                    — tags only; downloads both release-bundle
+#                                artifacts, merges them, validates the tree
+#                                locally, substitutes URL placeholders, signs
+#                                the root with cosign keyless OIDC, and uploads
+#                                the result as the `publish-tree` workflow
+#                                artifact. A placeholder rsync step is present
+#                                but disabled until the Hetzner box exists.
+#
+# Every nontrivial shell script in this file is a thin `nix run .#<app>`
+# call into scripts/*.sh. To reproduce the publish pipeline locally:
+#
+#   nix run .#merge-publish-tree        -- bundles/linux bundles/darwin .
+#   VALIDATE_INDEX_SH=$PWD/tests/validate-index.sh \
+#     nix run .#validate-publish-tree   -- merged
+#   nix run .#substitute-publish-urls   -- index_tree "$INDEX_HOST" "$BLOB_HOST"
+#   nix run .#sign-publish-index        -- index_tree
+#
+# The actual rsync to the Hetzner origin is deferred (placeholder step,
+# currently disabled — see TODO(hetzner) in the publish job). Once
+# provisioned, that step consumes the same `publish-tree` artifact shape.
 #
 # A full clean build of one minor takes ~15 minutes — most of that is the
 # 17 C dependencies plus PHP itself plus xdebug. FlakeHub Cache shares
@@ -41,6 +60,18 @@ concurrency:
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
+  lint-frozen-coverage:
+    name: lint frozen coverage
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Install Nix
+        uses: DeterminateSystems/determinate-nix-action@v3
+      - name: Run lint
+        run: nix run .#lint-frozen-coverage
+
   build-tarball:
     name: build PHP ${{ matrix.php }} (${{ matrix.target }})
     runs-on: ${{ matrix.os }}
@@ -94,47 +125,10 @@ jobs:
         # root after the tree is moved. xdebug is NOT checked here —
         # Phase 3 ships xdebug as a separate per-extension tarball; the
         # distro-matrix job covers xdebug end-to-end via tests/smoke.sh.
-        # These gates are version- and platform-agnostic; one inline
-        # script handles both Linux and Darwin matrix legs (same tarball
-        # layout, same relocation contract — pbs_relocate.h switches on
-        # __APPLE__).
-        run: |
-          set -euo pipefail
-          smoke_root="$RUNNER_TEMP/smoke"
-          mkdir -p "$smoke_root"
-          tar --use-compress-program=unzstd \
-              -xf result-tarball/php-*.tar.zst -C "$smoke_root"
-          PHP="$smoke_root/install/bin/php"
-          echo "::group::php -v"
-          "$PHP" -v
-          echo "::endgroup::"
-          # Cross-check that we built the version this matrix leg expected
-          # — defends against a flake change accidentally rerouting an
-          # attribute to the wrong source.
-          actual=$("$PHP" -r 'echo PHP_MAJOR_VERSION,".",PHP_MINOR_VERSION;')
-          if [ "$actual" != "${{ matrix.php }}" ]; then
-            echo "FAIL: expected PHP ${{ matrix.php }}, got $actual"; exit 1
-          fi
-          echo "::group::php -m"
-          "$PHP" -m
-          echo "::endgroup::"
-          echo "::group::expect intl currency formatting"
-          "$PHP" -r 'echo NumberFormatter::create("en_US", NumberFormatter::CURRENCY)->formatCurrency(1234.56, "USD"), "\n";'
-          echo "::endgroup::"
-          echo "::group::expect relocation tracks the running binary"
-          # Linux uses /proc/self/exe, Darwin uses _NSGetExecutablePath —
-          # both feed the same pbs_install_root() API in pbs_relocate.h,
-          # so the smoke test is identical: move install/, ask php for
-          # extension_dir, expect it to track the new prefix. (This also
-          # incidentally checks the tarball ships writable directories,
-          # since macOS rename(2) refuses 0555 source dirs.)
-          mv "$smoke_root/install" "$smoke_root/relocated"
-          ext_dir=$("$smoke_root/relocated/bin/php" -r 'echo ini_get("extension_dir");')
-          case "$ext_dir" in
-            "$smoke_root/relocated/lib/extensions/"*) echo "ok: $ext_dir" ;;
-            *) echo "FAIL: extension_dir=$ext_dir did not track relocation"; exit 1 ;;
-          esac
-          echo "::endgroup::"
+        # These gates are version- and platform-agnostic; one script
+        # handles both Linux and Darwin matrix legs (same tarball layout,
+        # same relocation contract — pbs_relocate.h switches on __APPLE__).
+        run: nix run .#smoke-test-tarball -- "$(ls result-tarball/php-*.tar.zst | head -1)" "${{ matrix.php }}"
 
       - name: Build closures
         run: nix build ".#closures-${{ matrix.minor }}" -o result-closures --print-build-logs
@@ -224,15 +218,69 @@ jobs:
           path: result/
           if-no-files-found: error
 
-  release:
-    name: publish GitHub Release
+  # Phase 9 — Reproducibility audit.
+  # Runs in parallel with assemble (needs only build-tarball). Builds
+  # release-bundle twice using --rebuild so Nix re-derives the same
+  # derivation and rejects it if the output bytes differ. The diff is a
+  # belt-and-braces check on top of Nix's content-addressed store.
+  verify-reproducible-index:
+    name: reproducibility audit
+    runs-on: ubuntu-latest
+    needs: [build-tarball]
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Nix
+        uses: DeterminateSystems/determinate-nix-action@v3
+
+      - name: Set up FlakeHub Cache
+        uses: DeterminateSystems/flakehub-cache-action@v3.19.1
+
+      - name: Build release-bundle (first pass)
+        run: nix build .#release-bundle -o result-1 --print-build-logs
+
+      - name: Build release-bundle (second pass — --rebuild)
+        # --rebuild re-derives the derivation from scratch. Nix checks that
+        # the new output is content-equal to the already-stored one; if not,
+        # it fails here with "hash mismatch in fixed-output derivation".
+        run: nix build .#release-bundle --rebuild -o result-2 --print-build-logs
+
+      - name: Byte-diff the two outputs
+        run: diff -r result-1/ result-2/
+
+  # Phase 5 + 7 — Root signing and publish tree preparation.
+  #
+  # Merges the Linux and Darwin release-bundle trees into one unified
+  # distribution tree, then:
+  #   1. Validates the tree locally (before any substitution) against a
+  #      localhost http.server so the sha256 chain is verified without
+  #      needing the real hostnames to resolve.
+  #   2. Substitutes {INDEX_BASE} and {BLOB_BASE} placeholders in all
+  #      *.json files using the configured host vars.
+  #   3. Signs index.json with cosign keyless (Sigstore OIDC), producing
+  #      index.json.sig as a Sigstore bundle file.
+  #   4. Uploads the final tree as the `publish-tree` workflow artifact.
+  #   5. (Placeholder, currently disabled) rsyncs to the Hetzner origin.
+  publish:
+    name: prepare publish tree
     runs-on: ubuntu-latest
     needs: [build-tarball, distro-matrix, assemble]
     if: startsWith(github.ref, 'refs/tags/v')
     permissions:
-      contents: write
-      id-token: write
+      contents: read   # no Pages/Releases push
+      id-token: write  # cosign keyless OIDC
+    env:
+      INDEX_HOST: ${{ vars.INDEX_HOST || 'index.example.com' }}
+      BLOB_HOST:  ${{ vars.BLOB_HOST  || 'blobs.example.com' }}
     steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Nix
+        uses: DeterminateSystems/determinate-nix-action@v3
+
       - name: Download Linux release-bundle
         uses: actions/download-artifact@v4
         with:
@@ -245,39 +293,62 @@ jobs:
           name: release-bundle-darwin
           path: bundles/darwin/
 
-      - name: Flatten and stage release assets
-        # Flatten each bundle tree: path/to/file → path__to__file. Double
-        # underscore (rather than single) so legitimate underscores in
-        # version strings don't create ambiguous round-trips. index.json
-        # from each platform is kept separate.
-        run: |
-          set -euo pipefail
-          mkdir -p staging
+      - name: Merge Linux + Darwin trees
+        # Both bundles share the same index.json schema and generated timestamp
+        # (SOURCE_DATE_EPOCH is fixed in index.nix) but have disjoint
+        # targets/<triple> subtrees. The merge unions targets/ and blobs/,
+        # deep-merges the two index.json roots, then splits into merged/ and
+        # index_tree/ (the latter excludes blobs/, ready for signing).
+        run: nix run .#merge-publish-tree -- bundles/linux bundles/darwin .
 
-          for platform in linux darwin; do
-            src="bundles/$platform"
-            if [ -f "$src/index.json" ]; then
-              cp "$src/index.json" "staging/index-${platform}.json"
-            fi
-            find "$src" -type f ! -name 'index.json' | while IFS= read -r f; do
-              prefix="${src}/"
-              rel="${f#"$prefix"}"
-              flat="${rel//\//__}"
-              cp "$f" "staging/$flat"
-            done
-          done
+      - name: Validate tree locally (pre-substitution)
+        # Validation runs against the unsubstituted tree, where blob URLs still
+        # contain {BLOB_BASE}. validate-index.sh skips HEAD checks for those
+        # (see its "warning: unsubstituted" guard). The sha256 chain checks are
+        # all meaningful here because substitution doesn't touch those hashes.
+        # merged/ is served so that manifest relative URLs and blob paths all
+        # resolve locally.
+        run: VALIDATE_INDEX_SH=$PWD/tests/validate-index.sh nix run .#validate-publish-tree -- merged
 
-          echo "Staged files:"
-          find staging -type f | sort
-          collisions=$(find staging -type f -printf '%f\n' | sort | uniq -d)
-          if [ -n "$collisions" ]; then
-            echo "FAIL: basename collisions in staging/:"
-            echo "$collisions"
-            exit 1
-          fi
+      - name: Substitute URL placeholders
+        # Two sed passes: {INDEX_BASE} → https://$INDEX_HOST,
+        # {BLOB_BASE} → https://$BLOB_HOST. Signing happens after this step
+        # so the signed bytes are final.
+        run: nix run .#substitute-publish-urls -- index_tree "$INDEX_HOST" "$BLOB_HOST"
 
-      - name: Publish GitHub Release
-        uses: softprops/action-gh-release@v2
+      - name: Sign index.json (cosign keyless via OIDC)
+        # Produces a Sigstore bundle (index.json.sig) alongside index.json.
+        # The bundle contains the signature, signing certificate, and Rekor
+        # transparency log inclusion proof. Signing happens AFTER all
+        # substitutions so the signed bytes are final.
+        run: nix run .#sign-publish-index -- index_tree
+
+      - name: Upload publish-tree artifact
+        # Packages both the signed index tree and the blob tree for inspection
+        # and future rsync consumption. The artifact mirrors the on-disk layout
+        # that the rsync step (below) would push to the origin.
+        uses: actions/upload-artifact@v4
         with:
-          files: staging/*
-          fail_on_unmatched_files: true
+          name: publish-tree
+          path: |
+            index_tree/
+            merged/blobs/
+          if-no-files-found: error
+
+      # TODO(hetzner): enable this step once the origin server is provisioned.
+      # Two rsync invocations match the two-vhost layout described in
+      # DISTRIBUTION.md "Hosting": one for the index tree → index.example.com,
+      # one for blobs → blobs.example.com. Index.json is rsynced last so
+      # observers never see a root that references a section file that hasn't
+      # landed yet (atomic-ish ordering at the file level).
+      #
+      # Prerequisites before enabling:
+      #   - Hetzner box provisioned, nginx vhosts configured
+      #   - SSH key added to secrets.PUBLISH_SSH_KEY
+      #   - $INDEX_HOST and $BLOB_HOST vars set to real hostnames
+      #   - Runner's public key authorised on the box
+      - name: Rsync to Hetzner origin (placeholder — not yet enabled)
+        if: false  # TODO(hetzner): remove this guard when the box exists
+        env:
+          PUBLISH_SSH_KEY: ${{ secrets.PUBLISH_SSH_KEY }}
+        run: nix run .#rsync-publish-tree -- index_tree merged/blobs "$INDEX_HOST" "$BLOB_HOST"

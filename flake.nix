@@ -237,93 +237,28 @@
           # per-extension + interpreter manifests, reads .sha256 sidecars, and
           # emits a single index.json. Deduplication of store-path entries
           # across variants is enforced inside index.nix (collision = build error).
+          # frozenFiles: all *.json files under frozen/ — skips .gitkeep and
+          # any non-.json files.
+          frozenFiles =
+            let
+              frozenDir = ./frozen;
+              allFiles = pkgs.lib.filesystem.listFilesRecursive frozenDir;
+            in
+              builtins.filter
+                (f: pkgs.lib.hasSuffix ".json" (builtins.baseNameOf f))
+                allFiles;
           index = pkgs.callPackage ./php-unix/index.nix {
             releases = allReleases;
+            yanksFile = ./yanks.json;
+            inherit frozenFiles;
           };
 
-          # release-bundle: one directory tree containing index.json plus every
-          # artifact from every variant, laid out at the paths recorded in the
-          # index. Rsync this to the static host; it IS the distribution tree.
-          #
-          # Store-path dedup: same-storeName files are identical by construction
-          # (the dedup violation gate in index.nix would have already failed).
-          # We copy store-path tarballs once per storeName (last write wins but
-          # content is identical, so it doesn't matter which release provides it).
-          release-bundle = pkgs.stdenvNoCC.mkDerivation {
-            pname = "pbs-release-bundle";
-            version = sources.phpVersions.${sources.latestPhp}.version;
-
-            dontUnpack = true;
-            dontConfigure = true;
-            dontBuild = true;
-            dontFixup = true;
-
-            nativeBuildInputs = with pkgs; [ coreutils jq gnused ];
-
-            installPhase = ''
-              runHook preInstall
-
-              mkdir -p "$out"
-
-              # Copy index.json first.
-              cp ${index}/index.json "$out/index.json"
-
-              # Copy artifacts from every release, following the path scheme
-              # recorded in index.json.
-              ${pkgs.lib.concatMapStringsSep "\n" (relDrv: ''
-                rel_dir="${relDrv}"
-
-                # Interpreter tarball + json: php/<minor>/
-                # Read minor from the .json (authoritative); copy both.
-                for f in "$rel_dir"/php-*.json; do
-                  [ -f "$f" ] || continue
-                  base_json="$(basename "$f")"
-                  base_noext="''${base_json%.json}"
-                  minor="$(jq -r '.php_version | split(".") | .[0:2] | join(".")' "$f")"
-                  mkdir -p "$out/php/$minor"
-                  cp "$f" "$out/php/$minor/$base_json"
-                  tarball="''${f%.json}.tar.zst"
-                  [ -f "$tarball" ] && cp "$tarball" "$out/php/$minor/$base_noext.tar.zst"
-                done
-
-                # Extension tarball + json: extensions/<name>/<ver>/
-                # Read version from the .json manifest (authoritative), then
-                # place both .json and .tar.zst under the same versioned dir.
-                for f in "$rel_dir"/*+php*.json; do
-                  [ -f "$f" ] || continue
-                  base_json="$(basename "$f")"
-                  base_noext="''${base_json%.json}"
-                  ext_name="$(jq -r '.name' "$f")"
-                  ext_ver="$(jq -r '.version' "$f")"
-                  mkdir -p "$out/extensions/$ext_name/$ext_ver"
-                  cp "$f" "$out/extensions/$ext_name/$ext_ver/$base_json"
-                  tarball="''${f%.json}.tar.zst"
-                  [ -f "$tarball" ] && cp "$tarball" "$out/extensions/$ext_name/$ext_ver/$base_noext.tar.zst"
-                done
-
-                # Store-path tarballs: store/
-                for f in "$rel_dir"/*.tar.zst; do
-                  [ -f "$f" ] || continue
-                  base="$(basename "$f")"
-                  # Skip interpreter and extension tarballs (already handled above)
-                  case "$base" in
-                    php-*) continue ;;
-                    *+php*) continue ;;
-                  esac
-                  # Store-path tarball: <storeName>.tar.zst
-                  mkdir -p "$out/store"
-                  # Idempotent: if already present (deduped), skip (content is identical).
-                  [ -f "$out/store/$base" ] || cp "$f" "$out/store/$base"
-                done
-
-              '') allReleases}
-
-              echo "release-bundle layout:"
-              find "$out" -maxdepth 3 -type f | sort | head -60
-
-              runHook postInstall
-            '';
-          };
+          # release-bundle: the full publishable distribution tree, produced
+          # entirely by index.nix. index already lays out index.json,
+          # targets/<target>/sections/..., targets/<target>/manifests/...,
+          # and blobs/<prefix>/<sha256>. release-bundle is a thin symlink so
+          # `nix build .#release-bundle` and `nix build .#index` are equivalent.
+          release-bundle = index;
 
         in variantAttrs // sharedAttrs // {
           # `nix build` (no attribute) → tarball for the latest PHP.
@@ -331,25 +266,55 @@
           inherit index release-bundle;
         });
 
-      # Reproducibility check: build the latest-PHP tree twice and diff.
-      # Usage: nix flake check
-      # This builds a tiny script derivation; the actual double-build is
-      # gated behind `--check` since rebuilding all C deps for a flake
-      # check is prohibitive. The per-CI pattern is:
-      #   nix build .#tree-8_5 && nix build .#tree-8_5 --rebuild
-      # A hash mismatch means --rebuild produces a different store path
-      # and the build fails (Nix checks for content equality).
-      checks = forEach (system:
+      # Runnable scripts that mirror every nontrivial CI step.
+      # Each app wraps the corresponding scripts/*.sh file with an explicit
+      # runtimeInputs closure so `nix run .#<name>` works identically to the
+      # CI step — same code, same dependency closure, no host-tool leakage.
+      apps = forEach (system:
         let
           pkgs = import nixpkgs { inherit system; };
+          mkApp = name: deps: script:
+            let drv = pkgs.writeShellApplication {
+              inherit name;
+              runtimeInputs = deps;
+              text = builtins.readFile script;
+            };
+            in {
+              type = "app";
+              program = "${drv}/bin/${name}";
+            };
         in {
-          reproducibility-note = pkgs.writeText "reproducibility-note" ''
-            To verify reproducibility, run:
-              nix build .#tree-8_5
-              nix build .#tree-8_5 --rebuild
-            A divergent build fails here; --rebuild re-derives the same
-            derivation and Nix rejects it if the output differs.
-          '';
+          smoke-test-tarball = mkApp "smoke-test-tarball"
+            (with pkgs; [ gnutar zstd coreutils findutils gnused gawk ])
+            ./scripts/smoke-test-tarball.sh;
+
+          merge-publish-tree = mkApp "merge-publish-tree"
+            (with pkgs; [ coreutils rsync jq findutils ])
+            ./scripts/merge-publish-tree.sh;
+
+          substitute-publish-urls = mkApp "substitute-publish-urls"
+            (with pkgs; [ coreutils findutils gnused gnugrep ])
+            ./scripts/substitute-publish-urls.sh;
+
+          validate-publish-tree = mkApp "validate-publish-tree"
+            (with pkgs; [ coreutils python3 curl jq gawk findutils ])
+            ./scripts/validate-publish-tree.sh;
+
+          sign-publish-index = mkApp "sign-publish-index"
+            (with pkgs; [ cosign coreutils ])
+            ./scripts/sign-publish-index.sh;
+
+          rsync-publish-tree = mkApp "rsync-publish-tree"
+            (with pkgs; [ rsync openssh coreutils ])
+            ./scripts/rsync-publish-tree.sh;
+
+          freeze-publish-entries = mkApp "freeze-publish-entries"
+            (with pkgs; [ bash coreutils curl jq findutils ])
+            ./scripts/freeze-publish-entries.sh;
+
+          lint-frozen-coverage = mkApp "lint-frozen-coverage"
+            (with pkgs; [ bash coreutils git nix jq ])
+            ./scripts/lint-frozen-coverage.sh;
         });
 
       # Hacking shell. Same toolchain as the derivations consume, but
