@@ -255,6 +255,45 @@
           inherit index release-bundle;
         });
 
+      # Runnable scripts that mirror every nontrivial CI step.
+      # Each app wraps the corresponding scripts/*.sh file with an explicit
+      # runtimeInputs closure so `nix run .#<name>` works identically to the
+      # CI step — same code, same dependency closure, no host-tool leakage.
+      apps = forEach (system:
+        let
+          pkgs = import nixpkgs { inherit system; };
+          mkApp = name: deps: script:
+            let drv = pkgs.writeShellApplication {
+              inherit name;
+              runtimeInputs = deps;
+              text = builtins.readFile script;
+            };
+            in {
+              type = "app";
+              program = "${drv}/bin/${name}";
+            };
+        in {
+          smoke-test-tarball = mkApp "smoke-test-tarball"
+            (with pkgs; [ gnutar zstd coreutils findutils gnused gawk ])
+            ./scripts/smoke-test-tarball.sh;
+
+          merge-publish-tree = mkApp "merge-publish-tree"
+            (with pkgs; [ coreutils rsync jq findutils ])
+            ./scripts/merge-publish-tree.sh;
+
+          substitute-publish-urls = mkApp "substitute-publish-urls"
+            (with pkgs; [ coreutils findutils gnused gnugrep ])
+            ./scripts/substitute-publish-urls.sh;
+
+          validate-publish-tree = mkApp "validate-publish-tree"
+            (with pkgs; [ coreutils python3 curl jq gawk findutils ])
+            ./scripts/validate-publish-tree.sh;
+
+          sign-publish-index = mkApp "sign-publish-index"
+            (with pkgs; [ cosign coreutils ])
+            ./scripts/sign-publish-index.sh;
+        });
+
       # Hacking shell. Same toolchain as the derivations consume, but
       # interactive — useful for iterating on a build script before it
       # works inside a derivation.

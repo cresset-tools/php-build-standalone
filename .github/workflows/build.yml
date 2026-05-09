@@ -21,6 +21,15 @@
 #                                artifact. A placeholder rsync step is present
 #                                but disabled until the Hetzner box exists.
 #
+# Every nontrivial shell script in this file is a thin `nix run .#<app>`
+# call into scripts/*.sh. To reproduce the publish pipeline locally:
+#
+#   nix run .#merge-publish-tree        -- bundles/linux bundles/darwin .
+#   VALIDATE_INDEX_SH=$PWD/tests/validate-index.sh \
+#     nix run .#validate-publish-tree   -- merged
+#   nix run .#substitute-publish-urls   -- index_tree "$INDEX_HOST" "$BLOB_HOST"
+#   nix run .#sign-publish-index        -- index_tree
+#
 # The actual rsync to the Hetzner origin is deferred (placeholder step,
 # currently disabled — see TODO(hetzner) in the publish job). Once
 # provisioned, that step consumes the same `publish-tree` artifact shape.
@@ -104,47 +113,10 @@ jobs:
         # root after the tree is moved. xdebug is NOT checked here —
         # Phase 3 ships xdebug as a separate per-extension tarball; the
         # distro-matrix job covers xdebug end-to-end via tests/smoke.sh.
-        # These gates are version- and platform-agnostic; one inline
-        # script handles both Linux and Darwin matrix legs (same tarball
-        # layout, same relocation contract — pbs_relocate.h switches on
-        # __APPLE__).
-        run: |
-          set -euo pipefail
-          smoke_root="$RUNNER_TEMP/smoke"
-          mkdir -p "$smoke_root"
-          tar --use-compress-program=unzstd \
-              -xf result-tarball/php-*.tar.zst -C "$smoke_root"
-          PHP="$smoke_root/install/bin/php"
-          echo "::group::php -v"
-          "$PHP" -v
-          echo "::endgroup::"
-          # Cross-check that we built the version this matrix leg expected
-          # — defends against a flake change accidentally rerouting an
-          # attribute to the wrong source.
-          actual=$("$PHP" -r 'echo PHP_MAJOR_VERSION,".",PHP_MINOR_VERSION;')
-          if [ "$actual" != "${{ matrix.php }}" ]; then
-            echo "FAIL: expected PHP ${{ matrix.php }}, got $actual"; exit 1
-          fi
-          echo "::group::php -m"
-          "$PHP" -m
-          echo "::endgroup::"
-          echo "::group::expect intl currency formatting"
-          "$PHP" -r 'echo NumberFormatter::create("en_US", NumberFormatter::CURRENCY)->formatCurrency(1234.56, "USD"), "\n";'
-          echo "::endgroup::"
-          echo "::group::expect relocation tracks the running binary"
-          # Linux uses /proc/self/exe, Darwin uses _NSGetExecutablePath —
-          # both feed the same pbs_install_root() API in pbs_relocate.h,
-          # so the smoke test is identical: move install/, ask php for
-          # extension_dir, expect it to track the new prefix. (This also
-          # incidentally checks the tarball ships writable directories,
-          # since macOS rename(2) refuses 0555 source dirs.)
-          mv "$smoke_root/install" "$smoke_root/relocated"
-          ext_dir=$("$smoke_root/relocated/bin/php" -r 'echo ini_get("extension_dir");')
-          case "$ext_dir" in
-            "$smoke_root/relocated/lib/extensions/"*) echo "ok: $ext_dir" ;;
-            *) echo "FAIL: extension_dir=$ext_dir did not track relocation"; exit 1 ;;
-          esac
-          echo "::endgroup::"
+        # These gates are version- and platform-agnostic; one script
+        # handles both Linux and Darwin matrix legs (same tarball layout,
+        # same relocation contract — pbs_relocate.h switches on __APPLE__).
+        run: nix run .#smoke-test-tarball -- "$(ls result-tarball/php-*.tar.zst | head -1)" "${{ matrix.php }}"
 
       - name: Build closures
         run: nix build ".#closures-${{ matrix.minor }}" -o result-closures --print-build-logs
@@ -294,8 +266,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install cosign
-        uses: sigstore/cosign-installer@v3
+      - name: Install Nix
+        uses: DeterminateSystems/determinate-nix-action@v3
 
       - name: Download Linux release-bundle
         uses: actions/download-artifact@v4
@@ -312,101 +284,32 @@ jobs:
       - name: Merge Linux + Darwin trees
         # Both bundles share the same index.json schema and generated timestamp
         # (SOURCE_DATE_EPOCH is fixed in index.nix) but have disjoint
-        # targets/<triple> subtrees. The merge is:
-        #   - Union targets/ directories (no conflicts — target triples differ)
-        #   - Union blobs/ directories (content-addressed; collisions are fine)
-        #   - Deep-merge the two index.json roots: same schema/generated,
-        #     .targets maps are disjoint so they can be merged with jq.
-        run: |
-          set -euo pipefail
-          mkdir -p merged/blobs
-
-          # Copy Linux tree first
-          cp -r bundles/linux/. merged/
-
-          # Merge Darwin targets/ (disjoint triples, no overwrite)
-          if [ -d bundles/darwin/targets ]; then
-            cp -rn bundles/darwin/targets/. merged/targets/
-          fi
-
-          # Merge Darwin blobs/ (content-addressed; --no-clobber is safe)
-          if [ -d bundles/darwin/blobs ]; then
-            cp -rn bundles/darwin/blobs/. merged/blobs/ 2>/dev/null || true
-          fi
-
-          # Merge the two index.json roots: deep-merge .targets maps.
-          # Both have identical schema and generated values (deterministic build).
-          jq -s '
-            .[0] as $linux | .[1] as $darwin |
-            $linux | .targets = ($linux.targets + $darwin.targets)
-          ' bundles/linux/index.json bundles/darwin/index.json > merged/index.json
-
-          echo "Merged tree:"
-          echo "  targets: $(jq '.targets | keys | length' merged/index.json)"
-          echo "  blobs:   $(find merged/blobs -type f 2>/dev/null | wc -l)"
-
-      - name: Split into index tree and blob tree
-        run: |
-          set -euo pipefail
-          # index_tree/ gets everything except blobs/.
-          rsync -a --exclude='blobs/' merged/ index_tree/
-          echo "Index tree files: $(find index_tree -type f | wc -l)"
+        # targets/<triple> subtrees. The merge unions targets/ and blobs/,
+        # deep-merges the two index.json roots, then splits into merged/ and
+        # index_tree/ (the latter excludes blobs/, ready for signing).
+        run: nix run .#merge-publish-tree -- bundles/linux bundles/darwin .
 
       - name: Validate tree locally (pre-substitution)
         # Validation runs against the unsubstituted tree, where blob URLs still
-        # contain {BLOB_BASE}. validate-index.sh already skips HEAD checks for
-        # unsubstituted {BLOB_BASE} URLs (see its "warning: unsubstituted"
-        # guard). The structural checks — root schema, section sha256 chain,
-        # manifest sha256 chain — are all meaningful here because substitution
-        # doesn't touch those hashes.
-        #
-        # We serve merged/ (which contains both index_tree files and blobs/)
-        # so that manifest relative URLs and blob paths all resolve locally.
-        # A fixed port (8765) is used; killed with pkill after the check.
-        run: |
-          set -euo pipefail
-          PORT=8765
-          python3 -m http.server "$PORT" --directory merged &
-          HTTP_PID=$!
-          # Give the server a moment to bind
-          sleep 1
-          set +e
-          bash tests/validate-index.sh "http://127.0.0.1:${PORT}"
-          EXIT_CODE=$?
-          set -e
-          kill "$HTTP_PID" 2>/dev/null || true
-          exit $EXIT_CODE
+        # contain {BLOB_BASE}. validate-index.sh skips HEAD checks for those
+        # (see its "warning: unsubstituted" guard). The sha256 chain checks are
+        # all meaningful here because substitution doesn't touch those hashes.
+        # merged/ is served so that manifest relative URLs and blob paths all
+        # resolve locally.
+        run: VALIDATE_INDEX_SH=$PWD/tests/validate-index.sh nix run .#validate-publish-tree -- merged
 
       - name: Substitute URL placeholders
-        # Two sed passes: one for {INDEX_BASE}, one for {BLOB_BASE}.
-        # The blob URL pattern is {BLOB_BASE}/blobs/<XX>/<HASH> and maps to
-        # https://$BLOB_HOST/blobs/<XX>/<HASH> — a simple host substitution,
-        # no per-shard rewriting needed.
-        # Signing happens after this step, so the signed bytes are final.
-        run: |
-          set -euo pipefail
-          INDEX_BASE="https://${INDEX_HOST}"
-          BLOB_BASE="https://${BLOB_HOST}"
-
-          find index_tree -name '*.json' -exec \
-            sed -i "s|{INDEX_BASE}|${INDEX_BASE}|g" {} +
-          find index_tree -name '*.json' -exec \
-            sed -i "s|{BLOB_BASE}|${BLOB_BASE}|g" {} +
-
-          echo "URL substitution complete"
-          grep -r '{INDEX_BASE}\|{BLOB_BASE}' index_tree/ && \
-            { echo "FAIL: unsubstituted placeholders remain"; exit 1; } || true
+        # Two sed passes: {INDEX_BASE} → https://$INDEX_HOST,
+        # {BLOB_BASE} → https://$BLOB_HOST. Signing happens after this step
+        # so the signed bytes are final.
+        run: nix run .#substitute-publish-urls -- index_tree "$INDEX_HOST" "$BLOB_HOST"
 
       - name: Sign index.json (cosign keyless via OIDC)
         # Produces a Sigstore bundle (index.json.sig) alongside index.json.
-        # The bundle contains the signature, signing certificate, and
-        # Rekor transparency log inclusion proof. The CLI verifies this
-        # bundle using the GitHub Actions OIDC issuer + the workflow identity.
-        # Signing happens AFTER all substitutions so the signed bytes are final.
-        run: |
-          cosign sign-blob --yes \
-            --bundle index_tree/index.json.sig \
-            index_tree/index.json
+        # The bundle contains the signature, signing certificate, and Rekor
+        # transparency log inclusion proof. Signing happens AFTER all
+        # substitutions so the signed bytes are final.
+        run: nix run .#sign-publish-index -- index_tree
 
       - name: Upload publish-tree artifact
         # Packages both the signed index tree and the blob tree for inspection
