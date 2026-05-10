@@ -180,6 +180,28 @@
                 confFragment = "extension=pdo_pgsql";
               };
 
+              # Per-extension tarball for gd. Like pgsql, gd.so is produced
+              # by PHP's own configure (--enable-gd=shared in build-php.sh)
+              # and ships in the interpreter tarball; this just packages it
+              # separately with its closure of bundled C-libs (libpng,
+              # libjpeg-turbo, libwebp, freetype, plus zlib transitive
+              # through libpng/freetype) so consumers can pull gd alone.
+              #
+              # extVersion = phpSpec.version: gd is a bundled extension and
+              # ext/gd/php_gd.h ties PHP_GD_VERSION to PHP_VERSION.
+              # confFragment = "extension=gd" matches the 20-gd.ini fragment
+              # build-php.sh already writes for the interpreter tarball.
+              extGd = pkgs.callPackage ./php-unix/tarball-extension.nix {
+                inherit tree closures phpMinor;
+                bundledDeps = sharedDeps;
+                storePathTarballs = storePathTarballList;
+                extDrv    = php;
+                extName   = "gd";
+                extVersion = phpSpec.version;
+                phpVersion = phpSpec.version;
+                confFragment = "extension=gd";
+              };
+
               # Release aggregate: collects every artifact for this PHP variant
               # into a single $out directory, ready for upload. CI can
               # `nix build .#release-8_5` and rsync the result.
@@ -202,6 +224,8 @@
                   # pgsql + pdo_pgsql per-extension tarballs + manifests
                   cp -a ${extPgsql}/. "$out/" && chmod -R u+w "$out"
                   cp -a ${extPdoPgsql}/. "$out/" && chmod -R u+w "$out"
+                  # gd per-extension tarball + manifest
+                  cp -a ${extGd}/. "$out/" && chmod -R u+w "$out"
                   # Per-store-path tarballs
                   ${pkgs.lib.concatMapStringsSep "\n"
                     (spt: "cp -a ${spt}/. \"$out/\" && chmod -R u+w \"$out\"")
@@ -211,7 +235,7 @@
                 '';
               };
 
-            in { inherit php xdebug tree tarball closures extXdebug extPgsql extPdoPgsql storePathTarballList release; };
+            in { inherit php xdebug tree tarball closures extXdebug extPgsql extPdoPgsql extGd storePathTarballList release; };
 
           # Fan out over every entry in phpVersions. variants."8.4" = { php; xdebug; tree; tarball; }
           variants = builtins.mapAttrs (k: _: mkPhpVariant k) sources.phpVersions;
@@ -259,6 +283,7 @@
                 "extension-xdebug-${k}"     = v.extXdebug;
                 "extension-pgsql-${k}"      = v.extPgsql;
                 "extension-pdo_pgsql-${k}"  = v.extPdoPgsql;
+                "extension-gd-${k}"         = v.extGd;
                 "release-${k}"              = v.release;
               })
             {}
