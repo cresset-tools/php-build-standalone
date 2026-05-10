@@ -275,32 +275,49 @@ Reverse of `add`: `composer remove ext-<name>`, drops any matching
 
 By default, lists **every extension the index advertises** for the
 active project's `(host-target × resolved PHP minor × flavor)`,
-together with the locally-installed set. Each row carries a status
-marker:
+together with the locally-installed set. Each row carries one or
+more status markers (status is a list, not a single value, because
+`required` is orthogonal to the disk/index state):
 
-- `installed`  — enabled in `<project>/.bougie/conf.d/` and present
-  on disk under `installs/.../lib/extensions/<api>/`.
-- `shipped`    — part of the interpreter's always-shipped set
-  (always available; enable by adding to `composer.json`).
-- `available`  — published in the index but not enabled here.
-- `local-only` — present on disk but no longer in the index (e.g.
-  yanked or pre-frozen artifact).
+- `installed`  — `.so` is on disk under the project's resolved
+  interpreter AND the index advertises the name.
+- `shipped`    — `.so` is on disk but the index has no section for
+  the name (i.e. it ships bundled with the interpreter).
+- `available`  — published in the index for the listed target.
+- `local-only` — `.so` is on disk; the index has a section for the
+  name but no non-yanked artifact for the project's resolved
+  `(php_minor, flavor)` (e.g. yanked or pre-frozen artifact).
+- `required`   — listed in `composer.json`'s `require.ext-*`. Tag,
+  not exclusive — appears alongside the disk/index state above.
 
 This mirrors `uv python list`: default = installed + downloadable,
 side by side, so the user sees the full universe at once.
 
+Row text format: `<name>` by default; with `--all-versions` the key
+is the artifact tag form `<name>-<version>+php<minor>-<flavor>`,
+optionally suffixed with `-<target>` under `--all-platforms`.
+
 Flags (mirroring `uv python list`):
 
-- `--only-installed` — hide rows in the `available` state.
-- `--only-available` — hide rows in the `installed` / `shipped`
-  states (the index-only view).
+- `--only-installed` — show only rows whose `.so` is on disk
+  (`installed`, `shipped`, `local-only`). Skips the index fetch
+  entirely, so works offline. Bundled extensions render as
+  `installed` in this view because we don't fetch the index to
+  distinguish `shipped`.
+- `--only-available` — show only rows in the `available` state
+  (in the index, not on disk). Mutually exclusive with
+  `--only-installed`.
 - `--all-versions` — include every published version, not just the
-  latest per name. Default shows one row per extension.
+  latest per `(name, php_minor, flavor)`. Default shows one row
+  per extension.
 - `--all-platforms` — include rows for every target triple, not
   just the host's.
-- `--show-urls` — include the manifest URL (and blob URL when
-  `--all-versions` is in effect) on each row.
-- `--format text|json|json-v1` — see §9.
+- `--show-urls` — replace the status marker with the manifest URL
+  (per artifact when `--all-versions` is in effect, otherwise the
+  latest non-yanked artifact's manifest URL).
+- `--format text|json-v1` — see §9. The JSON shape is
+  `{ "schema_version": 1, "items": [{ "name", "version"?,
+  "php_minor"?, "flavor"?, "target"?, "status": [...], "url"? }, …] }`.
 
 Without `--all-versions`, the displayed version is the highest
 non-yanked version the section index advertises that's
@@ -448,16 +465,21 @@ The same grammar is what `composer.json`'s `require.php` constraint is
 parsed against (§4.1) — Composer's constraint syntax is a superset of
 the `<version-specifier>` form above.
 
-#### 3.5.1 `bougie php install [<request>] [--flavor <flavor>]`
+#### 3.5.1 `bougie php install [<request>…] [--flavor <flavor>]`
 
-Resolves and installs an interpreter into `$BOUGIE_HOME/installs/`.
-Mirrors `uv python install`.
+Resolves and installs interpreters into `$BOUGIE_HOME/installs/`.
+Mirrors `uv python install`, which accepts multiple targets in one
+invocation.
 
-- `<request>` follows §3.5.0's grammar (e.g. `8.3`, `8.3.12`,
+- Each `<request>` follows §3.5.0's grammar (e.g. `8.3`, `8.3.12`,
   `>=8.3,<8.4`, `8.3+zts`, `php-8.3.12-x86_64-unknown-linux-gnu-nts`).
-  Omit to install the latest patch of the latest minor in the
-  default flavor.
-- `--flavor` defaults to `nts` (see `DISTRIBUTION.md` §Object kinds).
+  Omit all arguments to install the latest patch of the latest minor
+  in the default flavor.
+- Multiple requests are processed in order. If one fails to resolve
+  or install, the command exits without attempting the rest (later
+  reruns will skip the already-installed targets).
+- `--flavor` defaults to `nts` (see `DISTRIBUTION.md` §Object kinds)
+  and applies to every request that does not name a flavor inline.
   When the request already names a flavor (short or `+`-form), the
   in-request form wins.
 - Idempotent: a second install of the same `(version, flavor)` is a
@@ -468,15 +490,21 @@ Mirrors `uv python install`.
 - Path-shaped requests (executable-path, install-dir) error out here
   — `install` only takes index-shaped requests.
 
-Outputs (on `--format json`): `{ "schema_version": 1, "version": "...", "flavor": "...", "path": "..." }`.
+Outputs (on `--format json-v1`):
+`{ "schema_version": 1, "installed": [{ "version": "...", "flavor": "...", "path": "...", "already_present": false }, …] }`.
 
-#### 3.5.2 `bougie php uninstall <request> [--flavor <flavor>]`
+#### 3.5.2 `bougie php uninstall <request>… [--flavor <flavor>]`
 
-Removes the install directory matching `<request>` (§3.5.0). Does
-**not** GC store paths — that's `bougie cache prune`'s job. Mirrors
-`uv python uninstall`. Path-shaped requests are accepted; the
-referenced install must lie under `$BOUGIE_HOME/installs/`
-(uninstalling a system PHP via path is rejected).
+Removes the install directories matching each `<request>` (§3.5.0).
+Does **not** GC store paths — that's `bougie cache prune`'s job.
+Mirrors `uv python uninstall`, which accepts multiple targets.
+Path-shaped requests are accepted; the referenced install must lie
+under `$BOUGIE_HOME/installs/` (uninstalling a system PHP via path
+is rejected). All requests are resolved before any directory is
+removed; if any fails to resolve, nothing is uninstalled.
+
+Outputs (on `--format json-v1`):
+`{ "schema_version": 1, "removed": [{ "path": "..." }, …] }`.
 
 #### 3.5.3 `bougie php list [<request>]`
 
@@ -486,7 +514,8 @@ the user sees the full set in one view. Mirrors `uv python list`.
 
 A `<request>` argument (§3.5.0) filters to matching rows
 (`bougie php list 8.3`, `bougie php list >=8.3,<8.5`,
-`bougie php list 8.3+zts`).
+`bougie php list 8.3+zts`). Path- and name-shaped requests are not
+useful as filters and yield an empty result.
 
 Each row carries a status marker:
 
@@ -494,21 +523,33 @@ Each row carries a status marker:
   one for the current project, if any, is starred).
 - `available` — published in the index but not installed.
 
+Row text format: `<version>-<flavor>` when every row is for the host
+target; the full tag form `php-<version>-<target>-<flavor>` when the
+listing spans multiple targets (e.g. `--all-platforms`,
+`--all-arches`). The path or `<download available>` marker (or, with
+`--show-urls`, the manifest URL) follows in a second column.
+
 Flags (mirroring `uv python list`):
 
-- `--only-installed` — hide `available` rows.
+- `--only-installed` — hide `available` rows. Skips the index fetch
+  entirely, so works offline.
 - `--only-available` — hide `installed` rows (index-only view).
+  Mutually exclusive with `--only-installed`.
 - `--all-versions` — include every published patch version, not
   just the latest per minor.
 - `--all-platforms` — include downloads for every target triple,
-  not just the host's. (Useful with `--target` for cross-resolution.)
+  not just the host's.
 - `--all-arches` — list rows for every architecture available under
-  the host's OS / libc.
-- `--show-urls` — append the manifest/blob URLs to each row.
-- `--format text|json|json-v1` — see §9.
+  the host's OS / libc. Subset of `--all-platforms`.
+- `--show-urls` — replace the `<download available>` marker with
+  the manifest URL.
+- `--format text|json-v1` — see §9. The JSON shape is
+  `{ "schema_version": 1, "items": [{ "version", "flavor", "target",
+  "status", "path"?, "url"? }, …] }`.
 
 Without `--all-versions`, the displayed version per minor is the
-highest non-yanked patch in the section index.
+highest non-yanked patch in the section index. Yanked artifacts are
+hidden by default.
 
 #### 3.5.4 `bougie php find [<request>]`
 
