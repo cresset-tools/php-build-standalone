@@ -29,9 +29,14 @@
 #   $4 — blob hostname  (e.g. blobs.example.com)
 #
 # Env:
-#   PUBLISH_SSH_KEY  — SSH private key contents. Required.
-#   PUBLISH_SSH_USER — remote user (default: deploy)
-#   INDEX_REMOTE_ROOT — remote index doc root (default: /srv)
+#   PUBLISH_SSH_KEY   — SSH private key contents. Required.
+#   PUBLISH_SSH_USER  — remote user (default: deploy)
+#   INDEX_REMOTE_ROOT — remote index doc root (default: /srv/index).
+#                       Must match nginx's `root` for the index vhost
+#                       (~/infra/hosts/origin/nginx.nix). When migrating
+#                       from the symlink-flip layout, replace the
+#                       existing /srv/index symlink with a real
+#                       directory before the first run.
 #   BLOB_REMOTE_PATH  — remote blobs root (default: /srv/blobs/)
 
 if [ "$#" -ne 4 ]; then
@@ -44,7 +49,7 @@ BLOBS_DIR="$2"
 INDEX_HOST="$3"
 BLOB_HOST="$4"
 USER="${PUBLISH_SSH_USER:-deploy}"
-INDEX_ROOT="${INDEX_REMOTE_ROOT:-/srv}"
+INDEX_ROOT="${INDEX_REMOTE_ROOT:-/srv/index}"
 BLOB_REMOTE="${BLOB_REMOTE_PATH:-/srv/blobs/}"
 
 if [ -z "${PUBLISH_SSH_KEY:-}" ]; then
