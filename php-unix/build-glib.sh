@@ -86,6 +86,24 @@ find "$src_dir" -type f \( -name '*.py' -o -name 'gen-*' \) -print0 \
 # / libelf / xattr are explicitly disabled so meson's auto-detection
 # can't quietly link us against host libs. systemtap / dtrace / sysprof
 # are tracing-side tooling we don't ship.
+# DEBUG: dump compiler / SDK info so we can see what arpa/nameser.h
+# resolution looks like in CI. Drop this once Darwin builds pass.
+echo
+echo "=== build-glib debug: env probe ==="
+echo "CC=$CC"
+echo "PATH=$PATH"
+env | grep -E '^(SDK|NIX_|CPATH|C_INCLUDE_PATH|MACOSX_)' || true
+echo "--- ${CC%% *} -v --version ---"
+${CC%% *} -v --version 2>&1 || true
+echo "--- ${CC%% *} -E -x c -dM /dev/null | head ---"
+${CC%% *} -E -x c -dM /dev/null 2>&1 | head -5 || true
+echo "--- ${CC%% *} -E -x c -include sys/types.h -include arpa/nameser.h /dev/null ---"
+${CC%% *} -E -x c -include sys/types.h -include arpa/nameser.h /dev/null 2>&1 | head -10 || true
+echo "--- ${CC%% *} -Wp,-v -E -x c -include arpa/nameser.h /dev/null ---"
+${CC%% *} -Wp,-v -E -x c -include arpa/nameser.h /dev/null 2>&1 | head -30 || true
+echo "=== end build-glib debug ==="
+echo
+
 meson_setup_status=0
 meson setup "$build_dir" \
   --prefix="$PBS_DEPS" \

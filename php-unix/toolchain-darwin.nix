@@ -29,23 +29,10 @@
 , clang
 , llvmPackages
 , bash
-, apple-sdk_14
 }:
 let
-  # Use nixpkgs's wrapped clang. apple-sdk_14 provides the macOS 14 SDK
-  # used at build time (system C/Obj-C headers, frameworks). We still
-  # target macOS 11 at runtime via -mmacosx-version-min; the SDK only
-  # selects which header revision we compile against. apple-sdk_11/12/13
-  # were dropped from nixpkgs in 25.11, so 14 is the lowest currently
-  # available.
-  #
-  # -isysroot is baked into the cc wrapper so it's applied to every
-  # invocation regardless of whether the caller goes through stdenv's
-  # cc hook system. Our stdenvNoCC-based per-dep derivations don't
-  # trigger the apple-sdk setup hook, so without -isysroot here meson's
-  # strict cc.compiles() probes can't find <arpa/nameser.h> et al.
-  # autotools probes hide this because they silently skip missing
-  # headers, but meson treats absence as a hard failure.
+  # Use nixpkgs's wrapped clang. On aarch64-darwin it already knows the
+  # SDK path via the cc-wrapper's NIX_CFLAGS_COMPILE / framework dirs.
   llvmTools = llvmPackages.llvm;
 
   deploymentTarget = "11.0";
@@ -53,14 +40,12 @@ let
   commonCflags = lib.concatStringsSep " " [
     "-mmacosx-version-min=${deploymentTarget}"
     "-arch arm64"
-    "-isysroot ${apple-sdk_14}"
   ];
 
   commonLdflags = lib.concatStringsSep " " [
     "-mmacosx-version-min=${deploymentTarget}"
     "-arch arm64"
     "-Wl,-headerpad_max_install_names"
-    "-isysroot ${apple-sdk_14}"
   ];
 in
 stdenvNoCC.mkDerivation {
