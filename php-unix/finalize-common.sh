@@ -73,6 +73,19 @@ common_detoxify_text_files() {
   rm -f "$PBS_INSTALL/etc/php/php-fpm.conf.default"
   rm -rf "$PBS_INSTALL/etc/php/php-fpm.d"
 
+  # GLib ships python codegen helpers (glib-mkenums, glib-genmarshal,
+  # gdbus-codegen, glib-compile-resources, glib-compile-schemas) under
+  # bin/. They carry an absolute /nix/store python3 shebang that
+  # downstream meson builds (libvips) need during their *build*, but
+  # those paths can't be sanitized to a runtime-portable form (the
+  # consumer machine has no /nix/store). The scripts also serve no
+  # runtime purpose for our consumers — they're only relevant when a
+  # third party is building yet another GObject-based library. Drop
+  # them post-merge.
+  for d in "$PBS_INSTALL"/store/glib-*/bin; do
+    [ -d "$d" ] && rm -rf "$d"
+  done
+
   mapfile -t text_files < <(grep -rIl '/nix/store/[a-z0-9]\{32\}-pbs-' "$PBS_INSTALL" 2>/dev/null || true)
   for f in "${text_files[@]}"; do
     sed -i -E 's|/nix/store/[a-z0-9]{32}-pbs-[^/[:space:]"'"'"']*|/__PBS_PREFIX__|g' "$f"

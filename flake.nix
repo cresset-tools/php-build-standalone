@@ -109,6 +109,14 @@
               inherit mkDep zlib bzip2 libpng libjpeg-turbo libwebp freetype libxml2
                       libtiff lcms2 openjpeg libheif libde265;
             };
+            libffi        = pkgs.callPackage ./php-unix/libffi.nix        { inherit mkDep; };
+            pcre2         = pkgs.callPackage ./php-unix/pcre2.nix         { inherit mkDep; };
+            expat         = pkgs.callPackage ./php-unix/expat.nix         { inherit mkDep; };
+            glib          = pkgs.callPackage ./php-unix/glib.nix          { inherit mkDep libffi pcre2 zlib; };
+            libvips       = pkgs.callPackage ./php-unix/libvips.nix       {
+              inherit mkDep glib libpng libjpeg-turbo libwebp libtiff libheif lcms2
+                      libxml2 zlib expat;
+            };
           } // pkgs.lib.optionalAttrs darwin {
             libiconv = pkgs.callPackage ./php-unix/libiconv.nix { inherit mkDep; };
           };
@@ -127,6 +135,7 @@
               phpSpec     = sources.phpVersions.${phpKey};
               xdebugSpec  = sources.xdebugVersions.${phpSpec.xdebug};
               imagickSpec = sources.imagickVersions.${phpSpec.imagick};
+              vipsSpec    = sources.vipsVersions.${phpSpec.vips};
 
               php = pkgs.callPackage ./php-unix/php.nix ({
                 inherit mkDep phpSpec;
@@ -143,9 +152,13 @@
                 inherit mkDep php imagickSpec;
                 inherit (deps) imagemagick;
               };
+              vips = pkgs.callPackage ./php-unix/vips.nix {
+                inherit mkDep php vipsSpec;
+                inherit (deps) libvips glib;
+              };
               tree = pkgs.callPackage ./php-unix/tree.nix {
                 bundledDeps = sharedDeps;
-                interpreterDeps = [ php xdebug imagick ];
+                interpreterDeps = [ php xdebug imagick vips ];
                 inherit toolchain;
                 phpVersion = phpSpec.version;
               };
@@ -223,6 +236,7 @@
               extensions = {
                 xdebug    = mkExt { extDrv = xdebug;  extName = "xdebug";  extVersion = xdebugSpec.version;  confFragment = null; };
                 imagick   = mkExt { extDrv = imagick; extName = "imagick"; extVersion = imagickSpec.version; confFragment = "extension=imagick"; };
+                vips      = mkExt { extDrv = vips;    extName = "vips";    extVersion = vipsSpec.version;    confFragment = "extension=vips"; };
                 pgsql     = mkBuiltinExt "pgsql";
                 pdo_pgsql = mkBuiltinExt "pdo_pgsql";
                 exif      = mkBuiltinExt "exif";
