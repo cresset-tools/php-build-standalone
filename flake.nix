@@ -143,6 +143,43 @@
                 confFragment = null;
               };
 
+              # Per-extension tarballs for pgsql + pdo_pgsql. The .so files
+              # are produced by PHP's own configure (--with-pgsql=shared,
+              # --with-pdo-pgsql=shared) so they live in the tree already;
+              # tarball-extension.nix just packages each one separately and
+              # records its closure (which pulls in libpq + transitive openssl,
+              # etc. via the closures.json walk).
+              #
+              # extVersion = phpSpec.version because PHP's bundled extensions
+              # version-track PHP itself (ext/pgsql/php_pgsql.h ties
+              # PHP_PGSQL_VERSION to PHP_VERSION). Same for pdo_pgsql.
+              #
+              # confFragment is non-null: pgsql + pdo_pgsql are regular
+              # `extension=` modules that are safe to auto-load. The 20- vs
+              # 30- conf.d ordering between pdo_pgsql.ini and pdo.ini is
+              # benign — PHP reorders MINIT to honor ZEND_MOD_REQUIRED("pdo")
+              # declared by the pdo_pgsql module, regardless of conf.d order.
+              extPgsql = pkgs.callPackage ./php-unix/tarball-extension.nix {
+                inherit tree closures phpMinor;
+                bundledDeps = sharedDeps;
+                storePathTarballs = storePathTarballList;
+                extDrv    = php;
+                extName   = "pgsql";
+                extVersion = phpSpec.version;
+                phpVersion = phpSpec.version;
+                confFragment = "extension=pgsql";
+              };
+              extPdoPgsql = pkgs.callPackage ./php-unix/tarball-extension.nix {
+                inherit tree closures phpMinor;
+                bundledDeps = sharedDeps;
+                storePathTarballs = storePathTarballList;
+                extDrv    = php;
+                extName   = "pdo_pgsql";
+                extVersion = phpSpec.version;
+                phpVersion = phpSpec.version;
+                confFragment = "extension=pdo_pgsql";
+              };
+
               # Release aggregate: collects every artifact for this PHP variant
               # into a single $out directory, ready for upload. CI can
               # `nix build .#release-8_5` and rsync the result.
@@ -162,6 +199,9 @@
                   cp -a ${tarball}/. "$out/" && chmod -R u+w "$out"
                   # xdebug per-extension tarball + manifest
                   cp -a ${extXdebug}/. "$out/" && chmod -R u+w "$out"
+                  # pgsql + pdo_pgsql per-extension tarballs + manifests
+                  cp -a ${extPgsql}/. "$out/" && chmod -R u+w "$out"
+                  cp -a ${extPdoPgsql}/. "$out/" && chmod -R u+w "$out"
                   # Per-store-path tarballs
                   ${pkgs.lib.concatMapStringsSep "\n"
                     (spt: "cp -a ${spt}/. \"$out/\" && chmod -R u+w \"$out\"")
@@ -171,7 +211,7 @@
                 '';
               };
 
-            in { inherit php xdebug tree tarball closures extXdebug storePathTarballList release; };
+            in { inherit php xdebug tree tarball closures extXdebug extPgsql extPdoPgsql storePathTarballList release; };
 
           # Fan out over every entry in phpVersions. variants."8.4" = { php; xdebug; tree; tarball; }
           variants = builtins.mapAttrs (k: _: mkPhpVariant k) sources.phpVersions;
@@ -216,8 +256,10 @@
                 "tree-${k}"              = v.tree;
                 "tarball-${k}"           = v.tarball;
                 "closures-${k}"          = v.closures;
-                "extension-xdebug-${k}"  = v.extXdebug;
-                "release-${k}"           = v.release;
+                "extension-xdebug-${k}"     = v.extXdebug;
+                "extension-pgsql-${k}"      = v.extPgsql;
+                "extension-pdo_pgsql-${k}"  = v.extPdoPgsql;
+                "release-${k}"              = v.release;
               })
             {}
             (builtins.attrNames sources.phpVersions);
