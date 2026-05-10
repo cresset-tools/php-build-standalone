@@ -67,7 +67,7 @@ pkgs.stdenvNoCC.mkDerivation {
           [ "$s" = "$sn" ] && return 0
         done
         case "$sn" in
-          /usr/lib/*|/System/*|@rpath/*) return 0 ;;
+          /usr/lib/*|/System/*) return 0 ;;
         esac
         return 1
       }
@@ -77,8 +77,33 @@ pkgs.stdenvNoCC.mkDerivation {
         basename "$(otool -D "$f" 2>/dev/null | tail -n1)" 2>/dev/null || true
       }
       _get_needed() {
-        # LC_LOAD_DYLIB lines: "\t<path> (compatibility ...)" — print full path.
-        otool -L "$1" 2>/dev/null | awk 'NR>1 {print $1}'
+        # LC_LOAD_DYLIB lines: "\t<path> (compatibility ...)" — print
+        # the basename for everything except true system paths, which we
+        # leave as-is for _is_system to filter.
+        #
+        # Two rewrite shapes feed into the closure walker:
+        #
+        #   (a) Tree binaries (lib/extensions/*.so, bin/php) — finalize
+        #       has already rewritten cross-dep install_names to
+        #       @rpath/libfoo.dylib. Strip to basename.
+        #
+        #   (b) Bundled-dep binaries inside store/<storeName>/lib/ —
+        #       _expand_store walks STORENAME_NIX[sn]/lib, which points
+        #       at the per-dep /nix/store/<hash>-pbs-* derivation, NOT
+        #       the finalized tree. install_names there are still raw
+        #       absolute /nix/store/.../libfoo.dylib paths; finalize
+        #       rewrites them only when copying into the tree. Strip
+        #       these to basename too so SONAME_STORE lookups land.
+        #
+        # Without case (b), libpq.5.dylib's libssl/libcrypto NEEDED
+        # entries don't resolve and the transitive openssl edge gets
+        # dropped from any closure that flows through libpq.
+        otool -L "$1" 2>/dev/null | awk 'NR>1 {print $1}' | while IFS= read -r p; do
+          case "$p" in
+            /usr/lib/*|/System/*) printf '%s\n' "$p" ;;
+            *) basename "$p" ;;
+          esac
+        done
       }
       _lib_glob="*.dylib*"
       _is_binary() { file -b "$1" 2>/dev/null | grep -q 'Mach-O'; }

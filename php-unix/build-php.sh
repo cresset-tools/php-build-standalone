@@ -36,6 +36,7 @@ set -euo pipefail
 : "${PBS_DEP_LIBCURL:?}"
 : "${PBS_DEP_NCURSES:?}"
 : "${PBS_DEP_LIBEDIT:?}"
+: "${PBS_DEP_LIBPQ:?}"
 : "${PBS_PHP_PRE_CONFIGURE:?set by php.nix}"
 : "${PBS_PHP_POST_INSTALL:?set by php.nix}"
 : "${PBS_PHP_AUDIT_EXTRA:?set by php.nix}"
@@ -107,6 +108,8 @@ source "$PBS_PHP_PRE_CONFIGURE"
   --with-pdo-mysql="shared,mysqlnd" \
   --with-pdo-sqlite="shared,$PBS_DEP_SQLITE" \
   --with-sqlite3="shared,$PBS_DEP_SQLITE" \
+  --with-pgsql="shared,$PBS_DEP_LIBPQ" \
+  --with-pdo-pgsql="shared,$PBS_DEP_LIBPQ" \
   --with-sodium="shared,$PBS_DEP_LIBSODIUM" \
   --with-bz2="shared,$PBS_DEP_BZIP2" \
   --with-curl="shared,$PBS_DEP_LIBCURL" \
@@ -126,7 +129,7 @@ source "$PBS_PHP_PRE_CONFIGURE"
   "$PBS_PHP_ICONV_ARG" \
   --with-libedit="$PBS_DEP_LIBEDIT" \
   --enable-opcache \
-  PKG_CONFIG_PATH="$PBS_DEP_LIBZIP/lib/pkgconfig:$PBS_DEP_ICU/lib/pkgconfig:$PBS_DEP_LIBPNG/lib/pkgconfig:$PBS_DEP_LIBWEBP/lib/pkgconfig:$PBS_DEP_FREETYPE/lib/pkgconfig:$PBS_DEP_LIBJPEG_TURBO/lib/pkgconfig:$PBS_DEP_OPENSSL/lib/pkgconfig:$PBS_DEP_LIBCURL/lib/pkgconfig:$PBS_DEP_LIBXML2/lib/pkgconfig:$PBS_DEP_ONIGURUMA/lib/pkgconfig:$PBS_DEP_ZLIB/lib/pkgconfig:$PBS_DEP_SQLITE/lib/pkgconfig:$PBS_DEP_LIBSODIUM/lib/pkgconfig:$PBS_DEP_BZIP2/lib/pkgconfig:$PBS_DEP_NGHTTP2/lib/pkgconfig:$PBS_DEP_LIBEDIT/lib/pkgconfig:$PBS_DEP_NCURSES/lib/pkgconfig"
+  PKG_CONFIG_PATH="$PBS_DEP_LIBZIP/lib/pkgconfig:$PBS_DEP_ICU/lib/pkgconfig:$PBS_DEP_LIBPNG/lib/pkgconfig:$PBS_DEP_LIBWEBP/lib/pkgconfig:$PBS_DEP_FREETYPE/lib/pkgconfig:$PBS_DEP_LIBJPEG_TURBO/lib/pkgconfig:$PBS_DEP_OPENSSL/lib/pkgconfig:$PBS_DEP_LIBCURL/lib/pkgconfig:$PBS_DEP_LIBXML2/lib/pkgconfig:$PBS_DEP_ONIGURUMA/lib/pkgconfig:$PBS_DEP_ZLIB/lib/pkgconfig:$PBS_DEP_SQLITE/lib/pkgconfig:$PBS_DEP_LIBSODIUM/lib/pkgconfig:$PBS_DEP_BZIP2/lib/pkgconfig:$PBS_DEP_NGHTTP2/lib/pkgconfig:$PBS_DEP_LIBEDIT/lib/pkgconfig:$PBS_DEP_NCURSES/lib/pkgconfig:$PBS_DEP_LIBPQ/lib/pkgconfig"
 
 # Detoxify build-defs.h BEFORE compile. configure has just substituted
 # /nix/store/<hash>-pbs-* paths into CONFIGURE_COMMAND, PHP_PREFIX,
@@ -202,8 +205,10 @@ _ini 20-dom.ini        "extension=dom"
 _ini 30-pdo.ini        "extension=pdo"
 _ini 35-pdo_mysql.ini  "extension=pdo_mysql"
 _ini 35-pdo_sqlite.ini "extension=pdo_sqlite"
+_ini 35-pdo_pgsql.ini  "extension=pdo_pgsql"
 _ini 40-mysqli.ini     "extension=mysqli"
 _ini 40-sqlite3.ini    "extension=sqlite3"
+_ini 40-pgsql.ini      "extension=pgsql"
 _ini 50-xmlreader.ini  "extension=xmlreader"
 _ini 50-xmlwriter.ini  "extension=xmlwriter"
 _ini 50-simplexml.ini  "extension=simplexml"
@@ -230,10 +235,10 @@ _check_ext() {
     exit 1
   fi
 }
-for _ext in mbstring intl curl pdo pdo_mysql pdo_sqlite sqlite3 sodium \
-            bz2 zip gd fileinfo filter phar posix session tokenizer \
-            ctype iconv dom xml xmlreader xmlwriter simplexml mysqli \
-            openssl; do
+for _ext in mbstring intl curl pdo pdo_mysql pdo_sqlite pdo_pgsql sqlite3 \
+            pgsql sodium bz2 zip gd fileinfo filter phar posix session \
+            tokenizer ctype iconv dom xml xmlreader xmlwriter simplexml \
+            mysqli openssl; do
   _check_ext "$_ext"
   echo "  ext OK: $_ext"
 done

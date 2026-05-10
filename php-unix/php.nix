@@ -16,7 +16,7 @@
 { mkDep, pkgs, phpSpec
 , zlib, openssl, libxml2, sqlite, oniguruma, libsodium, bzip2
 , libpng, libjpeg-turbo, libwebp, freetype
-, nghttp2, libzip, icu, libcurl, ncurses, libedit
+, nghttp2, libzip, icu, libcurl, ncurses, libedit, libpq
 , libiconv ? null
 }:
 let
@@ -29,7 +29,7 @@ mkDep {
   deps = [
     zlib openssl libxml2 sqlite oniguruma libsodium bzip2
     libpng libjpeg-turbo libwebp freetype
-    nghttp2 libzip icu libcurl ncurses libedit
+    nghttp2 libzip icu libcurl ncurses libedit libpq
   ] ++ lib.optionals stdenv.isDarwin [ libiconv ];
   extraEnv = {
     PBS_PHP_PREPARE_SCRIPT = ./prepare-php.sh;

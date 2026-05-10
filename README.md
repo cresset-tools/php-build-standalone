@@ -40,7 +40,9 @@ on macOS. Extract any of them anywhere, run `bin/php`.
 Beyond the interpreter tarball, there's a per-extension distribution layer
 (content-addressed `store/<name>-<ver>-<hash>/` layout, per-extension `.tar.zst`
 + JSON manifest declaring the closure of bundled C-lib store paths it needs).
-xdebug is the canary: `nix build .#extension-xdebug-8_4`. `nix build .#release-bundle`
+xdebug, pgsql, and pdo_pgsql currently ship via this layer:
+`nix build .#extension-xdebug-8_4`, `.#extension-pgsql-8_4`, `.#extension-pdo_pgsql-8_4`.
+`nix build .#release-bundle`
 emits the full cross-variant directory tree (`index.json` + every artifact)
 ready to rsync to a static host. See [`DESIGN.md`](DESIGN.md) for the
 distribution model.
@@ -81,15 +83,15 @@ the toolchain is a thin wrapper around nixpkgs's `clang`. `@rpath/`-relative
 - **xdebug 3.5.1** as a loadable Zend extension at
   `lib/extensions/no-debug-non-zts-<api>/xdebug.so`. Single pin — 3.5 is the
   first xdebug release supporting PHP 8.5; it covers 8.1 through 8.5.
-- 38 PHP extensions: ctype, curl, date, dom, fileinfo, filter, gd (jpeg/png/webp/freetype),
+- 40 PHP extensions: ctype, curl, date, dom, fileinfo, filter, gd (jpeg/png/webp/freetype),
   hash, iconv, intl (ICU), json, libxml, mbstring (oniguruma), mysqli, mysqlnd, openssl,
-  pcre, pdo_sqlite, pdo_mysql, phar, posix, readline (libedit), reflection, session,
-  simplexml, sodium, spl, sqlite3, tokenizer, xml, xmlreader, xmlwriter, zip, zlib,
-  opcache (zend_extension)
-- 17 bundled C libraries: zlib 1.3.1, openssl 3.5.6, libxml2 2.13.5, sqlite 3.47.2,
+  pcre, pdo_sqlite, pdo_mysql, pdo_pgsql, pgsql (libpq), phar, posix, readline (libedit),
+  reflection, session, simplexml, sodium, spl, sqlite3, tokenizer, xml, xmlreader,
+  xmlwriter, zip, zlib, opcache (zend_extension)
+- 18 bundled C libraries: zlib 1.3.1, openssl 3.5.6, libxml2 2.13.5, sqlite 3.47.2,
   oniguruma 6.9.10, libsodium 1.0.20, bzip2 1.0.8, libpng 1.6.44, libjpeg-turbo 3.0.4,
   libwebp 1.4.0, freetype 2.13.3, nghttp2 1.64.0, libzip 1.10.1, ICU 75.1, libcurl 8.11.0,
-  ncurses 6.5, libedit 20240808-3.1. macOS adds libiconv 1.17 (apple-sdk strips
+  ncurses 6.5, libedit 20240808-3.1, libpq 17.2 (PostgreSQL client only). macOS adds libiconv 1.17 (apple-sdk strips
   the legacy iconv headers; glibc provides iconv natively). Each C library installs
   to its own content-addressed `store/<name>-<ver>-<hash>/` subtree; PHP and the
   extensions reference them via per-binary RPATHs that list only the deps each ELF
@@ -290,7 +292,8 @@ text-file gate.
 flake.nix                      fans out one variant per phpVersions entry;
                                outputs per minor: tarball-<m>, tree-<m>,
                                php-<m>, xdebug-<m>, closures-<m>,
-                               extension-xdebug-<m>, storePath-<dep>-<m>,
+                               extension-{xdebug,pgsql,pdo_pgsql}-<m>,
+                               storePath-<dep>-<m>,
                                release-<m>; plus index, release-bundle
 flake.lock                     pinned nixpkgs revision
 DESIGN.md                      content-addressed store + extension

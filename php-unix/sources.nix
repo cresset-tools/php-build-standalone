@@ -164,6 +164,17 @@
     version = "1.19";
   };
 
+  # libpq — PostgreSQL client library, for the pgsql + pdo_pgsql extensions.
+  # Built from the full PostgreSQL source tarball but only the client subtree
+  # (src/common, src/port, src/interfaces/libpq, src/bin/pg_config, src/include)
+  # is compiled and installed — see build-libpq.sh. Wired against our bundled
+  # OpenSSL so libpq supports TLS connections (sslmode=require et al).
+  libpq = {
+    url = "https://ftp.postgresql.org/pub/source/v17.2/postgresql-17.2.tar.bz2";
+    sha256 = "82ef27c0af3751695d7f64e2d963583005fbb6a0c3df63d0e4b42211d7021164";
+    version = "17.2";
+  };
+
   # libedit — BSD editline library; provides line editing and history for
   # PHP's ext/readline (php -a interactive shell). We use libedit rather
   # than GNU readline because readline is GPL-licensed and redistributing

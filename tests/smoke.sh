@@ -54,7 +54,7 @@ emit "php -m"
 modules=$("$PHP" -m) || die "php -m failed"
 printf '%s\n' "$modules"
 for ext in Core curl date dom intl json mbstring openssl pcre pdo_sqlite \
-           sodium sqlite3 zip zlib iconv; do
+           pdo_pgsql pgsql sodium sqlite3 zip zlib iconv; do
     printf '%s\n' "$modules" | grep -qx "$ext" || \
         printf '%s\n' "$modules" | grep -qix "$ext" || \
         die "expected extension '$ext' not loaded"
