@@ -65,9 +65,16 @@ fi
 
 # Deep-merge the two index.json roots: .targets maps are disjoint by triple.
 # .version is identical (asserted) so $linux.version carries through.
-jq -s '
+# `generated` is rewritten to wall-clock-now: each per-leg index.json holds
+# the reproducible per-leg default (1704067200) from index.nix; the merge
+# step is the natural place to stamp the actual publish time on the unified
+# index. Allow GENERATED_AT to override for tests/manual runs.
+generated_at="${GENERATED_AT:-$(date -u '+%Y-%m-%dT%H:%M:%SZ')}"
+jq -s --arg generated "$generated_at" '
   .[0] as $linux | .[1] as $darwin |
-  $linux | .targets = ($linux.targets + $darwin.targets)
+  $linux
+    | .targets = ($linux.targets + $darwin.targets)
+    | .generated = $generated
 ' "$LINUX_DIR/index.json" "$DARWIN_DIR/index.json" > "$OUTPUT_DIR/merged/index.json"
 
 echo "Merged tree:"

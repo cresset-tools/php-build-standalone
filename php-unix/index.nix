@@ -25,7 +25,11 @@
 #     and extension manifests carry blob.url and closure[].url with the
 #     {BLOB_BASE} placeholder (emitted by tarball*.nix, substituted here).
 #
-# Reproducibility: SOURCE_DATE_EPOCH=1704067200 drives the generated field;
+# Reproducibility: SOURCE_DATE_EPOCH=1704067200 drives the `generated` field
+#   so `nix build .#index` is bit-reproducible per leg. CI rewrites this to
+#   the publish wall-clock at the merge step (scripts/merge-publish-tree.sh)
+#   so the published index.json's `generated` reflects when the tree was
+#   actually assembled.
 #   jq -S produces sorted keys; artifacts within sections are sorted by tag.
 # yanksFile: optional path to a JSON file containing an array of yank objects.
 #   Each object has a required `tag` field and an optional `reason` field.

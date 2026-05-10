@@ -330,11 +330,12 @@ jobs:
           path: bundles/darwin/
 
       - name: Merge Linux + Darwin trees
-        # Both bundles share the same index.json schema and generated timestamp
-        # (SOURCE_DATE_EPOCH is fixed in index.nix) but have disjoint
-        # targets/<triple> subtrees. The merge unions targets/ and blobs/,
-        # deep-merges the two index.json roots, then splits into merged/ and
-        # index_tree/ (the latter excludes blobs/, ready for signing).
+        # Both bundles share the same index.json schema (generated is the
+        # reproducible per-leg sentinel) but have disjoint targets/<triple>
+        # subtrees. The merge unions targets/ and blobs/, deep-merges the
+        # two index.json roots, stamps `generated` with wall-clock-now, then
+        # splits into merged/ and index_tree/ (the latter excludes blobs/,
+        # ready for signing).
         run: nix run .#merge-publish-tree -- bundles/linux bundles/darwin .
 
       - name: Validate tree locally
