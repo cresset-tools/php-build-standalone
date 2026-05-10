@@ -64,7 +64,7 @@ SSH_CMD="ssh -i $KEY_FILE -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev
 #    until the index flip in step 3, so this can't be observed
 #    inconsistently from a client's perspective.
 echo "==> rsync blobs → ${USER}@${BLOB_HOST}:${BLOB_REMOTE}"
-rsync -az \
+rsync -az --chmod=D755,F644 \
   -e "$SSH_CMD" \
   "${BLOBS_DIR}/" \
   "${USER}@${BLOB_HOST}:${BLOB_REMOTE}"
@@ -74,7 +74,7 @@ rsync -az \
 #    invisible to clients until step 3.
 echo "==> rsync index tree → ${USER}@${INDEX_HOST}:${NEW_VERSION_DIR}/"
 $SSH_CMD "${USER}@${INDEX_HOST}" "mkdir -p ${VERSIONS_ROOT}"
-rsync -az \
+rsync -az --chmod=D755,F644 \
   -e "$SSH_CMD" \
   "${INDEX_TREE}/" \
   "${USER}@${INDEX_HOST}:${NEW_VERSION_DIR}/"
