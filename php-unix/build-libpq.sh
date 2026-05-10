@@ -35,25 +35,19 @@ cd "$src_dir"
 # We do NOT pass --enable-shared / --disable-static; PostgreSQL builds
 # both libpq.so and libpq.a by default and PHP's pgsql extension picks
 # the .so via the standard SONAME lookup. The .a is dropped post-install.
-# Belt-and-braces conftest-loadability wiring. PostgreSQL configure's
-# very first AC_RUN_IFELSE test ("checking test program") is the
-# canonical canary for "linker found the lib but loader can't". By that
-# point, --with-openssl has appended `-lssl -lcrypto` to LIBS, so every
-# subsequent conftest binary gets DT_NEEDED entries for libssl.so.3 +
-# libcrypto.so.3 (kept by setup-env-linux's `-Wl,--no-as-needed`).
-#
-# Two independent fixes for the conftest-loadability problem:
-#   1. -Wl,-rpath,$PBS_DEP_OPENSSL/lib in LDFLAGS — bakes a DT_RPATH
-#      into the conftest binary itself. DT_RPATH is consulted before
-#      LD_LIBRARY_PATH, so this is the load-bearing fix. RPATHs in
-#      conftest binaries are throwaway: finalize-linux.sh rewrites
-#      RPATH on the SHIPPED libpq.so via patchelf, untouched here.
-#   2. LD_LIBRARY_PATH=$PBS_DEPS_LDPATH scoped to configure — defense
-#      in depth; same pattern build-libcurl.sh already uses.
-# setup-env-linux deliberately doesn't export LD_LIBRARY_PATH globally
-# (would shadow the host libc for build tools).
+# Conftest-loadability wiring. PostgreSQL configure does AC_RUN_IFELSE
+# ("checking test program") after --with-openssl has appended
+# `-lssl -lcrypto` to LIBS, so every conftest binary gets DT_NEEDED
+# entries for libssl.so.3 / libcrypto.so.3 (kept by setup-env-linux's
+# `-Wl,--no-as-needed`). PBS's libssl/libcrypto in turn carry
+# DT_NEEDED libz.so.1, which is why libpq.nix lists zlib as a dep
+# even though we pass --without-zlib to configure: that listing is
+# what gets zlib's lib dir into PBS_DEPS_LDPATH, so the conftest
+# binary can resolve libz.so.1 at run time. setup-env-linux
+# deliberately doesn't export LD_LIBRARY_PATH globally (would shadow
+# the host libc for build tools), so we scope it to ./configure here
+# — same pattern build-libcurl.sh uses.
 env "$PBS_RPATH_VAR=${PBS_DEPS_LDPATH:-}" \
-LDFLAGS="${LDFLAGS:-} -Wl,-rpath,$PBS_DEP_OPENSSL/lib" \
 ./configure \
   --prefix="$PBS_DEPS" \
   --libdir="$PBS_DEPS/lib" \

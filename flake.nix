@@ -66,7 +66,7 @@
           libcurl       = pkgs.callPackage ./php-unix/libcurl.nix       { inherit mkDep openssl zlib nghttp2; };
           ncurses       = pkgs.callPackage ./php-unix/ncurses.nix       { inherit mkDep; };
           libedit       = pkgs.callPackage ./php-unix/libedit.nix       { inherit mkDep ncurses; };
-          libpq         = pkgs.callPackage ./php-unix/libpq.nix         { inherit mkDep openssl; };
+          libpq         = pkgs.callPackage ./php-unix/libpq.nix         { inherit mkDep openssl zlib; };
           # libiconv is Darwin-only (apple-sdk strips legacy headers).
           libiconv      = if darwin
             then pkgs.callPackage ./php-unix/libiconv.nix { inherit mkDep; }
