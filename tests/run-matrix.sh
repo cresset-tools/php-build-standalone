@@ -24,7 +24,7 @@ if [ -z "$tarball" ]; then
     tarball=$cand
 fi
 if [ -z "$tarball" ] || [ ! -f "$tarball" ]; then
-    echo "ERROR: no tarball found. Run 'nix build .#tarball -o result-tarball' first," >&2
+    echo "ERROR: no tarball found. Run 'nix build .#phpVariants.<system>.<minor>.tarball -o result-tarball' first," >&2
     echo "       or set PHP_TARBALL=/path/to/php-*.tar.zst." >&2
     exit 2
 fi

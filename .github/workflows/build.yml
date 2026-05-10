@@ -3,9 +3,10 @@
 # distribution tree and uploads it as a workflow artifact.
 #
 # Job graph:
-#   build-tarball              — 5-minor × 2-OS matrix; builds tarball-<minor>,
-#                                closures-<minor>, extension-xdebug-<minor>,
-#                                release-<minor> per leg; uploads artifacts.
+#   build-tarball              — 5-minor × 2-OS matrix; per leg builds
+#                                phpVariants.<system>.<minor>.{tarball,
+#                                closures, extensions.xdebug, release}
+#                                and uploads artifacts.
 #   distro-matrix              — Ubuntu only; runs tests/run-matrix.sh for each
 #                                PHP minor against 15 glibc distros + 1 musl
 #                                expected-fail (Alpine).
@@ -121,23 +122,25 @@ jobs:
         # Each row carries:
         #   - php / minor: dotted version + underscored flake attribute suffix
         #     (Nix CLI parses dots as attribute path separators, so the
-        #     flake exposes `tarball-8_5`, not 8.5).
+        #     phpVariants schema keys minors as `8_5`, not 8.5).
         #   - os: GitHub-hosted runner image. ubuntu-latest covers x86_64
         #     glibc; macos-26 (Tahoe) is the current Apple Silicon image
         #     (only macOS arch we ship — Apple dropped x86_64 in macOS 27).
+        #   - system: Nix system tuple used to address phpVariants outputs
+        #     (`phpVariants.<system>.<minor>.<artifact>`).
         #   - target: triple used in the tarball filename. Matches the
         #     value baked into the .json metadata by tarball.nix.
         include:
-          - { php: "8.1", minor: "8_1", os: ubuntu-latest, target: "x86_64-unknown-linux-gnu" }
-          - { php: "8.2", minor: "8_2", os: ubuntu-latest, target: "x86_64-unknown-linux-gnu" }
-          - { php: "8.3", minor: "8_3", os: ubuntu-latest, target: "x86_64-unknown-linux-gnu" }
-          - { php: "8.4", minor: "8_4", os: ubuntu-latest, target: "x86_64-unknown-linux-gnu" }
-          - { php: "8.5", minor: "8_5", os: ubuntu-latest, target: "x86_64-unknown-linux-gnu" }
-          - { php: "8.1", minor: "8_1", os: macos-26,      target: "aarch64-apple-darwin" }
-          - { php: "8.2", minor: "8_2", os: macos-26,      target: "aarch64-apple-darwin" }
-          - { php: "8.3", minor: "8_3", os: macos-26,      target: "aarch64-apple-darwin" }
-          - { php: "8.4", minor: "8_4", os: macos-26,      target: "aarch64-apple-darwin" }
-          - { php: "8.5", minor: "8_5", os: macos-26,      target: "aarch64-apple-darwin" }
+          - { php: "8.1", minor: "8_1", os: ubuntu-latest, system: "x86_64-linux",   target: "x86_64-unknown-linux-gnu" }
+          - { php: "8.2", minor: "8_2", os: ubuntu-latest, system: "x86_64-linux",   target: "x86_64-unknown-linux-gnu" }
+          - { php: "8.3", minor: "8_3", os: ubuntu-latest, system: "x86_64-linux",   target: "x86_64-unknown-linux-gnu" }
+          - { php: "8.4", minor: "8_4", os: ubuntu-latest, system: "x86_64-linux",   target: "x86_64-unknown-linux-gnu" }
+          - { php: "8.5", minor: "8_5", os: ubuntu-latest, system: "x86_64-linux",   target: "x86_64-unknown-linux-gnu" }
+          - { php: "8.1", minor: "8_1", os: macos-26,      system: "aarch64-darwin", target: "aarch64-apple-darwin" }
+          - { php: "8.2", minor: "8_2", os: macos-26,      system: "aarch64-darwin", target: "aarch64-apple-darwin" }
+          - { php: "8.3", minor: "8_3", os: macos-26,      system: "aarch64-darwin", target: "aarch64-apple-darwin" }
+          - { php: "8.4", minor: "8_4", os: macos-26,      system: "aarch64-darwin", target: "aarch64-apple-darwin" }
+          - { php: "8.5", minor: "8_5", os: macos-26,      system: "aarch64-darwin", target: "aarch64-apple-darwin" }
     steps:
       - uses: actions/checkout@v4
 
@@ -151,7 +154,7 @@ jobs:
         # Each nix build uses its own -o symlink so subsequent builds
         # don't clobber prior results — the upload steps below need
         # both the interpreter tarball and the release tree to coexist.
-        run: nix build ".#tarball-${{ matrix.minor }}" -o result-tarball --print-build-logs
+        run: nix build ".#phpVariants.${{ matrix.system }}.${{ matrix.minor }}.tarball" -o result-tarball --print-build-logs
 
       - name: Smoke-test the artifact
         # Extract to a fresh prefix and verify the basics: PHP runs, the
@@ -166,13 +169,13 @@ jobs:
         run: nix run .#smoke-test-tarball -- "$(ls result-tarball/php-*.tar.zst | head -1)" "${{ matrix.php }}"
 
       - name: Build closures
-        run: nix build ".#closures-${{ matrix.minor }}" -o result-closures --print-build-logs
+        run: nix build ".#phpVariants.${{ matrix.system }}.${{ matrix.minor }}.closures" -o result-closures --print-build-logs
 
       - name: Build extension-xdebug
-        run: nix build ".#extension-xdebug-${{ matrix.minor }}" -o result-extension --print-build-logs
+        run: nix build ".#phpVariants.${{ matrix.system }}.${{ matrix.minor }}.extensions.xdebug" -o result-extension --print-build-logs
 
       - name: Build release
-        run: nix build ".#release-${{ matrix.minor }}" -o result-release --print-build-logs
+        run: nix build ".#phpVariants.${{ matrix.system }}.${{ matrix.minor }}.release" -o result-release --print-build-logs
 
       - name: Upload tarball as workflow artifact
         uses: actions/upload-artifact@v4
