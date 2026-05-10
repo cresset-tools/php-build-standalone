@@ -53,7 +53,7 @@ rm -f "$script"
 emit "php -m"
 modules=$("$PHP" -m) || die "php -m failed"
 printf '%s\n' "$modules"
-for ext in Core curl date dom intl json mbstring openssl pcre pdo_sqlite \
+for ext in Core curl date dom exif intl json mbstring openssl pcre pdo_sqlite \
            pdo_pgsql pgsql sodium sqlite3 zip zlib iconv; do
     printf '%s\n' "$modules" | grep -qx "$ext" || \
         printf '%s\n' "$modules" | grep -qix "$ext" || \

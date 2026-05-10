@@ -40,8 +40,9 @@ on macOS. Extract any of them anywhere, run `bin/php`.
 Beyond the interpreter tarball, there's a per-extension distribution layer
 (content-addressed `store/<name>-<ver>-<hash>/` layout, per-extension `.tar.zst`
 + JSON manifest declaring the closure of bundled C-lib store paths it needs).
-xdebug, pgsql, and pdo_pgsql currently ship via this layer:
-`nix build .#extension-xdebug-8_4`, `.#extension-pgsql-8_4`, `.#extension-pdo_pgsql-8_4`.
+xdebug, pgsql, pdo_pgsql, and exif currently ship via this layer:
+`nix build .#extension-xdebug-8_4`, `.#extension-pgsql-8_4`, `.#extension-pdo_pgsql-8_4`,
+`.#extension-exif-8_4`.
 `nix build .#release-bundle`
 emits the full cross-variant directory tree (`index.json` + every artifact)
 ready to rsync to a static host. See [`DESIGN.md`](DESIGN.md) for the
@@ -83,7 +84,7 @@ the toolchain is a thin wrapper around nixpkgs's `clang`. `@rpath/`-relative
 - **xdebug 3.5.1** as a loadable Zend extension at
   `lib/extensions/no-debug-non-zts-<api>/xdebug.so`. Single pin — 3.5 is the
   first xdebug release supporting PHP 8.5; it covers 8.1 through 8.5.
-- 40 PHP extensions: ctype, curl, date, dom, fileinfo, filter, gd (jpeg/png/webp/freetype),
+- 41 PHP extensions: ctype, curl, date, dom, exif, fileinfo, filter, gd (jpeg/png/webp/freetype),
   hash, iconv, intl (ICU), json, libxml, mbstring (oniguruma), mysqli, mysqlnd, openssl,
   pcre, pdo_sqlite, pdo_mysql, pdo_pgsql, pgsql (libpq), phar, posix, readline (libedit),
   reflection, session, simplexml, sodium, spl, sqlite3, tokenizer, xml, xmlreader,
@@ -292,7 +293,7 @@ text-file gate.
 flake.nix                      fans out one variant per phpVersions entry;
                                outputs per minor: tarball-<m>, tree-<m>,
                                php-<m>, xdebug-<m>, closures-<m>,
-                               extension-{xdebug,pgsql,pdo_pgsql}-<m>,
+                               extension-{xdebug,pgsql,pdo_pgsql,exif}-<m>,
                                storePath-<dep>-<m>,
                                release-<m>; plus index, release-bundle
 flake.lock                     pinned nixpkgs revision

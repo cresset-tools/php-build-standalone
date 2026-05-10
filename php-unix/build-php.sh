@@ -119,6 +119,7 @@ source "$PBS_PHP_PRE_CONFIGURE"
   --with-jpeg="$PBS_DEP_LIBJPEG_TURBO" \
   --with-webp="$PBS_DEP_LIBWEBP" \
   --with-freetype="$PBS_DEP_FREETYPE" \
+  --enable-exif=shared \
   --enable-fileinfo=shared \
   --enable-filter=shared \
   --enable-phar=shared \
@@ -191,6 +192,7 @@ _ini 20-sodium.ini     "extension=sodium"
 _ini 20-bz2.ini        "extension=bz2"
 _ini 20-zip.ini        "extension=zip"
 _ini 20-gd.ini         "extension=gd"
+_ini 20-exif.ini       "extension=exif"
 _ini 20-fileinfo.ini   "extension=fileinfo"
 _ini 20-filter.ini     "extension=filter"
 _ini 20-phar.ini       "extension=phar"
@@ -236,7 +238,7 @@ _check_ext() {
   fi
 }
 for _ext in mbstring intl curl pdo pdo_mysql pdo_sqlite pdo_pgsql sqlite3 \
-            pgsql sodium bz2 zip gd fileinfo filter phar posix session \
+            pgsql sodium bz2 zip gd exif fileinfo filter phar posix session \
             tokenizer ctype iconv dom xml xmlreader xmlwriter simplexml \
             mysqli openssl; do
   _check_ext "$_ext"

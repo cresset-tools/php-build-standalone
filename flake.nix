@@ -180,6 +180,23 @@
                 confFragment = "extension=pdo_pgsql";
               };
 
+              # Per-extension tarball for exif. .so is produced by PHP's own
+              # configure (--enable-exif=shared) and ships in the interpreter
+              # tarball; this just packages it as a separately addressable
+              # artifact. exif has no external C-lib dep — its closure is just
+              # PHP's own bundled deps reachable via mbstring's character-set
+              # conversion path. extVersion = phpSpec.version (bundled ext).
+              extExif = pkgs.callPackage ./php-unix/tarball-extension.nix {
+                inherit tree closures phpMinor;
+                bundledDeps = sharedDeps;
+                storePathTarballs = storePathTarballList;
+                extDrv    = php;
+                extName   = "exif";
+                extVersion = phpSpec.version;
+                phpVersion = phpSpec.version;
+                confFragment = "extension=exif";
+              };
+
               # Release aggregate: collects every artifact for this PHP variant
               # into a single $out directory, ready for upload. CI can
               # `nix build .#release-8_5` and rsync the result.
@@ -202,6 +219,8 @@
                   # pgsql + pdo_pgsql per-extension tarballs + manifests
                   cp -a ${extPgsql}/. "$out/" && chmod -R u+w "$out"
                   cp -a ${extPdoPgsql}/. "$out/" && chmod -R u+w "$out"
+                  # exif per-extension tarball + manifest
+                  cp -a ${extExif}/. "$out/" && chmod -R u+w "$out"
                   # Per-store-path tarballs
                   ${pkgs.lib.concatMapStringsSep "\n"
                     (spt: "cp -a ${spt}/. \"$out/\" && chmod -R u+w \"$out\"")
@@ -211,7 +230,7 @@
                 '';
               };
 
-            in { inherit php xdebug tree tarball closures extXdebug extPgsql extPdoPgsql storePathTarballList release; };
+            in { inherit php xdebug tree tarball closures extXdebug extPgsql extPdoPgsql extExif storePathTarballList release; };
 
           # Fan out over every entry in phpVersions. variants."8.4" = { php; xdebug; tree; tarball; }
           variants = builtins.mapAttrs (k: _: mkPhpVariant k) sources.phpVersions;
@@ -259,6 +278,7 @@
                 "extension-xdebug-${k}"     = v.extXdebug;
                 "extension-pgsql-${k}"      = v.extPgsql;
                 "extension-pdo_pgsql-${k}"  = v.extPdoPgsql;
+                "extension-exif-${k}"       = v.extExif;
                 "release-${k}"              = v.release;
               })
             {}
