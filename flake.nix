@@ -247,10 +247,25 @@
               builtins.filter
                 (f: pkgs.lib.hasSuffix ".json" (builtins.baseNameOf f))
                 allFiles;
+          # Hosts the index will be served from. Read from env so CI can
+          # override per environment; defaults to the public production
+          # hosts. URL substitution happens at index-generation time, so
+          # the host is part of the bundle's identity — rebuild if it
+          # changes. Reading via getEnv requires `--impure` to actually
+          # pick up the env; without it, getEnv returns "" and the
+          # defaults apply (so plain `nix build .#release-bundle` still
+          # produces a real, working tree pointing at the public hosts).
+          indexHost =
+            let e = builtins.getEnv "INDEX_HOST";
+            in if e != "" then e else "index.bougie.tools";
+          blobHost =
+            let e = builtins.getEnv "BLOB_HOST";
+            in if e != "" then e else "blobs.bougie.tools";
+
           index = pkgs.callPackage ./php-unix/index.nix {
             releases = allReleases;
             yanksFile = ./yanks.json;
-            inherit frozenFiles;
+            inherit frozenFiles indexHost blobHost;
           };
 
           # release-bundle: the full publishable distribution tree, produced
@@ -291,10 +306,6 @@
           merge-publish-tree = mkApp "merge-publish-tree"
             (with pkgs; [ coreutils rsync jq findutils ])
             ./scripts/merge-publish-tree.sh;
-
-          substitute-publish-urls = mkApp "substitute-publish-urls"
-            (with pkgs; [ coreutils findutils gnused gnugrep ])
-            ./scripts/substitute-publish-urls.sh;
 
           validate-publish-tree = mkApp "validate-publish-tree"
             (with pkgs; [ coreutils python3 curl jq gawk findutils ])

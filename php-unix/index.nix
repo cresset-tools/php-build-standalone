@@ -35,7 +35,11 @@
 #   manifest_relative_path and adds the section_entry (augmented with
 #   frozen:true) to the appropriate section. Fails if any tag appears in
 #   both a live build and a frozen file, or in two frozen files.
-{ pkgs, releases, yanksFile ? null, frozenFiles ? [] }:
+# indexHost / blobHost: hostnames the tree will be served from. Final URLs
+#   are emitted at generation time (no post-build sed pass), so the section
+#   sha256s in the root match the served bytes byte-for-byte. Republishing
+#   under a different host means rebuilding the index.
+{ pkgs, releases, yanksFile ? null, frozenFiles ? [], indexHost, blobHost }:
 let
   inherit (pkgs) lib;
 in
@@ -46,6 +50,31 @@ pkgs.runCommand "pbs-index" {
 
     export SOURCE_DATE_EPOCH=1704067200
     generated="$(date -u -d "@$SOURCE_DATE_EPOCH" '+%Y-%m-%dT%H:%M:%SZ')"
+
+    # URL bases. Final URLs are emitted at generation time so section/manifest
+    # sha256s in the root reflect the served bytes — no post-build sed pass.
+    INDEX_BASE="https://${indexHost}"
+    BLOB_BASE="https://${blobHost}"
+
+    # Staging dir for substituted manifest copies. Source manifests in the
+    # nix store are read-only and contain {BLOB_BASE}/{INDEX_BASE} placeholders;
+    # we substitute into a temp file, hash that, and copy from the temp into
+    # the output tree later. This guarantees section.manifest.sha256 matches
+    # the bytes that get served.
+    #
+    # mktemp is required (not a counter) because stage_manifest is invoked
+    # via $(...), which runs in a subshell — any shared counter would never
+    # persist across calls and every staged path would collide.
+    staging_dir="$NIX_BUILD_TOP/manifests-staged"
+    mkdir -p "$staging_dir"
+
+    stage_manifest() {
+      local src="$1"
+      local dst
+      dst="$(mktemp "$staging_dir/m.XXXXXXXX.json")"
+      sed -e "s|{BLOB_BASE}|$BLOB_BASE|g" -e "s|{INDEX_BASE}|$INDEX_BASE|g" "$src" > "$dst"
+      echo "$dst"
+    }
 
     # ---- Load yanks lookup (tag → reason | null) ----
     # yanks_json is an object keyed by tag, value is reason string or null.
@@ -131,7 +160,7 @@ pkgs.runCommand "pbs-index" {
         tarball_sha256="$(sha256sum "$tarball" | awk '{print $1}')"
         add_blob "$tarball_sha256" "$tarball"
 
-        blob_url="{BLOB_BASE}/blobs/''${tarball_sha256:0:2}/$tarball_sha256"
+        blob_url="$BLOB_BASE/blobs/''${tarball_sha256:0:2}/$tarball_sha256"
 
         # ABI fields
         zend_module_api="$(jq -r '.abi.zend_module_api_no' "$f")"
@@ -153,10 +182,15 @@ pkgs.runCommand "pbs-index" {
         # relative: ../../manifests/php/<minor>/<tag>.json
         manifest_rel="../../manifests/php/$minor/$tag.json"
         manifest_dest_key="$target/manifests/php/$minor/$tag.json"
-        manifest_srcs["$manifest_dest_key"]="$f"
 
-        # Compute sha256 of the manifest file itself (for section entry)
-        manifest_sha256="$(sha256sum "$f" | awk '{print $1}')"
+        # Stage the manifest with placeholders substituted, then hash the
+        # staged content. The interpreter manifest itself doesn't carry
+        # placeholders today, but we stage uniformly so the contract is
+        # "section sha256 matches served bytes" without depending on which
+        # manifest types happen to need substitution.
+        staged_manifest="$(stage_manifest "$f")"
+        manifest_srcs["$manifest_dest_key"]="$staged_manifest"
+        manifest_sha256="$(sha256sum "$staged_manifest" | awk '{print $1}')"
 
         artifact_entry="$(jq -n -S \
           --arg tag "$tag" \
@@ -227,9 +261,13 @@ pkgs.runCommand "pbs-index" {
         # relative: ../../manifests/ext/<name>/<extver>/<tag>.json
         manifest_rel="../../manifests/ext/$ext_name/$ext_version/$tag.json"
         manifest_dest_key="$target/manifests/ext/$ext_name/$ext_version/$tag.json"
-        manifest_srcs["$manifest_dest_key"]="$f"
 
-        manifest_sha256="$(sha256sum "$f" | awk '{print $1}')"
+        # Stage with {BLOB_BASE}/{INDEX_BASE} substituted (extension manifests
+        # carry {BLOB_BASE} URLs in closure[].url) and hash the staged content
+        # so section.manifest.sha256 matches the bytes that get served.
+        staged_manifest="$(stage_manifest "$f")"
+        manifest_srcs["$manifest_dest_key"]="$staged_manifest"
+        manifest_sha256="$(sha256sum "$staged_manifest" | awk '{print $1}')"
 
         artifact_entry="$(jq -n -S \
           --arg tag "$tag" \
@@ -322,7 +360,10 @@ pkgs.runCommand "pbs-index" {
         fi
         frozen_tags["$ftag"]=1
 
-        # Integrity check: sha256 of jq -S manifest body must match section_entry.manifest.sha256
+        # Integrity check: sha256 of jq -S manifest body must match
+        # section_entry.manifest.sha256. The frozen file is canonicalized at
+        # freeze time against the *placeholder* body (it's host-agnostic), so
+        # this check runs on placeholder bytes — independent of substitution.
         manifest_sha256_expected="$(echo "$fsection_entry" | jq -r '.manifest.sha256')"
         manifest_sha256_actual="$(echo "$fmanifest_body" | sha256sum | awk '{print $1}')"
         if [ "$manifest_sha256_expected" != "$manifest_sha256_actual" ]; then
@@ -332,13 +373,24 @@ pkgs.runCommand "pbs-index" {
           exit 1
         fi
 
-        # Write manifest body to output tree
+        # Substitute placeholders in the body for both the on-disk manifest
+        # and the recomputed section entry. The frozen file's recorded
+        # manifest.sha256 is host-agnostic; the live root needs the hash of
+        # the *served* (substituted) bytes instead.
+        substituted_body="$(echo "$fmanifest_body" | sed -e "s|{BLOB_BASE}|$BLOB_BASE|g" -e "s|{INDEX_BASE}|$INDEX_BASE|g")"
+        substituted_sha256="$(echo "$substituted_body" | sha256sum | awk '{print $1}')"
+
         manifest_dest="$out/targets/$ftarget/$fmanifest_rel_path"
         mkdir -p "$(dirname "$manifest_dest")"
-        echo "$fmanifest_body" > "$manifest_dest"
+        echo "$substituted_body" > "$manifest_dest"
 
-        # Augment section_entry with frozen:true
-        augmented_entry="$(echo "$fsection_entry" | jq -S '. + {frozen: true}')"
+        # Augment section_entry: substitute any placeholder URLs it carries
+        # (interpreter entries embed tarball.url with {BLOB_BASE}), refresh
+        # manifest.sha256 to match the substituted body, and add frozen:true.
+        augmented_entry="$(echo "$fsection_entry" \
+          | sed -e "s|{BLOB_BASE}|$BLOB_BASE|g" -e "s|{INDEX_BASE}|$INDEX_BASE|g" \
+          | jq -S --arg sha "$substituted_sha256" \
+              '. + {frozen: true, manifest: (.manifest + {sha256: $sha})}')"
         # Apply yanks lookup to the frozen entry too
         augmented_entry="$(yank_entry "$ftag" "$augmented_entry")"
 

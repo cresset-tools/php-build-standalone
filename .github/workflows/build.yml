@@ -15,19 +15,25 @@
 #                                release-bundle twice and byte-diffs the trees.
 #   publish                    — tags only; downloads both release-bundle
 #                                artifacts, merges them, validates the tree
-#                                locally, substitutes URL placeholders, signs
-#                                the root with cosign keyless OIDC, and uploads
-#                                the result as the `publish-tree` workflow
-#                                artifact. A placeholder rsync step is present
-#                                but disabled until the Hetzner box exists.
+#                                locally, signs the root with cosign keyless
+#                                OIDC, and uploads the result as the
+#                                `publish-tree` workflow artifact. A placeholder
+#                                rsync step is present but disabled until the
+#                                Hetzner box exists.
+#
+# URL substitution happens at index-generation time (inside index.nix), driven
+# by INDEX_HOST/BLOB_HOST. Per-platform release-bundles are therefore host-
+# specific by construction; both legs must share the same env so the merged
+# tree is internally consistent.
 #
 # Every nontrivial shell script in this file is a thin `nix run .#<app>`
 # call into scripts/*.sh. To reproduce the publish pipeline locally:
 #
+#   INDEX_HOST=index.bougie.tools BLOB_HOST=blobs.bougie.tools \
+#     nix build .#release-bundle --impure
 #   nix run .#merge-publish-tree        -- bundles/linux bundles/darwin .
 #   VALIDATE_INDEX_SH=$PWD/tests/validate-index.sh \
 #     nix run .#validate-publish-tree   -- merged
-#   nix run .#substitute-publish-urls   -- index_tree "$INDEX_HOST" "$BLOB_HOST"
 #   nix run .#sign-publish-index        -- index_tree
 #
 # The actual rsync to the Hetzner origin is deferred (placeholder step,
@@ -58,6 +64,15 @@ on:
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+# Hosts the index will be served from. These propagate into nix builds via
+# `--impure` so index.nix can bake real URLs into the bundle at generation
+# time (no post-build sed pass — the section sha256s in the root must match
+# served bytes). Both `assemble` legs and `verify-reproducible-index` need
+# the same values for the merge to be internally consistent.
+env:
+  INDEX_HOST: ${{ vars.INDEX_HOST || 'index.bougie.tools' }}
+  BLOB_HOST:  ${{ vars.BLOB_HOST  || 'blobs.bougie.tools' }}
 
 jobs:
   lint-frozen-coverage:
@@ -209,7 +224,10 @@ jobs:
       - name: Build release-bundle
         # FlakeHub Cache hits all per-minor inputs already built in
         # build-tarball, so this is fast on a warm cache.
-        run: nix build .#release-bundle --print-build-logs
+        # --impure lets index.nix read INDEX_HOST/BLOB_HOST via getEnv.
+        # Both matrix legs see the workflow-level env, so the merged tree
+        # is internally consistent.
+        run: nix build .#release-bundle --impure --print-build-logs
 
       - name: Upload release-bundle artifact
         uses: actions/upload-artifact@v4
@@ -240,13 +258,15 @@ jobs:
         uses: DeterminateSystems/flakehub-cache-action@v3.19.1
 
       - name: Build release-bundle (first pass)
-        run: nix build .#release-bundle -o result-1 --print-build-logs
+        run: nix build .#release-bundle --impure -o result-1 --print-build-logs
 
       - name: Build release-bundle (second pass — --rebuild)
         # --rebuild re-derives the derivation from scratch. Nix checks that
         # the new output is content-equal to the already-stored one; if not,
         # it fails here with "hash mismatch in fixed-output derivation".
-        run: nix build .#release-bundle --rebuild -o result-2 --print-build-logs
+        # --impure picks up the workflow-level INDEX_HOST/BLOB_HOST env
+        # (same values both passes, so the bytes match).
+        run: nix build .#release-bundle --impure --rebuild -o result-2 --print-build-logs
 
       - name: Byte-diff the two outputs
         run: diff -r result-1/ result-2/
@@ -255,15 +275,14 @@ jobs:
   #
   # Merges the Linux and Darwin release-bundle trees into one unified
   # distribution tree, then:
-  #   1. Validates the tree locally (before any substitution) against a
-  #      localhost http.server so the sha256 chain is verified without
-  #      needing the real hostnames to resolve.
-  #   2. Substitutes {INDEX_BASE} and {BLOB_BASE} placeholders in all
-  #      *.json files using the configured host vars.
-  #   3. Signs index.json with cosign keyless (Sigstore OIDC), producing
+  #   1. Validates the tree locally against a localhost http.server so the
+  #      sha256 chain is verified end-to-end. Bundles are already host-baked
+  #      (substitution happens in index.nix), so no further URL rewrite is
+  #      needed before signing.
+  #   2. Signs index.json with cosign keyless (Sigstore OIDC), producing
   #      index.json.sig as a Sigstore bundle file.
-  #   4. Uploads the final tree as the `publish-tree` workflow artifact.
-  #   5. (Placeholder, currently disabled) rsyncs to the Hetzner origin.
+  #   3. Uploads the final tree as the `publish-tree` workflow artifact.
+  #   4. Rsyncs to the Hetzner origin.
   publish:
     name: prepare publish tree
     runs-on: ubuntu-latest
@@ -272,9 +291,6 @@ jobs:
     permissions:
       contents: read   # no Pages/Releases push
       id-token: write  # cosign keyless OIDC
-    env:
-      INDEX_HOST: ${{ vars.INDEX_HOST || 'index.example.com' }}
-      BLOB_HOST:  ${{ vars.BLOB_HOST  || 'blobs.example.com' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -301,26 +317,21 @@ jobs:
         # index_tree/ (the latter excludes blobs/, ready for signing).
         run: nix run .#merge-publish-tree -- bundles/linux bundles/darwin .
 
-      - name: Validate tree locally (pre-substitution)
-        # Validation runs against the unsubstituted tree, where blob URLs still
-        # contain {BLOB_BASE}. validate-index.sh skips HEAD checks for those
-        # (see its "warning: unsubstituted" guard). The sha256 chain checks are
-        # all meaningful here because substitution doesn't touch those hashes.
-        # merged/ is served so that manifest relative URLs and blob paths all
-        # resolve locally.
+      - name: Validate tree locally
+        # Each leg's release-bundle was built with the workflow-level
+        # INDEX_HOST/BLOB_HOST baked in, so the merged tree's section
+        # sha256s already match the served bytes. validate-index.sh
+        # walks the full hash chain (root → section → manifest → blob).
+        # merged/ is served so manifest relative URLs and blob paths
+        # resolve locally; absolute manifest blob URLs point at the
+        # configured BLOB_HOST and only get HEAD-checked if reachable.
         run: VALIDATE_INDEX_SH=$PWD/tests/validate-index.sh nix run .#validate-publish-tree -- merged
-
-      - name: Substitute URL placeholders
-        # Two sed passes: {INDEX_BASE} → https://$INDEX_HOST,
-        # {BLOB_BASE} → https://$BLOB_HOST. Signing happens after this step
-        # so the signed bytes are final.
-        run: nix run .#substitute-publish-urls -- index_tree "$INDEX_HOST" "$BLOB_HOST"
 
       - name: Sign index.json (cosign keyless via OIDC)
         # Produces a Sigstore bundle (index.json.sig) alongside index.json.
         # The bundle contains the signature, signing certificate, and Rekor
-        # transparency log inclusion proof. Signing happens AFTER all
-        # substitutions so the signed bytes are final.
+        # transparency log inclusion proof. The signed bytes are the final
+        # bytes — no post-build rewrites between here and rsync.
         run: nix run .#sign-publish-index -- index_tree
 
       - name: Upload publish-tree artifact

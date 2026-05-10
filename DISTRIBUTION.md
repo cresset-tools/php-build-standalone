@@ -461,9 +461,13 @@ Per-minor frozen manifests live in `frozen/php-<minor>.json`. Each file
 carries a `schema`, `minor`, and an `entries` array. Each entry records the
 full `section_entry` (the row that appears in the section's `artifacts[]`
 array, minus `frozen: true` which the generator adds) and the full `manifest`
-body verbatim. The `manifest` body carries a `{BLOB_BASE}` placeholder just as
-it was emitted at build time, so the frozen file is self-contained and the
-publish tree is complete even after the build matrix drops the minor.
+body verbatim. Frozen files are host-agnostic: the recorded body and the
+`section_entry.manifest.sha256` carry `{BLOB_BASE}`/`{INDEX_BASE}` placeholders
+just as they were emitted at build time, and the integrity check between the
+two also runs on placeholder bytes. The generator substitutes placeholders
+with the live host before writing the manifest to disk and recomputes the
+section entry's `manifest.sha256` to match the served bytes — so the same
+frozen file republishes correctly under any host.
 
 The workflow for a patch bump is:
 
