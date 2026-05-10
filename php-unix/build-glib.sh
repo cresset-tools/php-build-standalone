@@ -51,6 +51,19 @@ export OBJC="$CC"
 build_dir="$src_dir/build"
 rm -rf "$build_dir"
 
+# Darwin: glib 2.82's meson requires the gettext intl API independently
+# of NLS. macOS libc doesn't provide dgettext/bindtextdomain/etc., so
+# meson falls back to the proxy-libintl subproject. Its wrap file uses
+# wrap-git (network + git), neither available inside the Nix sandbox.
+# Pre-populate subprojects/proxy-libintl/ from the tarball we fetched
+# via Nix; meson sees the source already there and skips the fetch.
+if [ -n "${PBS_SRC_PROXY_LIBINTL:-}" ]; then
+  rm -rf "$src_dir/subprojects/proxy-libintl"
+  tar -xf "$PBS_SRC_PROXY_LIBINTL" -C "$src_dir/subprojects"
+  mv "$src_dir/subprojects/proxy-libintl-${PBS_VER_PROXY_LIBINTL}" \
+     "$src_dir/subprojects/proxy-libintl"
+fi
+
 # Nix sandbox has no /usr/bin/env; the helper python scripts under tools/
 # carry "#!/usr/bin/env python3" shebangs. Rewrite to the absolute python3
 # resolved from the toolchain's PATH. mkDep's dontFixup disables nixpkgs'

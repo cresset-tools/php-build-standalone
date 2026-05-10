@@ -113,7 +113,7 @@
             pcre2         = pkgs.callPackage ./php-unix/pcre2.nix         { inherit mkDep; };
             expat         = pkgs.callPackage ./php-unix/expat.nix         { inherit mkDep; };
             glib          = pkgs.callPackage ./php-unix/glib.nix          ({
-              inherit mkDep libffi pcre2 zlib;
+              inherit mkDep sources libffi pcre2 zlib;
               # libiconv is the Darwin-only attribute added to `deps`
               # below via lib.optionalAttrs. It lives outside the rec
               # block so we can't pull it in via `inherit (deps)` here;
