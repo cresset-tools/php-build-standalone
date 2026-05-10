@@ -86,6 +86,7 @@ find "$src_dir" -type f \( -name '*.py' -o -name 'gen-*' \) -print0 \
 # / libelf / xattr are explicitly disabled so meson's auto-detection
 # can't quietly link us against host libs. systemtap / dtrace / sysprof
 # are tracing-side tooling we don't ship.
+meson_setup_status=0
 meson setup "$build_dir" \
   --prefix="$PBS_DEPS" \
   --libdir="$PBS_DEPS/lib" \
@@ -105,7 +106,14 @@ meson setup "$build_dir" \
   -Dxattr=false \
   -Dsystemtap=disabled \
   -Ddtrace=disabled \
-  -Dsysprof=disabled
+  -Dsysprof=disabled || meson_setup_status=$?
+
+if [ "$meson_setup_status" -ne 0 ]; then
+  echo
+  echo "=== meson-log.txt (setup failed) ==="
+  cat "$build_dir/meson-logs/meson-log.txt" || true
+  exit "$meson_setup_status"
+fi
 
 ninja -C "$build_dir" -j"$NIX_BUILD_CORES"
 ninja -C "$build_dir" install
