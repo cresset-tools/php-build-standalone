@@ -101,6 +101,10 @@ echo "--- ${CC%% *} -E -x c -include sys/types.h -include arpa/nameser.h /dev/nu
 ${CC%% *} -E -x c -include sys/types.h -include arpa/nameser.h /dev/null 2>&1 | head -10 || true
 echo "--- ${CC%% *} -Wp,-v -E -x c -include arpa/nameser.h /dev/null ---"
 ${CC%% *} -Wp,-v -E -x c -include arpa/nameser.h /dev/null 2>&1 | head -30 || true
+echo "--- locate arpa/nameser.h in nix store ---"
+find /nix/store -maxdepth 6 -path '*/arpa/nameser.h' -type f 2>/dev/null | head -10 || true
+echo "--- locate arpa/nameser.h in apple-sdk paths ---"
+find /nix/store -maxdepth 4 -type d -name apple-sdk\* 2>/dev/null | head -3 | while read d; do echo ":: $d"; find "$d" -name 'nameser*.h' 2>/dev/null | head; done
 echo "=== end build-glib debug ==="
 echo
 
