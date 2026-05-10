@@ -36,6 +36,16 @@ export PKG_CONFIG_PATH="$PBS_DEP_LIBFFI/lib/pkgconfig:$PBS_DEP_PCRE2/lib/pkgconf
 export CFLAGS="$CFLAGS -Qunused-arguments"
 export CXXFLAGS="$CXXFLAGS -Qunused-arguments"
 
+# Darwin: glib's meson.build calls add_languages('objc') for Carbon /
+# Cocoa probing, which triggers a fresh compiler probe by basename
+# (clang, gcc) via PATH. Our toolchain wrapper exposes cc/c++ but not
+# bare `clang`, so the probe fails with "Unknown compiler(s)". Meson
+# respects OBJC for Objective-C the same way it respects CC for C;
+# point it at our wrapper so it skips the basename probe entirely.
+# Harmless on Linux (glib's meson.build only uses objc under
+# host_system == 'darwin'); set unconditionally to keep one path.
+export OBJC="$CC"
+
 build_dir="$src_dir/build"
 rm -rf "$build_dir"
 
