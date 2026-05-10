@@ -106,6 +106,18 @@ make install
 rm -rf "$PBS_DEPS/etc"
 rm -rf "$PBS_DEPS/share"
 
+# Drop configure.xml: IM records the full build environment (CC, CXX,
+# LDFLAGS, full /nix/store paths to the toolchain, etc.) into this file
+# at install time. The finalize-common.sh detox only rewrites pbs-
+# prefixed store paths, but configure.xml carries raw nixpkgs paths
+# (clang-unwrapped, glibc, …) too — those leak through and fail the
+# /nix/store text-leak gate. configure.xml is purely a build-time
+# record; IM falls back to compile-time defaults for everything in it
+# at runtime, so removing it has no behavioral impact. Other XML files
+# in config-Q16HDRI/ (coder, delegates, magic, mime, policy, type) are
+# preserved — they describe runtime capabilities, not build env.
+find "$PBS_DEPS/lib" -path '*/config-Q16HDRI/configure.xml' -delete
+
 # IM emits libMagickCore-7.Q16HDRI and libMagickWand-7.Q16HDRI (suffixes
 # encode quantum/HDRI). Audit the canonical sonames.
 for libname in "libMagickCore-7.Q16HDRI" "libMagickWand-7.Q16HDRI"; do
