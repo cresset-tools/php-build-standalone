@@ -74,11 +74,15 @@ env:
   INDEX_HOST: ${{ vars.INDEX_HOST || 'index.bougie.tools' }}
   BLOB_HOST:  ${{ vars.BLOB_HOST  || 'blobs.bougie.tools' }}
   # PUBLISH_VERSION names the immutable per-publish snapshot folder
-  # (DISTRIBUTION.md §Snapshot-consistency). github.run_started_at is
-  # ISO 8601 and stable across all jobs in the same workflow run, so
-  # all matrix legs bake the same version into their bundle and
-  # merge-publish-tree can assert version-equality without ambiguity.
-  PUBLISH_VERSION: ${{ github.run_started_at }}
+  # (DISTRIBUTION.md §Snapshot-consistency). github.run_id is a stable
+  # integer per workflow run — same value across all jobs and matrix
+  # legs, so every bundle bakes in the same version and
+  # merge-publish-tree can assert version-equality. Using run_id
+  # (instead of github.run_started_at) because the run_started_at
+  # context is not populated at workflow-level env evaluation time
+  # — it returns "" and the nix build falls through to the sentinel
+  # default.
+  PUBLISH_VERSION: r${{ github.run_id }}
   # GIT_COMMIT / GIT_REF surface in index.json `source` for audit.
   GIT_COMMIT: ${{ github.sha }}
   GIT_REF:    ${{ github.ref }}

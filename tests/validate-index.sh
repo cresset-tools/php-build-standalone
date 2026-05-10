@@ -219,21 +219,33 @@ for target in $targets; do
       check_sha256 "$man_tmp" "$manifest_sha256_expected" "manifest for $artifact_tag" || { rm -f "$man_tmp"; continue; }
 
       # Step 4: HEAD each blob URL referenced from the manifest.
-      # Closure entries carry absolute blob URLs.
+      # Pre-publish, the bundle's blobs live in the merged tree (which
+      # the http.server fronts as $BASE/blobs/...) and are NOT yet on
+      # the live origin. Manifests carry absolute URLs that point at
+      # the live blob host (https://<BLOB_HOST>/blobs/...), so HEAD-ing
+      # the absolute URL would fail by design for a fresh artifact.
+      # Strip the host and HEAD against $BASE instead — that catches
+      # "manifest references a blob the bundle didn't ship" without
+      # depending on the publish having already happened.
+      strip_blob_host() {
+        # https://host[:port]/blobs/aa/aaaa…  →  /blobs/aa/aaaa…
+        local u="$1"
+        echo "$u" | sed -E 's|^https?://[^/]+||'
+      }
+
       blob_count="$(jq '.closure | length' "$man_tmp" 2>/dev/null || echo 0)"
       for j in $(seq 0 $(( blob_count - 1 ))); do
         blob_url="$(jq -r --argjson j "$j" '.closure[$j].url' "$man_tmp" 2>/dev/null || true)"
         blob_sha="$(jq -r --argjson j "$j" '.closure[$j].sha256' "$man_tmp" 2>/dev/null || true)"
         [ -z "$blob_url" ] || [ "$blob_url" = "null" ] && continue
-        # Skip {BLOB_BASE} placeholders that were never substituted
         case "$blob_url" in
           *'{BLOB_BASE}'*) echo "    warning: unsubstituted {BLOB_BASE} in $artifact_tag closure[$j]" >&2; continue ;;
         esac
-        head_url "$blob_url" "$artifact_tag closure[$j]" || true
+        local_url="${BASE%/}$(strip_blob_host "$blob_url")"
+        head_url "$local_url" "$artifact_tag closure[$j]" || true
         CHECKED_BLOBS=$(( CHECKED_BLOBS + 1 ))
-        # Collect for sampling
         if [ "${#SAMPLED_BLOBS[@]}" -lt "$SAMPLE_BLOBS" ] && [ -n "$blob_sha" ] && [ "$blob_sha" != "null" ]; then
-          SAMPLED_BLOBS+=("$blob_url:$blob_sha")
+          SAMPLED_BLOBS+=("${local_url}|${blob_sha}")
         fi
       done
 
@@ -245,10 +257,11 @@ for target in $targets; do
         case "$blob_url" in
           *'{BLOB_BASE}'*) echo "    warning: unsubstituted {BLOB_BASE} in $artifact_tag .blob" >&2 ;;
           *)
-            head_url "$blob_url" "$artifact_tag .blob" || true
+            local_url="${BASE%/}$(strip_blob_host "$blob_url")"
+            head_url "$local_url" "$artifact_tag .blob" || true
             CHECKED_BLOBS=$(( CHECKED_BLOBS + 1 ))
             if [ "${#SAMPLED_BLOBS[@]}" -lt "$SAMPLE_BLOBS" ] && [ -n "$blob_sha" ] && [ "$blob_sha" != "null" ]; then
-              SAMPLED_BLOBS+=("$blob_url:$blob_sha")
+              SAMPLED_BLOBS+=("${local_url}|${blob_sha}")
             fi
             ;;
         esac
@@ -264,11 +277,14 @@ done
 rm -f "$ROOT_TMP"
 
 # ---- Step 4 (cont): GET-and-verify sampled blobs ----
+# Entry encoding is `url|sha` so the URL's `https://` colon doesn't
+# collide with the separator (the previous `:` separator was eating
+# the scheme, then GETs went to `//host/...` which curl rejects).
 if [ "${#SAMPLED_BLOBS[@]}" -gt 0 ]; then
   echo "==> GET-verifying ${#SAMPLED_BLOBS[@]} sampled blobs"
   for entry in "${SAMPLED_BLOBS[@]}"; do
-    url="${entry%%:*}"
-    sha="${entry#*:}"
+    url="${entry%%|*}"
+    sha="${entry##*|}"
     echo "  sample: $sha (${url##*/})"
     get_and_verify_blob "$url" "$sha" "sampled blob $sha" || true
   done
