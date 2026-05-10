@@ -66,6 +66,7 @@
           libcurl       = pkgs.callPackage ./php-unix/libcurl.nix       { inherit mkDep openssl zlib nghttp2; };
           ncurses       = pkgs.callPackage ./php-unix/ncurses.nix       { inherit mkDep; };
           libedit       = pkgs.callPackage ./php-unix/libedit.nix       { inherit mkDep ncurses; };
+          libpq         = pkgs.callPackage ./php-unix/libpq.nix         { inherit mkDep openssl; };
           # libiconv is Darwin-only (apple-sdk strips legacy headers).
           libiconv      = if darwin
             then pkgs.callPackage ./php-unix/libiconv.nix { inherit mkDep; }
@@ -75,7 +76,7 @@
           sharedDeps =
             [ zlib openssl libxml2 sqlite oniguruma libsodium bzip2
               libpng libjpeg-turbo libwebp freetype
-              nghttp2 libzip icu libcurl ncurses libedit ]
+              nghttp2 libzip icu libcurl ncurses libedit libpq ]
             ++ pkgs.lib.optionals darwin [ libiconv ];
 
           # Build one complete PHP variant (php + xdebug + tree + tarball
@@ -91,7 +92,7 @@
                 inherit mkDep phpSpec
                         zlib openssl libxml2 sqlite oniguruma libsodium bzip2
                         libpng libjpeg-turbo libwebp freetype
-                        nghttp2 libzip icu libcurl ncurses libedit;
+                        nghttp2 libzip icu libcurl ncurses libedit libpq;
               } // pkgs.lib.optionalAttrs darwin { inherit libiconv; });
               xdebug = pkgs.callPackage ./php-unix/xdebug.nix {
                 inherit mkDep php xdebugSpec;
@@ -182,7 +183,7 @@
           sharedDepNames =
             [ "zlib" "openssl" "libxml2" "sqlite" "oniguruma" "libsodium"
               "bzip2" "libpng" "libjpeg-turbo" "libwebp" "freetype"
-              "nghttp2" "libzip" "icu" "libcurl" "ncurses" "libedit" ]
+              "nghttp2" "libzip" "icu" "libcurl" "ncurses" "libedit" "libpq" ]
             ++ pkgs.lib.optionals darwin [ "libiconv" ];
 
           # Flatten variants into top-level outputs keyed as php-<minor>,
@@ -225,7 +226,7 @@
             { inherit toolchain
                       zlib openssl libxml2 sqlite oniguruma libsodium bzip2
                       libpng libjpeg-turbo libwebp freetype
-                      nghttp2 libzip icu libcurl ncurses libedit; }
+                      nghttp2 libzip icu libcurl ncurses libedit libpq; }
             // pkgs.lib.optionalAttrs (!darwin) { inherit sysroot; }
             // pkgs.lib.optionalAttrs darwin { inherit libiconv; };
 

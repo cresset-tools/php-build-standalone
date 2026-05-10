@@ -81,15 +81,15 @@ the toolchain is a thin wrapper around nixpkgs's `clang`. `@rpath/`-relative
 - **xdebug 3.5.1** as a loadable Zend extension at
   `lib/extensions/no-debug-non-zts-<api>/xdebug.so`. Single pin — 3.5 is the
   first xdebug release supporting PHP 8.5; it covers 8.1 through 8.5.
-- 38 PHP extensions: ctype, curl, date, dom, fileinfo, filter, gd (jpeg/png/webp/freetype),
+- 40 PHP extensions: ctype, curl, date, dom, fileinfo, filter, gd (jpeg/png/webp/freetype),
   hash, iconv, intl (ICU), json, libxml, mbstring (oniguruma), mysqli, mysqlnd, openssl,
-  pcre, pdo_sqlite, pdo_mysql, phar, posix, readline (libedit), reflection, session,
-  simplexml, sodium, spl, sqlite3, tokenizer, xml, xmlreader, xmlwriter, zip, zlib,
-  opcache (zend_extension)
-- 17 bundled C libraries: zlib 1.3.1, openssl 3.5.6, libxml2 2.13.5, sqlite 3.47.2,
+  pcre, pdo_sqlite, pdo_mysql, pdo_pgsql, pgsql (libpq), phar, posix, readline (libedit),
+  reflection, session, simplexml, sodium, spl, sqlite3, tokenizer, xml, xmlreader,
+  xmlwriter, zip, zlib, opcache (zend_extension)
+- 18 bundled C libraries: zlib 1.3.1, openssl 3.5.6, libxml2 2.13.5, sqlite 3.47.2,
   oniguruma 6.9.10, libsodium 1.0.20, bzip2 1.0.8, libpng 1.6.44, libjpeg-turbo 3.0.4,
   libwebp 1.4.0, freetype 2.13.3, nghttp2 1.64.0, libzip 1.10.1, ICU 75.1, libcurl 8.11.0,
-  ncurses 6.5, libedit 20240808-3.1. macOS adds libiconv 1.17 (apple-sdk strips
+  ncurses 6.5, libedit 20240808-3.1, libpq 17.2 (PostgreSQL client only). macOS adds libiconv 1.17 (apple-sdk strips
   the legacy iconv headers; glibc provides iconv natively). Each C library installs
   to its own content-addressed `store/<name>-<ver>-<hash>/` subtree; PHP and the
   extensions reference them via per-binary RPATHs that list only the deps each ELF
