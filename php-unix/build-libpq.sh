@@ -35,6 +35,17 @@ cd "$src_dir"
 # We do NOT pass --enable-shared / --disable-static; PostgreSQL builds
 # both libpq.so and libpq.a by default and PHP's pgsql extension picks
 # the .so via the standard SONAME lookup. The .a is dropped post-install.
+# PBS_RPATH_VAR/PBS_DEPS_LDPATH wrapping: PostgreSQL configure runs
+# AC_RUN_IFELSE conftests (e.g. the "checking test program" probe) AFTER
+# its --with-openssl probe has appended `-lssl -lcrypto` to LIBS. Combined
+# with our wrapper CC's `-Wl,--no-as-needed`, those libs end up in the
+# conftest binary's DT_NEEDED. Without LD_LIBRARY_PATH pointing at the
+# bundled openssl, the conftest fails to load — visible as
+# "checking test program... failed" with no obvious cause. Linux setup-env
+# deliberately doesn't export this globally (would shadow the host libc
+# for build-tool processes); we scope it to configure only, same pattern
+# as build-libcurl.sh.
+env "$PBS_RPATH_VAR=${PBS_DEPS_LDPATH:-}" \
 ./configure \
   --prefix="$PBS_DEPS" \
   --libdir="$PBS_DEPS/lib" \
