@@ -127,6 +127,16 @@ source "$PBS_PHP_PRE_CONFIGURE"
   --enable-session=shared \
   --enable-tokenizer=shared \
   --enable-ctype=shared \
+  --enable-bcmath=shared \
+  --enable-calendar=shared \
+  --enable-ftp=shared \
+  --enable-pcntl=shared \
+  --enable-shmop=shared \
+  --enable-sockets=shared \
+  --enable-sysvmsg=shared \
+  --enable-sysvsem=shared \
+  --enable-sysvshm=shared \
+  --enable-soap=shared \
   "$PBS_PHP_ICONV_ARG" \
   --with-libedit="$PBS_DEP_LIBEDIT" \
   --enable-opcache \
@@ -193,6 +203,15 @@ _ini 20-bz2.ini        "extension=bz2"
 _ini 20-zip.ini        "extension=zip"
 _ini 20-gd.ini         "extension=gd"
 _ini 20-exif.ini       "extension=exif"
+_ini 20-bcmath.ini     "extension=bcmath"
+_ini 20-calendar.ini   "extension=calendar"
+_ini 20-ftp.ini        "extension=ftp"
+_ini 20-pcntl.ini      "extension=pcntl"
+_ini 20-shmop.ini      "extension=shmop"
+_ini 20-sockets.ini    "extension=sockets"
+_ini 20-sysvmsg.ini    "extension=sysvmsg"
+_ini 20-sysvsem.ini    "extension=sysvsem"
+_ini 20-sysvshm.ini    "extension=sysvshm"
 _ini 20-fileinfo.ini   "extension=fileinfo"
 _ini 20-filter.ini     "extension=filter"
 _ini 20-phar.ini       "extension=phar"
@@ -214,6 +233,7 @@ _ini 40-pgsql.ini      "extension=pgsql"
 _ini 50-xmlreader.ini  "extension=xmlreader"
 _ini 50-xmlwriter.ini  "extension=xmlwriter"
 _ini 50-simplexml.ini  "extension=simplexml"
+_ini 50-soap.ini       "extension=soap"
 
 # Confirm readline (libedit-backed) is compiled into the binary. PHP
 # builds ext/readline statically into the CLI (no readline.so), so we
@@ -240,7 +260,8 @@ _check_ext() {
 for _ext in mbstring intl curl pdo pdo_mysql pdo_sqlite pdo_pgsql sqlite3 \
             pgsql sodium bz2 zip gd exif fileinfo filter phar posix session \
             tokenizer ctype iconv dom xml xmlreader xmlwriter simplexml \
-            mysqli openssl; do
+            mysqli openssl bcmath calendar ftp pcntl shmop sockets \
+            sysvmsg sysvsem sysvshm soap; do
   _check_ext "$_ext"
   echo "  ext OK: $_ext"
 done

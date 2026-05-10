@@ -40,9 +40,13 @@ on macOS. Extract any of them anywhere, run `bin/php`.
 Beyond the interpreter tarball, there's a per-extension distribution layer
 (content-addressed `store/<name>-<ver>-<hash>/` layout, per-extension `.tar.zst`
 + JSON manifest declaring the closure of bundled C-lib store paths it needs).
-xdebug, pgsql, pdo_pgsql, exif, and imagick currently ship via this layer:
+xdebug, pgsql, pdo_pgsql, exif, imagick, bcmath, calendar, ftp, pcntl, shmop,
+sockets, sysvmsg, sysvsem, sysvshm, and soap currently ship via this layer:
 `nix build .#extension-xdebug-8_4`, `.#extension-pgsql-8_4`, `.#extension-pdo_pgsql-8_4`,
-`.#extension-exif-8_4`, `.#extension-imagick-8_4`.
+`.#extension-exif-8_4`, `.#extension-imagick-8_4`, `.#extension-bcmath-8_4`,
+`.#extension-calendar-8_4`, `.#extension-ftp-8_4`, `.#extension-pcntl-8_4`,
+`.#extension-shmop-8_4`, `.#extension-sockets-8_4`, `.#extension-sysvmsg-8_4`,
+`.#extension-sysvsem-8_4`, `.#extension-sysvshm-8_4`, `.#extension-soap-8_4`.
 `nix build .#release-bundle`
 emits the full cross-variant directory tree (`index.json` + every artifact)
 ready to rsync to a static host. See [`DESIGN.md`](DESIGN.md) for the
@@ -87,11 +91,13 @@ the toolchain is a thin wrapper around nixpkgs's `clang`. `@rpath/`-relative
 - **imagick 3.8.1** as a loadable PHP extension at
   `lib/extensions/no-debug-non-zts-<api>/imagick.so`, linked against the
   bundled ImageMagick 7. Single pin — 3.8 covers PHP 8.1 through 8.5.
-- 42 PHP extensions: ctype, curl, date, dom, exif, fileinfo, filter, gd (jpeg/png/webp/freetype),
-  hash, iconv, imagick (ImageMagick), intl (ICU), json, libxml, mbstring (oniguruma),
-  mysqli, mysqlnd, openssl, pcre, pdo_sqlite, pdo_mysql, pdo_pgsql, pgsql (libpq),
-  phar, posix, readline (libedit), reflection, session, simplexml, sodium, spl,
-  sqlite3, tokenizer, xml, xmlreader, xmlwriter, zip, zlib, opcache (zend_extension)
+- 49 PHP extensions: bcmath, calendar, ctype, curl, date, dom, exif, fileinfo,
+  filter, ftp, gd (jpeg/png/webp/freetype), hash, iconv, imagick (ImageMagick),
+  intl (ICU), json, libxml, mbstring (oniguruma), mysqli, mysqlnd, openssl,
+  pcntl, pcre, pdo_sqlite, pdo_mysql, pdo_pgsql, pgsql (libpq), phar, posix,
+  readline (libedit), reflection, session, shmop, simplexml, soap, sockets,
+  sodium, spl, sqlite3, sysvmsg, sysvsem, sysvshm, tokenizer, xml, xmlreader,
+  xmlwriter, zip, zlib, opcache (zend_extension)
 - 24 bundled C libraries: zlib 1.3.1, openssl 3.5.6, libxml2 2.13.5, sqlite 3.47.2,
   oniguruma 6.9.10, libsodium 1.0.20, bzip2 1.0.8, libpng 1.6.44, libjpeg-turbo 3.0.4,
   libwebp 1.4.0, freetype 2.13.3, nghttp2 1.64.0, libzip 1.10.1, ICU 75.1, libcurl 8.11.0,
@@ -298,7 +304,10 @@ text-file gate.
 flake.nix                      fans out one variant per phpVersions entry;
                                outputs per minor: tarball-<m>, tree-<m>,
                                php-<m>, xdebug-<m>, closures-<m>,
-                               extension-{xdebug,pgsql,pdo_pgsql,exif,imagick}-<m>,
+                               extension-{xdebug,pgsql,pdo_pgsql,exif,imagick,
+                                          bcmath,calendar,ftp,pcntl,shmop,
+                                          sockets,sysvmsg,sysvsem,sysvshm,
+                                          soap}-<m>,
                                storePath-<dep>-<m>,
                                release-<m>; plus index, release-bundle
 flake.lock                     pinned nixpkgs revision

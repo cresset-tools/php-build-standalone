@@ -163,42 +163,31 @@
                 confFragment = null;
               };
 
-              # Per-extension tarballs for pgsql + pdo_pgsql. The .so files
-              # are produced by PHP's own configure (--with-pgsql=shared,
-              # --with-pdo-pgsql=shared) so they live in the tree already;
-              # tarball-extension.nix just packages each one separately and
-              # records its closure (which pulls in libpq + transitive openssl,
-              # etc. via the closures.json walk).
-              #
-              # extVersion = phpSpec.version because PHP's bundled extensions
-              # version-track PHP itself (ext/pgsql/php_pgsql.h ties
-              # PHP_PGSQL_VERSION to PHP_VERSION). Same for pdo_pgsql.
-              #
-              # confFragment is non-null: pgsql + pdo_pgsql are regular
-              # `extension=` modules that are safe to auto-load. The 20- vs
-              # 30- conf.d ordering between pdo_pgsql.ini and pdo.ini is
-              # benign — PHP reorders MINIT to honor ZEND_MOD_REQUIRED("pdo")
-              # declared by the pdo_pgsql module, regardless of conf.d order.
-              extPgsql = pkgs.callPackage ./php-unix/tarball-extension.nix {
+              # Helper for per-ext tarballs of bundled PHP extensions: the .so
+              # is produced by PHP's own configure (--enable-X=shared or
+              # --with-X=shared) and lives in the interpreter tree already;
+              # this just packages it as a separately addressable artifact.
+              # extDrv = php so closure resolution walks against PHP's $out.
+              # extVersion = phpSpec.version because bundled extensions
+              # version-track PHP itself (e.g. ext/pgsql/php_pgsql.h ties
+              # PHP_PGSQL_VERSION to PHP_VERSION). confFragment auto-loads —
+              # safe for regular `extension=` modules; xdebug/imagick handle
+              # their own (xdebug: zend_extension, opt-in; imagick: PECL).
+              # The 20- vs 30- conf.d ordering between e.g. pdo_pgsql.ini
+              # and pdo.ini is benign — PHP reorders MINIT to honor
+              # ZEND_MOD_REQUIRED, regardless of conf.d filename order.
+              mkBuiltinExt = extName: pkgs.callPackage ./php-unix/tarball-extension.nix {
                 inherit tree closures phpMinor;
                 bundledDeps = sharedDeps;
                 storePathTarballs = storePathTarballList;
-                extDrv    = php;
-                extName   = "pgsql";
+                extDrv = php;
+                inherit extName;
                 extVersion = phpSpec.version;
                 phpVersion = phpSpec.version;
-                confFragment = "extension=pgsql";
+                confFragment = "extension=${extName}";
               };
-              extPdoPgsql = pkgs.callPackage ./php-unix/tarball-extension.nix {
-                inherit tree closures phpMinor;
-                bundledDeps = sharedDeps;
-                storePathTarballs = storePathTarballList;
-                extDrv    = php;
-                extName   = "pdo_pgsql";
-                extVersion = phpSpec.version;
-                phpVersion = phpSpec.version;
-                confFragment = "extension=pdo_pgsql";
-              };
+              extPgsql    = mkBuiltinExt "pgsql";
+              extPdoPgsql = mkBuiltinExt "pdo_pgsql";
 
               # Per-extension tarball for imagick. PECL ext built via phpize
               # (build-imagick.sh), parallel to xdebug. confFragment auto-loads
@@ -217,22 +206,23 @@
                 confFragment = "extension=imagick";
               };
 
-              # Per-extension tarball for exif. .so is produced by PHP's own
-              # configure (--enable-exif=shared) and ships in the interpreter
-              # tarball; this just packages it as a separately addressable
-              # artifact. exif has no external C-lib dep — its closure is just
-              # PHP's own bundled deps reachable via mbstring's character-set
-              # conversion path. extVersion = phpSpec.version (bundled ext).
-              extExif = pkgs.callPackage ./php-unix/tarball-extension.nix {
-                inherit tree closures phpMinor;
-                bundledDeps = sharedDeps;
-                storePathTarballs = storePathTarballList;
-                extDrv    = php;
-                extName   = "exif";
-                extVersion = phpSpec.version;
-                phpVersion = phpSpec.version;
-                confFragment = "extension=exif";
-              };
+              # Bundled-PHP extensions, each packaged as a separately
+              # addressable per-ext tarball. The .so files live in the
+              # interpreter tree already (PHP's --enable-X=shared); these
+              # entries just emit one .tar.zst + manifest per extension so
+              # downstream tooling can install / version each one
+              # independently of the interpreter.
+              extExif      = mkBuiltinExt "exif";
+              extBcmath    = mkBuiltinExt "bcmath";
+              extCalendar  = mkBuiltinExt "calendar";
+              extFtp       = mkBuiltinExt "ftp";
+              extPcntl     = mkBuiltinExt "pcntl";
+              extShmop     = mkBuiltinExt "shmop";
+              extSockets   = mkBuiltinExt "sockets";
+              extSysvmsg   = mkBuiltinExt "sysvmsg";
+              extSysvsem   = mkBuiltinExt "sysvsem";
+              extSysvshm   = mkBuiltinExt "sysvshm";
+              extSoap      = mkBuiltinExt "soap";
 
               # Release aggregate: collects every artifact for this PHP variant
               # into a single $out directory, ready for upload. CI can
@@ -260,6 +250,18 @@
                   cp -a ${extExif}/. "$out/" && chmod -R u+w "$out"
                   # imagick per-extension tarball + manifest
                   cp -a ${extImagick}/. "$out/" && chmod -R u+w "$out"
+                  # Trivial-bucket bundled-PHP extensions (bcmath, calendar,
+                  # ftp, pcntl, shmop, sockets, sysv*, soap)
+                  cp -a ${extBcmath}/. "$out/" && chmod -R u+w "$out"
+                  cp -a ${extCalendar}/. "$out/" && chmod -R u+w "$out"
+                  cp -a ${extFtp}/. "$out/" && chmod -R u+w "$out"
+                  cp -a ${extPcntl}/. "$out/" && chmod -R u+w "$out"
+                  cp -a ${extShmop}/. "$out/" && chmod -R u+w "$out"
+                  cp -a ${extSockets}/. "$out/" && chmod -R u+w "$out"
+                  cp -a ${extSysvmsg}/. "$out/" && chmod -R u+w "$out"
+                  cp -a ${extSysvsem}/. "$out/" && chmod -R u+w "$out"
+                  cp -a ${extSysvshm}/. "$out/" && chmod -R u+w "$out"
+                  cp -a ${extSoap}/. "$out/" && chmod -R u+w "$out"
                   # Per-store-path tarballs
                   ${pkgs.lib.concatMapStringsSep "\n"
                     (spt: "cp -a ${spt}/. \"$out/\" && chmod -R u+w \"$out\"")
@@ -269,7 +271,13 @@
                 '';
               };
 
-            in { inherit php xdebug imagick tree tarball closures extXdebug extPgsql extPdoPgsql extExif extImagick storePathTarballList release; };
+            in {
+              inherit php xdebug imagick tree tarball closures
+                      extXdebug extPgsql extPdoPgsql extExif extImagick
+                      extBcmath extCalendar extFtp extPcntl extShmop
+                      extSockets extSysvmsg extSysvsem extSysvshm extSoap
+                      storePathTarballList release;
+            };
 
           # Fan out over every entry in phpVersions. variants."8.4" = { php; xdebug; tree; tarball; }
           variants = builtins.mapAttrs (k: _: mkPhpVariant k) sources.phpVersions;
@@ -320,6 +328,16 @@
                 "extension-pdo_pgsql-${k}"  = v.extPdoPgsql;
                 "extension-exif-${k}"       = v.extExif;
                 "extension-imagick-${k}"    = v.extImagick;
+                "extension-bcmath-${k}"     = v.extBcmath;
+                "extension-calendar-${k}"   = v.extCalendar;
+                "extension-ftp-${k}"        = v.extFtp;
+                "extension-pcntl-${k}"      = v.extPcntl;
+                "extension-shmop-${k}"      = v.extShmop;
+                "extension-sockets-${k}"    = v.extSockets;
+                "extension-sysvmsg-${k}"    = v.extSysvmsg;
+                "extension-sysvsem-${k}"    = v.extSysvsem;
+                "extension-sysvshm-${k}"    = v.extSysvshm;
+                "extension-soap-${k}"       = v.extSoap;
                 "imagick-${k}"              = v.imagick;
                 "release-${k}"              = v.release;
               })
