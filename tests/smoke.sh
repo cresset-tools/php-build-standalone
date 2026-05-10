@@ -85,6 +85,23 @@ else
     emit "NOTICE: run with XDEBUG_SO=<path> or extract the per-extension tarball alongside /php to test xdebug"
 fi
 
+# 4c. imagick must dlopen + version-check. Same dual-layout policy as
+#     xdebug: imagick is shipped as a per-extension tarball; the .so is
+#     also present in the interpreter tarball (interpreterDeps in tree.nix
+#     pulls it in alongside xdebug). When the .so is missing the gate is
+#     skipped with a NOTICE — covers interpreter-only smoke runs.
+emit "imagick load"
+_imagick_so="${IMAGICK_SO:-$ext_dir/imagick.so}"
+if [ -f "$_imagick_so" ]; then
+    out=$("$PHP" -dextension="$_imagick_so" \
+                  -r 'echo "imagick=", phpversion("imagick"), "\n";') \
+        || die "imagick load failed"
+    printf '%s\n' "$out"
+    case "$out" in imagick=*) : ;; *) die "imagick did not report a version: $out" ;; esac
+else
+    emit "NOTICE: imagick.so not found at $_imagick_so — skipping imagick dlopen gate"
+fi
+
 # 4b. opcache (zend_extension) must register. On 8.1-8.4 it ships as
 #     opcache.so loaded by the 10-opcache.ini conf.d fragment; on 8.5+
 #     it's built statically into bin/php and no conf.d fragment is

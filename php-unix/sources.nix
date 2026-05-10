@@ -175,6 +175,65 @@
     version = "17.2";
   };
 
+  # libtiff — TIFF reader/writer, an ImageMagick delegate. Depends on zlib
+  # (DEFLATE) + libjpeg-turbo (JPEG-in-TIFF). lzma/zstd backends are off
+  # to match the rest of the bundle. Pulled in by ImageMagick's --with-tiff.
+  libtiff = {
+    url = "https://download.osgeo.org/libtiff/tiff-4.7.0.tar.gz";
+    sha256 = "67160e3457365ab96c5b3286a0903aa6e78bdc44c4bc737d2e486bcecb6ba976";
+    version = "4.7.0";
+  };
+
+  # lcms2 — Little CMS color-management library. ImageMagick uses it for
+  # ICC-profile-aware color conversion (--with-lcms). Self-contained, no
+  # external deps.
+  lcms2 = {
+    url = "https://github.com/mm2/Little-CMS/releases/download/lcms2.17/lcms2-2.17.tar.gz";
+    sha256 = "d11af569e42a1baa1650d20ad61d12e41af4fead4aa7964a01f93b08b53ab074";
+    version = "2.17";
+  };
+
+  # openjpeg — JPEG 2000 (.jp2) codec, ImageMagick delegate. Cmake-based.
+  # The github archive extracts to openjpeg-<ver>/.
+  openjpeg = {
+    url = "https://github.com/uclouvain/openjpeg/archive/refs/tags/v2.5.3.tar.gz";
+    sha256 = "368fe0468228e767433c9ebdea82ad9d801a3ad1e4234421f352c8b06e7aa707";
+    version = "2.5.3";
+  };
+
+  # libde265 — HEVC/H.265 decoder, used as the decoder backend for libheif.
+  # We don't bundle x265 (the encoder); imagick's typical use is HEIC read,
+  # not write, and skipping x265 keeps the dep tree small + sidesteps the
+  # GPL-licensed encoder.
+  libde265 = {
+    url = "https://github.com/strukturag/libde265/releases/download/v1.0.16/libde265-1.0.16.tar.gz";
+    sha256 = "b92beb6b53c346db9a8fae968d686ab706240099cdd5aff87777362d668b0de7";
+    version = "1.0.16";
+  };
+
+  # libheif — HEIF/HEIC container library; ImageMagick delegate (--with-heic).
+  # Cmake-based. Decode-only configuration — depends on libde265 only;
+  # libaom / x265 / dav1d / kvazaar / svt-av1 encoders are all disabled.
+  libheif = {
+    url = "https://github.com/strukturag/libheif/releases/download/v1.20.1/libheif-1.20.1.tar.gz";
+    sha256 = "55cc76b77c533151fc78ba58ef5ad18562e84da403ed749c3ae017abaf1e2090";
+    version = "1.20.1";
+  };
+
+  # ImageMagick — image manipulation library. The C library ImageMagick (7.x
+  # MagickWand API) is consumed by the imagick PECL extension. Wired against
+  # our bundled image-format delegates: png/jpeg/webp/freetype/xml/zlib/bzip2
+  # (already shared), plus tiff/lcms2/openjp2/heif (added alongside this).
+  # Heavy delegates explicitly disabled: rsvg, ghostscript, raw, openexr,
+  # djvu, jbig, lzma, fftw, fpx, fontconfig, x11, perl, c++ bindings.
+  # Tarball extracts to ImageMagick-<version>/ (Pascal-cased), not
+  # imagemagick-<version>/.
+  imagemagick = {
+    url = "https://github.com/ImageMagick/ImageMagick/archive/refs/tags/7.1.2-21.tar.gz";
+    sha256 = "4ba5b81797910efa93e65fb5a02b496284b8069d64513c6d2687c80d180dd70f";
+    version = "7.1.2-21";
+  };
+
   # libedit — BSD editline library; provides line editing and history for
   # PHP's ext/readline (php -a interactive shell). We use libedit rather
   # than GNU readline because readline is GPL-licensed and redistributing
@@ -200,30 +259,35 @@
       url = "https://www.php.net/distributions/php-8.1.34.tar.xz";
       sha256 = "ffa9e0982e82eeaea848f57687b425ed173aa278fe563001310ae2638db5c251";
       xdebug = "3.5";
+      imagick = "3.8";
     };
     "8.2" = {
       version = "8.2.31";
       url = "https://www.php.net/distributions/php-8.2.31.tar.xz";
       sha256 = "95eae411d594fe6f6e5678b76645dc13ae47d3c0a5325c1d969b58dea56ee45a";
       xdebug = "3.5";
+      imagick = "3.8";
     };
     "8.3" = {
       version = "8.3.31";
       url = "https://www.php.net/distributions/php-8.3.31.tar.xz";
       sha256 = "66410cee07f4b2baeb0843140bb2a2b52ef930b5cf9b3d6e6d158b33aae8fa37";
       xdebug = "3.5";
+      imagick = "3.8";
     };
     "8.4" = {
       version = "8.4.21";
       url = "https://www.php.net/distributions/php-8.4.21.tar.xz";
       sha256 = "7cf5d8ab12c3b2016875bcfaec71bef1ef0b07bed6148f2c447577074431f984";
       xdebug = "3.5";
+      imagick = "3.8";
     };
     "8.5" = {
       version = "8.5.6";
       url = "https://www.php.net/distributions/php-8.5.6.tar.xz";
       sha256 = "826c600b7c6f956bd335558ca3bdbcab23b22126c1cc8d9348be2280a2204bb7";
       xdebug = "3.5";
+      imagick = "3.8";
     };
   };
 
@@ -243,6 +307,18 @@
       version = "3.5.1";
       url = "https://xdebug.org/files/xdebug-3.5.1.tgz";
       sha256 = "0f26849a5edf3d9120edc100219854599d54f923a8a4d1cb4fe4403520e49678";
+    };
+  };
+
+  # imagick PECL extension version matrix. Keyed by series tag, parallel to
+  # xdebugVersions. 3.8.x is the first stable line that compiles cleanly
+  # against PHP 8.4/8.5 — older 3.7.x has known break-points on those
+  # PHP versions. Single entry covers PHP 8.1 through 8.5.
+  imagickVersions = {
+    "3.8" = {
+      version = "3.8.1";
+      url = "https://pecl.php.net/get/imagick-3.8.1.tgz";
+      sha256 = "3a3587c0a524c17d0dad9673a160b90cd776e836838474e173b549ed864352ee";
     };
   };
 
