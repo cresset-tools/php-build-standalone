@@ -62,6 +62,10 @@ $BOUGIE_HOME/                              # data: durable, never auto-deleted
     store -> $BOUGIE_HOME/store            # symlink; see §2.2
   store/                                   # shared content-addressed pool
     <name>-<version>-<hash>/lib/...        # one dir per store path; never modified post-extract
+  composer/                                # bougie-managed Composer (see §3.7)
+    <version>/composer.phar                # one dir per installed Composer
+    channels.json                          # cached snapshot of getcomposer.org/versions
+    channels.json.etag
   state/
     locks/                                 # see §10
     state.json                             # schema-versioned global state
@@ -116,11 +120,13 @@ creates it; subsequent commands populate it.
     bin/                             # shims (§3.3; gitignored, machine-local)
       php
       php-fpm
-      composer                       # only if composer is on PATH at sync time
+      composer                       # always present — composer is bougie-managed (§3.7)
     state/                           # gitignored, machine-local
       resolved                       # plain text: <patch>-<flavor>, e.g.
                                      # "8.3.12-nts" — what the resolver
                                      # picked on this machine.
+      resolved-composer              # plain text: <version>, e.g. "2.8.5"
+                                     # — the Composer the shim should use.
     .gitignore                       # auto-written: ignore bin/ and state/;
                                      # conf.d/ stays tracked so user edits
                                      # to fragments (xdebug.mode, etc.) are
@@ -183,10 +189,10 @@ pinned PHP version isn't installed yet ("`bougie sync` first") rather
 than producing a no-such-file from the kernel.
 
 `.bougie/bin/php-fpm` exists for the same reason. `.bougie/bin/composer`
-is generated only when Composer is on the user's `PATH` at sync time,
-and is a thin wrapper that `execve`s `composer` with `PATH` already
-prepended by `.bougie/bin/` — so Composer's subprocess `php` calls
-land on the project shim, not the system PHP.
+is always emitted — Composer is bougie-managed (§3.7), so it's always
+available — and exec's `<install>/bin/php <BOUGIE_HOME>/composer/<v>/composer.phar`,
+with `PHP_INI_SCAN_DIR` pointing at the project conf.d. Composer's
+subprocess `php` calls land on the project shim, not on system PHP.
 
 ## 3. Command surface
 
@@ -211,6 +217,7 @@ flags are an error.
 | `bougie sync`      | Install everything the project requires.                       | `uv sync`         |
 | `bougie run`       | Run a command in the project environment.                      | `uv run`          |
 | `bougie php …`     | Manage PHP interpreter installations.                          | `uv python …`     |
+| `bougie composer …`| Manage Composer installs.                                       | (none — pip is bundled) |
 | `bougie cache …`   | Manage the local cache and content-addressed store.            | `uv cache …`      |
 | `bougie self …`    | Manage the bougie binary itself.                               | `uv self …`       |
 | `bougie help`      | Display documentation for a command.                           | `uv help`         |
@@ -253,9 +260,11 @@ read as "install PHP 8.4." Namespacing makes the target explicit.
    `[extensions]` table.
 3. Runs the §3.3 `sync` flow.
 
-If Composer is not on `PATH`, fails with an actionable error (we do
-not parse-and-rewrite `composer.json` ourselves — version constraints
-and JSON formatting belong to Composer).
+Composer itself is provided by bougie (§3.7) — `bougie ext add` invokes
+the project's `.bougie/bin/composer` shim, which routes through bougie's
+managed phar plus the project's pinned PHP. If the project hasn't been
+synced yet (no shim), the command fails with an actionable
+"`bougie sync` first" error rather than reaching for system composer.
 
 #### 3.2.2 `bougie ext remove <name>…`
 
@@ -331,10 +340,16 @@ Steps, in order:
    - Fetch the extension `.so` blob if not already in
      `installs/<v>-<flavor>/lib/extensions/<api>/<name>.so` with the
      correct sha256.
-6. **Write conf.d fragments** into `<project>/.bougie/conf.d/` with
+6. **Ensure Composer is installed**: read the project's
+   `[composer]version` (or `extra.bougie.composer.version`); default
+   `"stable"`. Resolve against getcomposer.org's `/versions`, fetch the
+   phar if missing (§3.7), and write
+   `<project>/.bougie/state/resolved-composer`.
+7. **Write conf.d fragments** into `<project>/.bougie/conf.d/` with
    numeric prefixes preserving load order (10- for opcache, 20+ for
    user extensions in lexical order).
-7. **(Re)generate shims** in `<project>/.bougie/bin/`.
+8. **(Re)generate shims** in `<project>/.bougie/bin/` (always
+   `php`, `php-fpm`, and `composer`).
 
 Flags:
 
@@ -598,16 +613,108 @@ Prints the size of `$BOUGIE_CACHE`, `$BOUGIE_HOME/store/`, and
 `$BOUGIE_HOME/installs/` separately, plus a total. Mirrors
 `uv cache size`.
 
-### 3.7 `bougie self …` — manage the bougie binary
+### 3.7 `bougie composer …` — Composer management
+
+Composer (the PHP package manager) is bougie-managed: phars live under
+`$BOUGIE_HOME/composer/<version>/composer.phar`, fetched directly from
+getcomposer.org and verified against both the channels-JSON `shasum`
+field and the per-version `.sha256sum` file. There is no system-composer
+fallback — `bougie sync` always installs the project's pinned (or
+default) Composer, and `<project>/.bougie/bin/composer` is always
+emitted as a shim. uv has no analogue (Python's `pip` is bundled with
+the interpreter); the namespace mirrors `bougie php …` because the
+moving parts are the same.
+
+#### 3.7.0 Composer version request format
+
+Every subcommand in this namespace, plus `[composer]version` in
+`bougie.toml`, accepts a `<request>` argument:
+
+| Form                         | Example          | Resolves to                                                       |
+|------------------------------|------------------|-------------------------------------------------------------------|
+| `<major>.<minor>.<patch>`    | `2.8.5`          | exact version                                                     |
+| `<major>` / `<major>.<minor>`| `2`, `2.8`       | highest published version with that prefix (stable ∪ preview)     |
+| `latest` / `stable`          | `stable`         | first entry of `versions.stable[]` from getcomposer.org           |
+| `preview`                    | `preview`        | first entry of `versions.preview[]` (falls back to stable if none)|
+| `<absolute-path>`            | `/opt/composer.phar` | path-shaped — accepted by `find` / `pin`; rejected by `install` |
+
+There is no constraint solver — Composer publishes one canonical phar
+per version, and the resolver is a literal lookup against the channel
+snapshot.
+
+#### 3.7.1 `bougie composer install [<request>]`
+
+Resolves and installs Composer into `$BOUGIE_HOME/composer/<version>/`.
+Default request: latest stable. Idempotent — a second install of the
+same version is a no-op (verified by sha256, no re-download).
+
+Install always cross-checks two upstream sources: the `shasum` field
+from `getcomposer.org/versions` AND the standalone
+`https://getcomposer.org/download/<version>/composer.phar.sha256sum`
+file. Disagreement is a hard error — both come from getcomposer.org and
+mismatch indicates upstream inconsistency or active tampering.
+
+Path-shaped requests (`/abs/path`) are rejected here.
+
+Outputs (on `--format json-v1`):
+`{ "schema_version": 1, "version": "...", "path": "...", "already_present": <bool> }`.
+
+#### 3.7.2 `bougie composer uninstall <request>`
+
+Removes the version directory matching `<request>`. Accepts an exact
+version (`2.8.5`) or an absolute path under `$BOUGIE_HOME/composer/`
+(uninstalling a system composer via path is rejected).
+
+#### 3.7.3 `bougie composer list`
+
+Lists installed Composer versions plus the latest of each upstream
+channel (stable, preview), side by side. Falls back gracefully when
+getcomposer.org is unreachable: the installed-side stays accurate; the
+available-side simply omits rows.
+
+#### 3.7.4 `bougie composer find [<request>]`
+
+Prints the absolute path to a `composer.phar`. With no argument, picks
+the project's pinned composer (from `<project>/.bougie/state/resolved-composer`),
+falling back to the highest installed version under
+`$BOUGIE_HOME/composer/`. Designed for `$(bougie composer find)` in
+scripts.
+
+#### 3.7.5 `bougie composer pin <request>`
+
+Pins the project's Composer version. Same priority order as `php pin`
+(§3.5.5):
+
+1. If `bougie.toml` exists, set `[composer]version = "<request>"`.
+2. Else if `composer.json`'s `extra.bougie` exists, set
+   `extra.bougie.composer.version = "<request>"`.
+3. Else if `composer.json` exists, set `extra.bougie.composer.version`
+   (creating the `extra.bougie` block).
+4. Else create `bougie.toml`.
+
+`--toml` / `--composer` flags force a target.
+
+#### 3.7.6 `bougie composer dir`
+
+Prints `$BOUGIE_HOME/composer/`.
+
+#### 3.7.7 `bougie composer upgrade`
+
+Refreshes the locally-installed `stable` and `preview` channel heads to
+whatever getcomposer.org currently advertises. Existing exact-version
+installs are not touched. Project pins (`[composer]version = "2.8.5"`)
+keep resolving to that exact version regardless.
+
+### 3.8 `bougie self …` — manage the bougie binary
 
 Mirrors `uv self …`.
 
-#### 3.7.1 `bougie self update [--check]`
+#### 3.8.1 `bougie self update [--check]`
 
 Self-explanatory. `--check` exits 0 if up to date, 1 if newer
 available, ≥2 on error. Mirrors `uv self update`.
 
-#### 3.7.2 `bougie self version`
+#### 3.8.2 `bougie self version`
 
 Prints `bougie`'s version + build metadata + the pinned
 trust-root fingerprint. Mirrors `uv self version`.
@@ -615,12 +722,12 @@ trust-root fingerprint. Mirrors `uv self version`.
 The trust-root fingerprint and last-good-signature state — the work
 the deprecated `bougie index trust` command did — surface here.
 
-### 3.8 `bougie help [<command>]`
+### 3.9 `bougie help [<command>]`
 
 Mirrors `uv help`. Equivalent to `<command> --help` but discoverable
 as a top-level verb.
 
-### 3.9 Removed / renamed (vs. earlier drafts)
+### 3.10 Removed / renamed (vs. earlier drafts)
 
 - `bougie install` → `bougie php install`
 - `bougie uninstall` → `bougie php uninstall`
@@ -724,6 +831,12 @@ version = "8.3.12"
 # encodes a flavor (e.g. "8.3+zts").
 flavor = "nts"          # nts | nts-debug | zts | zts-debug
 
+# Optional Composer version pin. Default is "stable" (latest stable at
+# sync time). Accepts any §3.7.0 request form (exact, partial, or
+# channel name).
+[composer]
+version = "2.8.5"       # or "stable" | "preview" | "2" | "2.8"
+
 # Optional, per-extension version pins. Default is "latest".
 # Strings here must be exact extension versions, NOT semver ranges —
 # the index ships one canonical version per ABI window (see DESIGN.md
@@ -751,6 +864,7 @@ fingerprint = "sha256:…"
   "extra": {
     "bougie": {
       "php": { "version": "8.3.12", "flavor": "nts" },
+      "composer": { "version": "2.8.5" },
       "extensions": { "xdebug": "3.5.1" },
       "index": [
         { "host": "https://index.example.com", "fingerprint": "sha256:…" },
@@ -1019,7 +1133,28 @@ clear diagnostic; the user picks a non-yanked version (typically by
 removing or bumping the pin in `bougie.toml`). `--allow-yanked`
 overrides for forensic use.
 
-### 7.6 Frozen artifacts
+### 7.6 Composer trust path (separate from the index)
+
+`bougie composer …` does NOT use the bougie index (§7.1) — Composer is
+upstream infrastructure outside the build authority. The phar is fetched
+directly from getcomposer.org (or the host configured via the
+`BOUGIE_COMPOSER_BASE_URL` env var, intended for tests and air-gapped
+mirrors). Trust comes from:
+
+1. **TLS** to getcomposer.org (rustls; system roots).
+2. **Sha256 from the per-version `.sha256sum` endpoint**: getcomposer.org
+   serves `download/<v>/composer.phar.sha256sum` as a plain
+   `<hex>  composer.phar` line. Bougie fetches it before downloading
+   the phar and verifies the streamed bytes against that value.
+   Mismatch is an error (exit code 13). The sha is NOT carried in
+   `/versions` — that endpoint only enumerates versions and download
+   paths.
+
+There is no separate signed index for Composer. A future revision could
+republish Composer through the bougie index without breaking the CLI
+surface — only the trust path would change.
+
+### 7.7 Frozen artifacts
 
 Frozen entries (see `DISTRIBUTION.md` §Frozen artifacts) are treated
 identically to live entries during resolution. The CLI emits an
@@ -1187,13 +1322,13 @@ the same origin as the index. The exact schema is published at
 ## 12. Reserved exit/file behaviors
 
 - `bougie` MUST NOT modify any file outside `$BOUGIE_HOME/` or
-  `<project>/.bougie/`, with two narrow exceptions: `bougie ext add`
+  `<project>/.bougie/`, with three narrow exceptions: `bougie ext add`
   / `bougie ext remove` delegate to `composer require` /
-  `composer remove` (which mutates `composer.json`), and
-  `bougie php pin` writes the pin to `bougie.toml` or
-  `composer.json`'s `extra.bougie` block per §3.5.5. The shape of
-  `composer.json` outside the `extra.bougie` block is the user's
-  job.
+  `composer remove` (which mutates `composer.json`); `bougie php pin`
+  writes the pin to `bougie.toml` or `composer.json`'s `extra.bougie`
+  block per §3.5.5; and `bougie composer pin` does the same for the
+  Composer pin per §3.7.5. The shape of `composer.json` outside the
+  `extra.bougie` block is the user's job.
 - `bougie` MUST NOT execute downloaded code. Extension `.so` files
   are placed for PHP to load; the CLI itself never loads them.
 - `bougie` MUST NOT write to `$BOUGIE_HOME/installs/<v>/` after the
