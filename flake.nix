@@ -112,7 +112,16 @@
             libffi        = pkgs.callPackage ./php-unix/libffi.nix        { inherit mkDep; };
             pcre2         = pkgs.callPackage ./php-unix/pcre2.nix         { inherit mkDep; };
             expat         = pkgs.callPackage ./php-unix/expat.nix         { inherit mkDep; };
-            glib          = pkgs.callPackage ./php-unix/glib.nix          { inherit mkDep libffi pcre2 zlib; };
+            glib          = pkgs.callPackage ./php-unix/glib.nix          ({
+              inherit mkDep libffi pcre2 zlib;
+              # libiconv is the Darwin-only attribute added to `deps`
+              # below via lib.optionalAttrs. It lives outside the rec
+              # block so we can't pull it in via `inherit (deps)` here;
+              # null on Linux (glib.nix branches on stdenv.isDarwin).
+              libiconv = if darwin
+                then pkgs.callPackage ./php-unix/libiconv.nix { inherit mkDep; }
+                else null;
+            });
             libvips       = pkgs.callPackage ./php-unix/libvips.nix       {
               inherit mkDep glib libpng libjpeg-turbo libwebp libtiff libheif lcms2
                       libxml2 zlib expat;

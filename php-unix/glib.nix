@@ -12,8 +12,14 @@
 # We keep glib-mkenums / glib-genmarshal / gdbus-codegen in bin/ because
 # downstream consumers (libvips, glib-using PECL exts) call them at
 # build time; finalize-common.sh detoxes their /nix/store leaks.
-{ mkDep, libffi, pcre2, zlib }:
+{ pkgs, mkDep, libffi, pcre2, zlib, libiconv ? null }:
+let inherit (pkgs) lib stdenv; in
 mkDep {
   name = "glib";
-  deps = [ libffi pcre2 zlib ];
+  # libiconv is Darwin-only. On Linux glibc provides iconv directly and
+  # glib's meson finds the `builtin` libc iconv; on Darwin apple-sdk
+  # strips libiconv headers from the SDK, so we feed glib our bundled
+  # GNU libiconv (the same dep PHP itself consumes for ext/iconv).
+  deps = [ libffi pcre2 zlib ]
+    ++ lib.optionals stdenv.isDarwin [ libiconv ];
 }

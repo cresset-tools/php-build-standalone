@@ -24,8 +24,10 @@ mkdir -p "$PBS_SOURCES"
 tar -xf "$PBS_SRC_GLIB" -C "$PBS_SOURCES"
 cd "$src_dir"
 
-# meson resolves libffi / pcre2 / zlib via pkg-config.
-export PKG_CONFIG_PATH="$PBS_DEP_LIBFFI/lib/pkgconfig:$PBS_DEP_PCRE2/lib/pkgconfig:$PBS_DEP_ZLIB/lib/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
+# meson resolves libffi / pcre2 / zlib via pkg-config; libiconv is
+# Darwin-only (PBS_DEP_LIBICONV unset on Linux because libiconv isn't a
+# dep there).
+export PKG_CONFIG_PATH="$PBS_DEP_LIBFFI/lib/pkgconfig:$PBS_DEP_PCRE2/lib/pkgconfig:$PBS_DEP_ZLIB/lib/pkgconfig${PBS_DEP_LIBICONV:+:$PBS_DEP_LIBICONV/lib/pkgconfig}${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
 
 # Meson's compile-only probes (-c) trip clang's
 # -Werror=unused-command-line-argument because our CC wrapper has
