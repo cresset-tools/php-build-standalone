@@ -109,24 +109,31 @@
               inherit mkDep zlib bzip2 libpng libjpeg-turbo libwebp freetype libxml2
                       libtiff lcms2 openjpeg libheif libde265;
             };
-            libffi        = pkgs.callPackage ./php-unix/libffi.nix        { inherit mkDep; };
-            pcre2         = pkgs.callPackage ./php-unix/pcre2.nix         { inherit mkDep; };
-            expat         = pkgs.callPackage ./php-unix/expat.nix         { inherit mkDep; };
-            glib          = pkgs.callPackage ./php-unix/glib.nix          ({
-              inherit mkDep sources libffi pcre2 zlib;
-              # libiconv is the Darwin-only attribute added to `deps`
-              # below via lib.optionalAttrs. It lives outside the rec
-              # block so we can't pull it in via `inherit (deps)` here;
-              # null on Linux (glib.nix branches on stdenv.isDarwin).
-              libiconv = if darwin
-                then pkgs.callPackage ./php-unix/libiconv.nix { inherit mkDep; }
-                else null;
-            });
-            libvips       = pkgs.callPackage ./php-unix/libvips.nix       {
-              inherit mkDep glib libpng libjpeg-turbo libwebp libtiff libheif lcms2
-                      libxml2 zlib expat;
-            };
-          } // pkgs.lib.optionalAttrs darwin {
+          } // pkgs.lib.optionalAttrs (!darwin) (
+            # vips stack — Linux-only for now. glib 2.82's gio hard-requires
+            # `<arpa/nameser.h>` which nixpkgs's Darwin SDK closure doesn't
+            # currently ship. See build-glib.sh for the reintroduction
+            # checklist. Wrapped in its own `let` because these attrs need
+            # forward references between each other (glib uses libffi /
+            # pcre2; libvips uses glib + expat) and the `rec` block above
+            # is already closed.
+            let
+              libffi  = pkgs.callPackage ./php-unix/libffi.nix  { inherit mkDep; };
+              pcre2   = pkgs.callPackage ./php-unix/pcre2.nix   { inherit mkDep; };
+              expat   = pkgs.callPackage ./php-unix/expat.nix   { inherit mkDep; };
+              glib    = pkgs.callPackage ./php-unix/glib.nix    {
+                inherit mkDep libffi pcre2;
+                zlib = deps.zlib;
+              };
+              libvips = pkgs.callPackage ./php-unix/libvips.nix {
+                inherit mkDep glib expat;
+                inherit (deps) libpng libjpeg-turbo libwebp libtiff libheif lcms2
+                                libxml2 zlib;
+              };
+            in {
+              inherit libffi pcre2 expat glib libvips;
+            }
+          ) // pkgs.lib.optionalAttrs darwin {
             libiconv = pkgs.callPackage ./php-unix/libiconv.nix { inherit mkDep; };
           };
 
@@ -144,7 +151,7 @@
               phpSpec     = sources.phpVersions.${phpKey};
               xdebugSpec  = sources.xdebugVersions.${phpSpec.xdebug};
               imagickSpec = sources.imagickVersions.${phpSpec.imagick};
-              vipsSpec    = sources.vipsVersions.${phpSpec.vips};
+              vipsSpec    = if darwin then null else sources.vipsVersions.${phpSpec.vips};
 
               php = pkgs.callPackage ./php-unix/php.nix ({
                 inherit mkDep phpSpec;
@@ -161,13 +168,14 @@
                 inherit mkDep php imagickSpec;
                 inherit (deps) imagemagick;
               };
-              vips = pkgs.callPackage ./php-unix/vips.nix {
+              vips = if darwin then null else pkgs.callPackage ./php-unix/vips.nix {
                 inherit mkDep php vipsSpec;
                 inherit (deps) libvips glib;
               };
               tree = pkgs.callPackage ./php-unix/tree.nix {
                 bundledDeps = sharedDeps;
-                interpreterDeps = [ php xdebug imagick vips ];
+                interpreterDeps = [ php xdebug imagick ]
+                  ++ pkgs.lib.optionals (!darwin) [ vips ];
                 inherit toolchain;
                 phpVersion = phpSpec.version;
               };
@@ -242,10 +250,9 @@
               #     pdo_pgsql.ini and pdo.ini is benign — PHP reorders
               #     MINIT to honor ZEND_MOD_REQUIRED("pdo") regardless
               #     of conf.d order.
-              extensions = {
+              extensions = ({
                 xdebug    = mkExt { extDrv = xdebug;  extName = "xdebug";  extVersion = xdebugSpec.version;  confFragment = null; };
                 imagick   = mkExt { extDrv = imagick; extName = "imagick"; extVersion = imagickSpec.version; confFragment = "extension=imagick"; };
-                vips      = mkExt { extDrv = vips;    extName = "vips";    extVersion = vipsSpec.version;    confFragment = "extension=vips"; };
                 pgsql     = mkBuiltinExt "pgsql";
                 pdo_pgsql = mkBuiltinExt "pdo_pgsql";
                 exif      = mkBuiltinExt "exif";
@@ -259,7 +266,10 @@
                 sysvsem   = mkBuiltinExt "sysvsem";
                 sysvshm   = mkBuiltinExt "sysvshm";
                 soap      = mkBuiltinExt "soap";
-              };
+              } // pkgs.lib.optionalAttrs (!darwin) {
+                # vips is Linux-only — see deps wiring above.
+                vips    = mkExt { extDrv = vips;    extName = "vips";    extVersion = vipsSpec.version;    confFragment = "extension=vips"; };
+              });
 
               # Release aggregate: collects every artifact for this PHP
               # variant into a single $out directory, ready for upload.

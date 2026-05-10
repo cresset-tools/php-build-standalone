@@ -24,10 +24,8 @@ mkdir -p "$PBS_SOURCES"
 tar -xf "$PBS_SRC_GLIB" -C "$PBS_SOURCES"
 cd "$src_dir"
 
-# meson resolves libffi / pcre2 / zlib via pkg-config; libiconv is
-# Darwin-only (PBS_DEP_LIBICONV unset on Linux because libiconv isn't a
-# dep there).
-export PKG_CONFIG_PATH="$PBS_DEP_LIBFFI/lib/pkgconfig:$PBS_DEP_PCRE2/lib/pkgconfig:$PBS_DEP_ZLIB/lib/pkgconfig${PBS_DEP_LIBICONV:+:$PBS_DEP_LIBICONV/lib/pkgconfig}${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
+# meson resolves libffi / pcre2 / zlib via pkg-config.
+export PKG_CONFIG_PATH="$PBS_DEP_LIBFFI/lib/pkgconfig:$PBS_DEP_PCRE2/lib/pkgconfig:$PBS_DEP_ZLIB/lib/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
 
 # Meson's compile-only probes (-c) trip clang's
 # -Werror=unused-command-line-argument because our CC wrapper has
@@ -38,41 +36,28 @@ export PKG_CONFIG_PATH="$PBS_DEP_LIBFFI/lib/pkgconfig:$PBS_DEP_PCRE2/lib/pkgconf
 export CFLAGS="$CFLAGS -Qunused-arguments"
 export CXXFLAGS="$CXXFLAGS -Qunused-arguments"
 
-# Darwin: Apple's <arpa/nameser.h> hides C_IN behind `#ifdef
-# BIND_8_COMPAT`, and glib's gio/meson.build:35 has a hard-fail check
-# for it. The fallback path #include <arpa/nameser_compat.h> doesn't
-# rescue us either because that header just `#define`s the legacy
-# names — it still requires BIND_8_COMPAT to expose C_IN through
-# nameser.h. Define unconditionally; harmless on Linux glibc, which
-# defines C_IN unconditionally regardless.
-export CFLAGS="$CFLAGS -DBIND_8_COMPAT=1"
-export CXXFLAGS="$CXXFLAGS -DBIND_8_COMPAT=1"
-
-# Darwin: glib's meson.build calls add_languages('objc') for Carbon /
-# Cocoa probing, which triggers a fresh compiler probe by basename
-# (clang, gcc) via PATH. Our toolchain wrapper exposes cc/c++ but not
-# bare `clang`, so the probe fails with "Unknown compiler(s)". Meson
-# respects OBJC for Objective-C the same way it respects CC for C;
-# point it at our wrapper so it skips the basename probe entirely.
-# Harmless on Linux (glib's meson.build only uses objc under
-# host_system == 'darwin'); set unconditionally to keep one path.
-export OBJC="$CC"
+# NOTE: build-glib.sh is Linux-only right now. glib 2.82's
+# gio/meson.build hard-requires <arpa/nameser.h> for its DNS resolver,
+# and that header isn't shipped in nixpkgs's Darwin SDK closure
+# (apple-sdk_14 omits the legacy BIND headers; libSystem-B doesn't
+# carry them either). flake.nix only wires `libvips` and `vips` into
+# the dep set on Linux; the Darwin matrix builds the same way as
+# before this PR.
+#
+# If Darwin support is reintroduced later, additionally:
+#   - export OBJC="$CC"           (objc add_languages probe by basename)
+#   - export CFLAGS+=-DBIND_8_COMPAT=1 (Apple's nameser.h gates C_IN on it)
+#   - patch glib gio to use its __BIONIC__ inline-defines fallback on
+#     __APPLE__ as well, OR vendor arpa/nameser*.h headers.
 
 build_dir="$src_dir/build"
 rm -rf "$build_dir"
 
-# Darwin: glib 2.82's meson requires the gettext intl API independently
-# of NLS. macOS libc doesn't provide dgettext/bindtextdomain/etc., so
-# meson falls back to the proxy-libintl subproject. Its wrap file uses
-# wrap-git (network + git), neither available inside the Nix sandbox.
-# Pre-populate subprojects/proxy-libintl/ from the tarball we fetched
-# via Nix; meson sees the source already there and skips the fetch.
-if [ -n "${PBS_SRC_PROXY_LIBINTL:-}" ]; then
-  rm -rf "$src_dir/subprojects/proxy-libintl"
-  tar -xf "$PBS_SRC_PROXY_LIBINTL" -C "$src_dir/subprojects"
-  mv "$src_dir/subprojects/proxy-libintl-${PBS_VER_PROXY_LIBINTL}" \
-     "$src_dir/subprojects/proxy-libintl"
-fi
+# NOTE: proxy-libintl handling for Darwin was removed alongside glib's
+# Linux-only constraint — see comment block above. If reintroducing
+# Darwin support, also re-add the subprojects/proxy-libintl/ unpack
+# here, the source fetch in glib.nix, and the proxy-libintl entry in
+# sources.nix.
 
 # Nix sandbox has no /usr/bin/env; the helper python scripts under tools/
 # carry "#!/usr/bin/env python3" shebangs. Rewrite to the absolute python3
@@ -86,28 +71,6 @@ find "$src_dir" -type f \( -name '*.py' -o -name 'gen-*' \) -print0 \
 # / libelf / xattr are explicitly disabled so meson's auto-detection
 # can't quietly link us against host libs. systemtap / dtrace / sysprof
 # are tracing-side tooling we don't ship.
-# DEBUG: dump compiler / SDK info so we can see what arpa/nameser.h
-# resolution looks like in CI. Drop this once Darwin builds pass.
-echo
-echo "=== build-glib debug: env probe ==="
-echo "CC=$CC"
-echo "PATH=$PATH"
-env | grep -E '^(SDK|NIX_|CPATH|C_INCLUDE_PATH|MACOSX_)' || true
-echo "--- ${CC%% *} -v --version ---"
-${CC%% *} -v --version 2>&1 || true
-echo "--- ${CC%% *} -E -x c -dM /dev/null | head ---"
-${CC%% *} -E -x c -dM /dev/null 2>&1 | head -5 || true
-echo "--- ${CC%% *} -E -x c -include sys/types.h -include arpa/nameser.h /dev/null ---"
-${CC%% *} -E -x c -include sys/types.h -include arpa/nameser.h /dev/null 2>&1 | head -10 || true
-echo "--- ${CC%% *} -Wp,-v -E -x c -include arpa/nameser.h /dev/null ---"
-${CC%% *} -Wp,-v -E -x c -include arpa/nameser.h /dev/null 2>&1 | head -30 || true
-echo "--- locate arpa/nameser.h in nix store ---"
-find /nix/store -maxdepth 6 -path '*/arpa/nameser.h' -type f 2>/dev/null | head -10 || true
-echo "--- locate arpa/nameser.h in apple-sdk paths ---"
-find /nix/store -maxdepth 4 -type d -name apple-sdk\* 2>/dev/null | head -3 | while read d; do echo ":: $d"; find "$d" -name 'nameser*.h' 2>/dev/null | head; done
-echo "=== end build-glib debug ==="
-echo
-
 meson_setup_status=0
 meson setup "$build_dir" \
   --prefix="$PBS_DEPS" \

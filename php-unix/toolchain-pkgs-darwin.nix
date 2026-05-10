@@ -4,20 +4,6 @@
 { pkgs, toolchain }:
 with pkgs; [
   toolchain
-  # The macOS SDK. Required as an explicit buildInput in newer nixpkgs
-  # Darwin stdenvs to expose the full set of system headers
-  # (`<arpa/nameser.h>`, frameworks under <CoreServices/…>, etc.). Without
-  # it nixpkgs's clang gets a minimal SDK that's enough for autotools
-  # probes (which silently skip headers when they're missing) but not
-  # for meson's strict `cc.compiles()` checks. Required by glib 2.82's
-  # gio/meson.build:35 ARPA C_IN gate at minimum.
-  #
-  # apple-sdk_14 (SDK 14.x) is the lowest SDK still supported in current
-  # nixpkgs — _11 / _12 / _13 were removed in 25.11. We still target
-  # macOS 11 at runtime via -mmacosx-version-min=11.0; the SDK only
-  # affects which header revisions we compile against, and the system
-  # libc / framework ABIs are stable backward.
-  apple-sdk_14
   gnumake
   autoconf
   automake

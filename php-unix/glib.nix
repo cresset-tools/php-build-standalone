@@ -12,26 +12,12 @@
 # We keep glib-mkenums / glib-genmarshal / gdbus-codegen in bin/ because
 # downstream consumers (libvips, glib-using PECL exts) call them at
 # build time; finalize-common.sh detoxes their /nix/store leaks.
-{ pkgs, mkDep, sources, libffi, pcre2, zlib, libiconv ? null }:
-let
-  inherit (pkgs) lib stdenv;
-  # Darwin-only: pre-fetch proxy-libintl source. build-glib.sh extracts
-  # it into subprojects/proxy-libintl/ before invoking meson, replacing
-  # the wrap-git fetch that fails in the network-isolated sandbox.
-  proxyLibintlSrc = pkgs.fetchurl {
-    inherit (sources.proxy-libintl) url sha256;
-  };
-in
+{ mkDep, libffi, pcre2, zlib }:
+# Linux-only for now. See build-glib.sh and flake.nix — vips and its
+# transitive deps (glib, libvips, expat, libffi, pcre2, plus the
+# proxy-libintl meson subproject) skip the Darwin build matrix until
+# nixpkgs's Darwin SDK closure ships `<arpa/nameser.h>`.
 mkDep {
   name = "glib";
-  # libiconv is Darwin-only. On Linux glibc provides iconv directly and
-  # glib's meson finds the `builtin` libc iconv; on Darwin apple-sdk
-  # strips libiconv headers from the SDK, so we feed glib our bundled
-  # GNU libiconv (the same dep PHP itself consumes for ext/iconv).
-  deps = [ libffi pcre2 zlib ]
-    ++ lib.optionals stdenv.isDarwin [ libiconv ];
-  extraEnv = lib.optionalAttrs stdenv.isDarwin {
-    PBS_SRC_PROXY_LIBINTL = "${proxyLibintlSrc}";
-    PBS_VER_PROXY_LIBINTL = sources.proxy-libintl.version;
-  };
+  deps = [ libffi pcre2 zlib ];
 }
