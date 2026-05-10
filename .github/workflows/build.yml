@@ -71,8 +71,15 @@ concurrency:
 # served bytes). Both `assemble` legs and `verify-reproducible-index` need
 # the same values for the merge to be internally consistent.
 env:
+  # Public hostnames the index bakes in. Clients fetch from these. May
+  # be CDN-fronted (index.bougie.tools is on Cloudflare).
   INDEX_HOST: ${{ vars.INDEX_HOST || 'index.bougie.tools' }}
   BLOB_HOST:  ${{ vars.BLOB_HOST  || 'blobs.bougie.tools' }}
+  # SSH destination for the rsync push. Has to resolve directly to the
+  # box because Cloudflare doesn't proxy SSH; INDEX_HOST in particular
+  # may be orange-cloud and refuse the connection. Defaults to the
+  # grey-cloud A/AAAA at origin.bougie.tools.
+  SSH_HOST: ${{ vars.SSH_HOST || 'origin.bougie.tools' }}
   # PUBLISH_VERSION names the immutable per-publish snapshot folder
   # (DISTRIBUTION.md §Snapshot-consistency). github.run_id is a stable
   # integer per workflow run — same value across all jobs and matrix
@@ -367,4 +374,4 @@ jobs:
       - name: Rsync to origin
         env:
           PUBLISH_SSH_KEY: ${{ secrets.PUBLISH_SSH_KEY }}
-        run: nix run .#rsync-publish-tree -- index_tree merged/blobs "$INDEX_HOST" "$BLOB_HOST"
+        run: nix run .#rsync-publish-tree -- index_tree merged/blobs "$SSH_HOST"
