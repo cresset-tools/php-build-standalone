@@ -52,13 +52,19 @@ unambiguous and matches existing tooling in the build pipeline.
 
 Two facets *not* encoded by the triple are surfaced separately:
 
-- **`libc_min`** — minimum glibc/musl version the artifact targets
-  (the manylinux-style symbol floor). Not part of the triple
-  because the triple identifies the libc *family*, not the version
-  the binary was linked against.
+- **`libc.min`** — minimum glibc/musl version the artifact targets
+  (the manylinux-style symbol floor). Lives in the manifest's
+  `libc` object, not the triple, because the triple identifies the
+  libc *family* and not the version the binary was linked against.
+  Not surfaced in section rows: resolution is per-target (the
+  section already knows the triple) and clients install only on
+  hosts whose libc satisfies the floor; the floor itself is an
+  install-time check against the manifest, not a section-level
+  facet.
 - **`<flavor>`** — PHP build flavor, encoding both thread-safety
-  and debug-vs-release. Part of the tag but not the triple, since
-  target triples don't carry language-runtime build modes.
+  and debug-vs-release. Part of the tag and the section row, but
+  not the triple, since target triples don't carry language-runtime
+  build modes.
 
 `<flavor>` takes one of four values:
 
@@ -188,7 +194,11 @@ entries pass through untouched (the signature still covers them).
 ## Section index (per extension, plus one for interpreters)
 
 Each section enumerates every artifact for one name *within one
-target*. Example
+target*. Sections are **lean**: they carry only what artifact
+resolution needs to choose between rows. Everything else lives in
+the manifest the row points at.
+
+Example
 `targets/x86_64-unknown-linux-gnu/sections/extension/xdebug.json`:
 
 ```json
@@ -201,41 +211,81 @@ target*. Example
     {
       "tag": "xdebug-3.5.1+php83-x86_64-unknown-linux-gnu-nts",
       "version": "3.5.1",
-      "abi": {"php": "8.3", "zend_module_api_no": "20230831", "ts": false, "debug": false},
       "flavor": "nts",
-      "libc_min": "2.17",
+      "php_minor": "8.3",
       "manifest": {
-        "url": "../../manifests/ext/xdebug/3.5.1/xdebug-3.5.1+php83-x86_64-unknown-linux-gnu-nts.json",
+        "path": "/targets/x86_64-unknown-linux-gnu/manifests/ext/xdebug/3.5.1/xdebug-3.5.1+php83-x86_64-unknown-linux-gnu-nts.json",
         "sha256": "…"
       },
       "yanked": false,
-      "built": "2026-05-07T18:42:00Z"
+      "frozen": false
     },
     …
   ]
 }
 ```
 
+Interpreter section rows have the same shape but omit `php_minor`
+(the row's `version` already carries the full PHP version):
+
+```json
+{
+  "tag": "php-8.3.12-x86_64-unknown-linux-gnu-nts",
+  "version": "8.3.12",
+  "flavor": "nts",
+  "manifest": {
+    "path": "/targets/x86_64-unknown-linux-gnu/manifests/php/8.3/php-8.3.12-x86_64-unknown-linux-gnu-nts.json",
+    "sha256": "…"
+  },
+  "yanked": false,
+  "frozen": false
+}
+```
+
+Field semantics:
+
+- **`tag`** — the canonical artifact identifier; matches the
+  manifest's `tag` and is unique within its section.
+- **`version`** — for interpreters, the full PHP version
+  (`8.3.12`); for extensions, the extension version (`3.5.1`)
+  without the `+php<minor>` ABI suffix (which `php_minor` carries).
+- **`flavor`** — one of the four values from "Object kinds"
+  (`nts`/`nts-debug`/`zts`/`zts-debug`). Encodes thread-safety ×
+  debug; resolution matches on this verbatim.
+- **`php_minor`** — extensions only; the PHP minor (`"8.3"`) the
+  extension is ABI-compatible with. Extensions are resolved
+  separately for each PHP minor; carrying this in the row lets a
+  resolver filter without reading every manifest.
+- **`manifest.path`** — absolute server path (no hostname) to the
+  manifest JSON. Always begins with `/targets/<target>/manifests/`.
+  Clients prepend the index hostname; mirrors prepend their own.
+- **`manifest.sha256`** — sha256 of the manifest body. The trust
+  chain anchors here: the signed root covers section sha256s,
+  section sha256s cover manifest sha256s, manifest sha256s cover
+  blob sha256s.
+- **`yanked`** — see "Yanking" below.
+- **`frozen`** — see "Frozen artifacts" below.
+
 The section's `target` is implicit in its location and stated
 explicitly in the file for self-description; per-row `target` would
-be redundant and is omitted. Per-row `flavor` remains because a
-single target still has up to four flavors.
+be redundant and is omitted.
 
 The section is the level at which the CLI does artifact resolution.
-Given a `(php-minor, flavor)` tuple (target is already fixed by the
-section's location) and the section index, picking the right
-manifest is a single linear scan over a few dozen rows. The CLI
-determines its host's target triple at startup (matching how
-`rustup` resolves toolchains) and reads the running interpreter's
-flavor from `php -i` (`Thread Safety`, `Debug Build`); within the
-target's section, rows are filtered by exact-match on `flavor` and
-`abi.php`.
+Given a `(version-constraint, flavor)` tuple for interpreters or
+`(version-constraint, flavor, php_minor)` for extensions (target is
+already fixed by the section's location) and the section index,
+picking the right row is a single linear scan over a few dozen
+entries. The CLI determines its host's target triple at startup
+(matching how `rustup` resolves toolchains) and reads the running
+interpreter's flavor from `php -i` (`Thread Safety`, `Debug Build`).
 
-The manifest itself (per `DESIGN.md`'s closure-coherence model) is
-what links an extension to its `.so` blob and its store-path
-closure. Manifests are referenced by sha256 from the section so a
-client that already has the manifest cached can short-circuit the
-fetch.
+The full ABI signature (`zend_module_api_no`, `zend_extension_api_no`,
+libc family + minimum symbol version, etc.) lives in the manifest,
+not the section. A client that resolves a row trusts that the
+section publisher chose it correctly for the row's `flavor` × (for
+extensions) `php_minor`; the manifest is what carries the verifiable
+ABI details for install-time double-checks and for tooling that
+needs them.
 
 ## Why sections are partitioned by name, not by PHP minor
 
@@ -315,29 +365,175 @@ latency.
 
 ## Manifests and blobs
 
-Once a section yields the manifest URL + expected sha256:
+Manifests are **fat**: a manifest is the complete install
+specification for one artifact. Once the CLI has chosen a section
+row, it fetches the manifest at `<index-host><manifest.path>`,
+verifies its sha256 against the row, and from that point onward
+only reads the manifest — the section row is no longer needed. This
+is what lets a published artifact be reproducible across mirror
+swaps and across mutable section edits (yanking, freezing): the
+manifest is the immutable contract.
+
+### Interpreter manifest
+
+Example (`/targets/x86_64-unknown-linux-gnu/manifests/php/8.3/php-8.3.12-x86_64-unknown-linux-gnu-nts.json`):
+
+```json
+{
+  "schema": 1,
+  "kind": "interpreter",
+  "name": "php",
+  "tag": "php-8.3.12-x86_64-unknown-linux-gnu-nts",
+  "version": "8.3.12",
+  "target": "x86_64-unknown-linux-gnu",
+  "flavor": "nts",
+  "abi": {
+    "php": "8.3",
+    "zend_module_api_no": "20230831",
+    "zend_extension_api_no": "420230831"
+  },
+  "libc": {"family": "gnu", "min": "2.17"},
+  "blob": {
+    "url": "https://blobs.example.com/blobs/aa/aa11…",
+    "sha256": "aa11…"
+  },
+  "closure": [
+    {"name": "openssl", "version": "3.2.1", "hash": "h7q2…",
+     "url": "https://blobs.example.com/blobs/bb/bb22…", "sha256": "bb22…"},
+    …
+  ],
+  "sapis": ["cli", "fpm"],
+  "build_info": {
+    "nixpkgs_rev": "abc123…",
+    "output_tree_sha256": "cc33…"
+  }
+}
+```
+
+### Extension manifest
+
+Example (`/targets/x86_64-unknown-linux-gnu/manifests/ext/xdebug/3.5.1/xdebug-3.5.1+php83-x86_64-unknown-linux-gnu-nts.json`):
+
+```json
+{
+  "schema": 1,
+  "kind": "extension",
+  "name": "xdebug",
+  "tag": "xdebug-3.5.1+php83-x86_64-unknown-linux-gnu-nts",
+  "version": "3.5.1",
+  "target": "x86_64-unknown-linux-gnu",
+  "flavor": "nts",
+  "abi": {
+    "php": "8.3",
+    "zend_module_api_no": "20230831",
+    "zend_extension_api_no": "420230831"
+  },
+  "libc": {"family": "gnu", "min": "2.17"},
+  "blob": {
+    "url": "https://blobs.example.com/blobs/dd/dd44…",
+    "sha256": "dd44…"
+  },
+  "extension": {"path": "lib/php/extensions/no-debug-non-zts-20230831/xdebug.so",
+                "sha256": "ee55…"},
+  "closure": [ … ]
+}
+```
+
+Field semantics shared by both manifest kinds:
+
+- **`tag`** — duplicates the section row's `tag`; lets the manifest
+  be self-describing if pulled out of band (mirroring, audit).
+- **`target`**, **`flavor`**, **`abi`**, **`libc`** — the full ABI
+  surface. `flavor` and the section row's `flavor` must agree;
+  resolvers MAY assert this on fetch. `abi.php` is the same value
+  the section row's `php_minor` carries for extensions.
+- **`blob.url`** — absolute URL to the artifact's main tarball. The
+  index publisher emits this at generation time using the
+  configured `blobs.example.com` hostname; the manifest is the
+  binding between the blob's content hash and a fetchable URL.
+- **`blob.sha256`** — sha256 of the tarball body. Verified after
+  download; mismatch is `BlobHashMismatch` (exit 13 in the CLI).
+- **`closure`** — array of store-path blobs the artifact needs at
+  runtime (bundled C library closure nodes — OpenSSL, ICU, libxml2,
+  …). Each entry carries `{name, version, hash, url, sha256}`. Both
+  interpreter and extension manifests use the same closure schema;
+  closure entries with identical `sha256` across manifests resolve
+  to the same on-disk store path.
+
+Interpreter-only:
+
+- **`sapis`** — the SAPIs included in the interpreter tarball
+  (typically `["cli", "fpm"]`). Informational; clients use it for
+  `bougie php list` reporting.
+
+Extension-only:
+
+- **`extension.path`** — the path the extension's `.so` lives at
+  *inside* the blob tarball, relative to the extracted store root.
+  The CLI uses this to write the `extension=` / `zend_extension=`
+  line into the per-project `conf.d/` (CLI.md §6.2).
+- **`extension.sha256`** — sha256 of the extracted `.so` itself
+  (not the tarball). Independent of `blob.sha256`; lets the CLI
+  detect on-disk corruption of an installed extension without
+  re-fetching the tarball.
+
+`build_info` is optional and informational (audit trail for
+reproducibility).
+
+### Fetch flow
 
 ```
-fetch_manifest(url, expected_sha256):
-    if blob_cache.has(expected_sha256): return blob_cache[expected_sha256]
+fetch_manifest(host, path, expected_sha256):
+    url = host + path                        # path is absolute, no hostname
+    if manifest_cache.has(expected_sha256): return manifest_cache[expected_sha256]
     body = GET <url>
     verify sha256(body) == expected_sha256
-    blob_cache[expected_sha256] = parse(body)
+    manifest_cache[expected_sha256] = parse(body)
     return body
 
-fetch_blob(sha256, url):
-    if local_store.has(sha256): return
+fetch_blob(url, expected_sha256):
+    if local_store.has(expected_sha256): return
     body = GET <url>
-    verify sha256(body) == sha256
-    extract(body, local_store_path_for(sha256))
+    verify sha256(body) == expected_sha256
+    extract(body, local_store_path_for(expected_sha256))
+
+install(section_row):
+    m = fetch_manifest(index_host, section_row.manifest.path,
+                       section_row.manifest.sha256)
+    assert m.tag == section_row.tag
+    assert m.flavor == section_row.flavor
+    fetch_blob(m.blob.url, m.blob.sha256)
+    for entry in m.closure:
+        fetch_blob(entry.url, entry.sha256)
 ```
 
 Both manifests and blobs are content-addressed and cached forever
-(modulo GC). The store-path blob URLs in a manifest's `closure` use
-the `blobs/<prefix>/<sha256>` layout, so a client that already has
-the underlying store path skips the download entirely — this is the
-property `DESIGN.md`'s closure-coherence model is built on, exposed
-at the wire layer.
+(modulo GC). A client that already has a closure entry's store path
+on disk skips that fetch entirely — this is `DESIGN.md`'s
+closure-coherence model exposed at the wire layer.
+
+### Why absolute manifest paths (no hostname)
+
+Manifests live under `targets/<target>/manifests/...` but are
+referenced from sections under `targets/<target>/sections/...`. A
+relative `../../manifests/...` URL silently breaks when section
+names contain `/` (e.g. `interpreter/php` is two path segments
+deep, not one), because relative resolution then eats a segment of
+the target prefix. Absolute paths (`/targets/<target>/manifests/...`)
+sidestep the entire class of bug.
+
+The path is **server-absolute, hostname-relative**: clients
+prepend whatever hostname they're configured to fetch from, so the
+same path works for the canonical index, for mirrors, and for
+`file://` exports of the index tree.
+
+Blob URLs in `blob` and `closure` entries remain *fully* absolute
+(scheme + hostname). Blobs and indexes live on different domains by
+default ("Hosting" below), so a hostname-relative blob URL would
+need an additional out-of-band rule to know which host it resolves
+against. Full URLs make the manifest self-contained at the cost of
+needing host substitution at index-generation time; the generator
+already has the configured hostnames in hand.
 
 ## Hosting
 
@@ -562,10 +758,12 @@ event:
    extension manifests). Each carries a target triple.
 2. For each `(target, section name)`, group its artifacts.
    2a. Splice frozen-file entries: for each `frozen/php-<minor>.json`,
-       write each entry's manifest body to its `manifest_relative_path`
-       under `targets/<target>/`, and add the `section_entry` (augmented
-       with `frozen: true`) to the appropriate section accumulator.
-       Fails if any tag appears in both a live build and a frozen file.
+       write each entry's manifest body to the on-disk path derived
+       from `section_entry.manifest.path` (strip the leading `/`,
+       rebase under the output tree), and add the `section_entry`
+       (augmented with `frozen: true`) to the appropriate section
+       accumulator. Fails if any tag appears in both a live build
+       and a frozen file.
 3. Emit a section JSON file at `targets/<target>/sections/<section>.json`
    for each `(target, section name)` group; record its sha256.
 4. Emit `index.json` from the per-target section-hash tables.

@@ -17,20 +17,25 @@
 #   extensions (extension=), a fragment IS included when confFragment is
 #   non-null.
 #
-# Manifest schema:
+# Manifest schema (DISTRIBUTION.md §Manifests-and-blobs):
 #   {
+#     "schema": 1,
+#     "kind": "extension",
 #     "name": "xdebug",
-#     "version": "3.5.1+php8.5",
-#     "target_triple": "x86_64-unknown-linux-gnu",
-#     "abi": { "php": "8.5", "zend_module_api_no": "...", "ts": false, "debug": false },
-#     "platform": { "os": "linux", "arch": "x86_64", "libc": "glibc", "libc_min": "2.17" },
+#     "tag": "xdebug-3.5.1+php85-x86_64-unknown-linux-gnu-nts",
+#     "version": "3.5.1",
+#     "target": "x86_64-unknown-linux-gnu",
+#     "flavor": "nts",
+#     "abi": { "php": "8.5", "zend_module_api_no": "...", "zend_extension_api_no": "..." },
+#     "libc": { "family": "gnu", "min": "2.17" },
+#     "blob": { "url": "{BLOB_BASE}/blobs/<prefix>/<sha256>", "sha256": "..." },
 #     "extension": { "path": "lib/extensions/no-debug-non-zts-.../xdebug.so", "sha256": "..." },
 #     "closure": []
 #   }
 #
-# URL placeholder: closure entries use {BLOB_BASE}/blobs/<sha256[0:2]>/<sha256>.
-# The publish pipeline substitutes {BLOB_BASE} with the actual blob hosting base
-# URL before upload. Do not bake in a specific domain here.
+# URL placeholder: blob.url and closure[].url use {BLOB_BASE}/blobs/<prefix>/<sha256>.
+# index.nix substitutes {BLOB_BASE} at index-generation time so the manifest
+# sha256 matches the served bytes. Do not bake in a specific domain here.
 { pkgs, tree, closures, extDrv, extName, extVersion
 , phpVersion   # "8.5.5" — full version from phpSpec.version
 , phpMinor     # "8.5"
@@ -46,33 +51,46 @@
 let
   inherit (pkgs) stdenv lib;
 
-  # Platform fields — conditional on host platform to match tarball.nix
-  # convention (see tarball.nix lines 34-36 for the Darwin field names).
-  platformFields = if stdenv.isDarwin
-    then builtins.toJSON {
-      os = "darwin";
-      arch = "aarch64";
-      min_macos_version = "11.0";
-    }
-    else builtins.toJSON {
-      os = "linux";
-      arch = "x86_64";
-      libc = "glibc";
-      libc_min = "2.17";
-    };
+  # libc shape: {family, min} per DISTRIBUTION.md §Manifests-and-blobs.
+  # `family` is "gnu" / "musl" / "darwin"; `min` is the floor a consumer
+  # must meet. This pipeline currently emits `min: "2.17"` / `"11.0"` as
+  # a conservative manylinux-style floor; tightening the probe is future work.
+  libcAttr = if stdenv.isDarwin
+    then { family = "darwin"; min = "11.0"; }
+    else { family = "gnu";    min = "2.17"; };
+
+  # Flavor: nts/zts × debug. Today this build emits nts only; the manifest's
+  # `flavor` and the section row's `flavor` must agree (DISTRIBUTION.md
+  # §Manifests-and-blobs). Bump this and add ts/debug to abi when the build
+  # matrix grows.
+  flavor = "nts";
+  # Tag uses the compact "+php83" form (no dot) per DISTRIBUTION.md
+  # §Object-kinds. Section resolvers compare on this verbatim.
+  phpMinorCompact = lib.replaceStrings [ "." ] [ "" ] phpMinor;
+  tag = "${extName}-${extVersion}+php${phpMinorCompact}-${target}-${flavor}";
 
   # Static parts of the manifest (runtime-computed fields filled in by sed).
+  # Sentinels filled at build time:
+  #   @ZEND_MODULE_API_NO@ / @ZEND_EXTENSION_API_NO@
+  #   @EXT_PATH@ / @EXT_SHA256@
+  #   @TARBALL_SHA256@ / @TARBALL_SHA256_PFX@
   manifestTemplate = pkgs.writeText "ext-manifest.json.in" (builtins.toJSON {
+    schema = 1;
+    kind = "extension";
     name = extName;
-    version = "${extVersion}+php${phpMinor}";
-    target_triple = target;
+    inherit tag;
+    version = extVersion;
+    inherit target flavor;
     abi = {
       php = phpMinor;
       zend_module_api_no = "@ZEND_MODULE_API_NO@";
-      ts = false;
-      debug = false;
+      zend_extension_api_no = "@ZEND_EXTENSION_API_NO@";
     };
-    platform = builtins.fromJSON platformFields;
+    libc = libcAttr;
+    blob = {
+      url = "{BLOB_BASE}/blobs/@TARBALL_SHA256_PFX@/@TARBALL_SHA256@";
+      sha256 = "@TARBALL_SHA256@";
+    };
     extension = {
       path = "@EXT_PATH@";
       sha256 = "@EXT_SHA256@";
@@ -80,9 +98,6 @@ let
     # closure is injected by the build script from closures.json.
     closure = "@CLOSURE_PLACEHOLDER@";
   });
-
-  # Platform tag used in tarball/manifest basename.
-  platformTag = if stdenv.isDarwin then "nts-aarch64-darwin" else "nts-linux-glibc";
 
   # Sanitize extName for use in the Nix derivation name.
   safeName = lib.replaceStrings [ "_" ] [ "-" ] extName;
@@ -182,19 +197,35 @@ pkgs.stdenvNoCC.mkDerivation {
     ''}
 
     export SOURCE_DATE_EPOCH=1704067200
-    base="${extName}-${extVersion}+php${phpMinor}-${platformTag}"
+    # Basename matches the manifest's `tag` field for self-consistency. The
+    # +php<minor> token uses the dotless compact form (DISTRIBUTION.md
+    # §Object-kinds: "+php83" not "+php8.3").
+    base="${tag}"
     tar --sort=name \
         --mtime="@$SOURCE_DATE_EPOCH" \
         --owner=0 --group=0 --numeric-owner \
         -C "$staging" -cf - . \
       | zstd -19 -T0 -q -o "$out/$base.tar.zst"
 
+    # Hash the tarball *bytes* — this is the blob sha256 the CLI verifies
+    # after fetching from {BLOB_BASE}/blobs/<prefix>/<sha256>.
+    tarball_sha256="$(sha256sum "$out/$base.tar.zst" | awk '{print $1}')"
+    tarball_sha256_pfx="''${tarball_sha256:0:2}"
+
+    # ---- Read Zend Extension API number (in addition to module API) ----
+    zend_extension_api="$(grep -E '^#define ZEND_EXTENSION_API_NO' \
+      ${tree}/include/php/Zend/zend_extensions.h | awk '{print $3}')"
+
     # ---- Emit the manifest ----
     # Substitute sentinels into the template, then replace the closure placeholder.
+    # {BLOB_BASE} stays as-is — index.nix substitutes it at index-generation time.
     sed \
       -e "s|@ZEND_MODULE_API_NO@|$zend_module_api|g" \
+      -e "s|@ZEND_EXTENSION_API_NO@|$zend_extension_api|g" \
       -e "s|\"@EXT_PATH@\"|\"$ext_rel\"|g" \
       -e "s|\"@EXT_SHA256@\"|\"$ext_sha256\"|g" \
+      -e "s|@TARBALL_SHA256@|$tarball_sha256|g" \
+      -e "s|@TARBALL_SHA256_PFX@|$tarball_sha256_pfx|g" \
       ${manifestTemplate} \
       | jq --argjson cl "$closure_json_array" '. + {closure: $cl}' \
       > "$out/$base.json"

@@ -63,21 +63,15 @@ fetch_json() {
   fi
 }
 
-resolve_url() {
-  # Given a base path (file or URL) and a URL that may be relative,
-  # return the absolute file-path or URL to fetch.
-  local base="$1"
-  local href="$2"
+resolve_manifest_path() {
+  # Given an absolute server path (e.g. /targets/.../manifests/.../tag.json)
+  # return the absolute file-path or URL to fetch. The path is always
+  # absolute and hostname-free per DISTRIBUTION.md §Manifests-and-blobs.
+  local path="$1"
   if [[ -n "$LOCAL_DIR" ]]; then
-    # href is relative to the directory containing base
-    local base_dir
-    base_dir="$(dirname "$base")"
-    # Resolve ../.. sequences manually via realpath
-    realpath -m "$base_dir/$href"
+    echo "$LOCAL_DIR${path}"
   else
-    # Absolute URL: strip trailing component from base, append href
-    local base_dir="${base%/*}"
-    echo "$base_dir/$href"
+    echo "${INDEX_BASE}${path}"
   fi
 }
 
@@ -160,17 +154,10 @@ while IFS= read -r target; do
 
       frozen_file="$FROZEN_DIR/php-$minor.json"
 
-      # Fetch manifest for this artifact
-      manifest_rel="$(echo "$artifact" | jq -r '.manifest.url')"
-
-      # Section is at targets/<target>/sections/<kind>/<name>.json
-      # manifest_rel is relative to that location
-      if [[ -n "$LOCAL_DIR" ]]; then
-        section_abs="$LOCAL_DIR/targets/$target/sections/$kind/$name.json"
-      else
-        section_abs="$INDEX_BASE/targets/$target/sections/$kind/$name.json"
-      fi
-      manifest_abs="$(resolve_url "$section_abs" "$manifest_rel")"
+      # Fetch manifest for this artifact. Section rows now carry an absolute
+      # server path under .manifest.path (DISTRIBUTION.md §Section-index).
+      manifest_path="$(echo "$artifact" | jq -r '.manifest.path')"
+      manifest_abs="$(resolve_manifest_path "$manifest_path")"
 
       manifest_body="$(fetch_json "$manifest_abs")"
       # Canonicalize manifest body (sorted keys, for stable sha256)
@@ -187,22 +174,10 @@ while IFS= read -r target; do
         exit 1
       fi
 
-      # Derive manifest_relative_path from section_key and manifest_rel
-      # section is at targets/<target>/sections/<kind>/<name>.json
-      # manifest_rel is ../../manifests/.../<tag>.json
-      # resolve relative to section's dir: targets/<target>/sections/<kind>/
-      # ../../ brings us to targets/<target>/
-      # So manifest_relative_path = manifests/.../<tag>.json
-      manifest_relative_path="$(realpath -m --relative-base=/ \
-        "targets/$target/sections/$kind/$(dirname "$manifest_rel")" \
-        | sed 's|^targets/[^/]*/||' || true)"
-
-      # Simpler: strip the ../../ prefix from manifest_rel
-      # manifest_rel is always of the form ../../manifests/...
-      manifest_relative_path="${manifest_rel#../../}"
-
       # Build section_entry: the artifact entry MINUS the `frozen` field
-      # (the generator adds frozen:true at splice time)
+      # (the generator adds frozen:true at splice time). The on-disk
+      # manifest path is derived from section_entry.manifest.path at
+      # splice time, so we no longer record it separately.
       section_entry="$(echo "$artifact" | jq -S 'del(.frozen)')"
 
       # Build the frozen entry struct
@@ -215,7 +190,6 @@ while IFS= read -r target; do
         --argjson reason "$(if [[ -n "$REASON" ]]; then echo "\"$REASON\""; else echo "null"; fi)" \
         --argjson section_entry "$section_entry" \
         --argjson manifest "$manifest_canonical" \
-        --arg manifest_relative_path "$manifest_relative_path" \
         '{
           tag: $tag,
           kind: $kind,
@@ -224,8 +198,7 @@ while IFS= read -r target; do
           frozen_at: $frozen_at,
           reason: $reason,
           section_entry: $section_entry,
-          manifest: $manifest,
-          manifest_relative_path: $manifest_relative_path
+          manifest: $manifest
         }')"
 
       # Read or initialize the frozen file

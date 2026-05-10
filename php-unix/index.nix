@@ -17,12 +17,13 @@
 #   directory with interpreter + extension + store-path artifacts from one PHP
 #   minor. See tarball.nix and tarball-extension.nix for file naming.
 #
-# URL policy:
-#   - Section files reference manifests via relative URLs from the section's
-#     location (e.g. ../../manifests/ext/xdebug/3.5.1/<tag>.json).
-#   - Extension manifests reference blobs via {BLOB_BASE}/blobs/<prefix>/<sha256>
-#     (emitted by tarball-extension.nix; not substituted here).
-#   - Interpreter tarball URL is constructed here as {BLOB_BASE}/blobs/<prefix>/<sha256>.
+# URL policy (DISTRIBUTION.md §Manifests-and-blobs):
+#   - Section rows reference manifests via absolute server paths
+#     (no hostname, e.g. /targets/<target>/manifests/ext/xdebug/3.5.1/<tag>.json).
+#     Clients prepend the index hostname; mirrors prepend their own.
+#   - Manifests reference blobs via fully-qualified URLs. Both interpreter
+#     and extension manifests carry blob.url and closure[].url with the
+#     {BLOB_BASE} placeholder (emitted by tarball*.nix, substituted here).
 #
 # Reproducibility: SOURCE_DATE_EPOCH=1704067200 drives the generated field;
 #   jq -S produces sorted keys; artifacts within sections are sorted by tag.
@@ -31,10 +32,11 @@
 #   Matching artifacts will have yanked: true and yanked_reason set.
 # frozenFiles: optional list of paths to frozen/php-<minor>.json files.
 #   Entries from these files are spliced into the section accumulators at
-#   generation time: the generator writes each entry's manifest body to its
-#   manifest_relative_path and adds the section_entry (augmented with
-#   frozen:true) to the appropriate section. Fails if any tag appears in
-#   both a live build and a frozen file, or in two frozen files.
+#   generation time: the generator writes each entry's manifest body to the
+#   on-disk path derived from section_entry.manifest.path (the absolute
+#   server path with the leading / stripped) and adds the section_entry
+#   (augmented with frozen:true) to the appropriate section. Fails if any
+#   tag appears in both a live build and a frozen file, or in two frozen files.
 # indexHost / blobHost: hostnames the tree will be served from. Final URLs
 #   are emitted at generation time (no post-build sed pass), so the section
 #   sha256s in the root match the served bytes byte-for-byte. Republishing
@@ -141,77 +143,54 @@ pkgs.runCommand "pbs-index" {
         [ -f "$f" ] || continue
         base="$(basename "$f" .json)"
 
-        full_ver="$(jq -r '.php_version' "$f")"
-        minor="$(echo "$full_ver" | sed 's/\.[0-9]*$//')"
-        target="$(jq -r '.target_triple' "$f")"
-        thread_safety="$(jq -r '.thread_safety' "$f")"
+        # Read identifying fields straight from the fat manifest. The
+        # generator no longer reconstructs tag/flavor — tarball.nix is
+        # authoritative (DISTRIBUTION.md §Manifests-and-blobs).
+        tag="$(jq -r '.tag' "$f")"
+        version="$(jq -r '.version' "$f")"
+        target="$(jq -r '.target' "$f")"
+        flavor="$(jq -r '.flavor' "$f")"
+        # Minor is the first two version components; used in the on-disk
+        # manifest path so the manifest tree stays human-navigable.
+        minor="$(echo "$version" | awk -F. '{print $1"."$2}')"
 
-        # Flavor: nts or zts based on thread_safety field
-        if [ "$thread_safety" = "nts" ] || [ "$thread_safety" = "false" ] || [ "$thread_safety" = "no" ]; then
-          flavor="nts"
-        else
-          flavor="zts"
-        fi
-
-        tag="php-$full_ver-$target-$flavor"
-
-        # Interpreter tarball → blob
+        # Interpreter tarball → blob. Manifest carries blob.sha256;
+        # double-check it against the file on disk so a publisher mistake
+        # surfaces here rather than as a wire-time hash mismatch.
         tarball="$rel_dir/$base.tar.zst"
-        tarball_sha256="$(sha256sum "$tarball" | awk '{print $1}')"
-        add_blob "$tarball_sha256" "$tarball"
-
-        blob_url="$BLOB_BASE/blobs/''${tarball_sha256:0:2}/$tarball_sha256"
-
-        # ABI fields
-        zend_module_api="$(jq -r '.abi.zend_module_api_no' "$f")"
-        zend_extension_api="$(jq -r '.abi.zend_extension_api_no' "$f")"
-        libc_obj="$(jq -c '.libc' "$f")"
-
-        # libc_min: for glibc read max_symbol_version (strip GLIBC_ prefix),
-        # for darwin read min_macos_version
-        libc_kind="$(jq -r '.libc.kind' "$f")"
-        if [ "$libc_kind" = "glibc" ]; then
-          libc_min="$(jq -r '.libc.max_symbol_version' "$f" | sed 's/^GLIBC_//')"
-        else
-          libc_min="$(jq -r '.libc.min_macos_version // "11.0"' "$f")"
+        tarball_sha256_actual="$(sha256sum "$tarball" | awk '{print $1}')"
+        tarball_sha256_manifest="$(jq -r '.blob.sha256' "$f")"
+        if [ "$tarball_sha256_actual" != "$tarball_sha256_manifest" ]; then
+          echo "FATAL: interpreter $tag — manifest blob.sha256 ($tarball_sha256_manifest) does not match tarball ($tarball_sha256_actual)" >&2
+          exit 1
         fi
+        add_blob "$tarball_sha256_actual" "$tarball"
 
-        # Manifest relative URL from section location:
-        # section is at targets/<target>/sections/interpreter/php.json
-        # manifest is at targets/<target>/manifests/php/<minor>/<tag>.json
-        # relative: ../../manifests/php/<minor>/<tag>.json
-        manifest_rel="../../manifests/php/$minor/$tag.json"
+        # Absolute server path to the manifest (no hostname; clients prepend
+        # the index host). DISTRIBUTION.md §Manifests-and-blobs explains why
+        # this is absolute rather than relative.
+        manifest_path="/targets/$target/manifests/php/$minor/$tag.json"
         manifest_dest_key="$target/manifests/php/$minor/$tag.json"
 
-        # Stage the manifest with placeholders substituted, then hash the
-        # staged content. The interpreter manifest itself doesn't carry
-        # placeholders today, but we stage uniformly so the contract is
-        # "section sha256 matches served bytes" without depending on which
-        # manifest types happen to need substitution.
+        # Stage the manifest with {BLOB_BASE} substituted, then hash the
+        # staged content so section.manifest.sha256 matches the served bytes.
         staged_manifest="$(stage_manifest "$f")"
         manifest_srcs["$manifest_dest_key"]="$staged_manifest"
         manifest_sha256="$(sha256sum "$staged_manifest" | awk '{print $1}')"
 
         artifact_entry="$(jq -n -S \
           --arg tag "$tag" \
-          --arg version "$full_ver" \
+          --arg version "$version" \
           --arg flavor "$flavor" \
-          --arg libc_min "$libc_min" \
-          --argjson abi "{\"php\":\"$minor\",\"zend_module_api_no\":\"$zend_module_api\",\"zend_extension_api_no\":\"$zend_extension_api\",\"ts\":false,\"debug\":false}" \
-          --arg manifest_url "$manifest_rel" \
+          --arg manifest_path "$manifest_path" \
           --arg manifest_sha256 "$manifest_sha256" \
-          --arg tarball_url "$blob_url" \
-          --arg tarball_sha256 "$tarball_sha256" \
           '{
             tag: $tag,
             version: $version,
             flavor: $flavor,
-            libc_min: $libc_min,
-            abi: $abi,
-            manifest: { url: $manifest_url, sha256: $manifest_sha256 },
-            tarball: { url: $tarball_url, sha256: $tarball_sha256 },
+            manifest: { path: $manifest_path, sha256: $manifest_sha256 },
             yanked: false,
-            built: "'"$generated"'"
+            frozen: false
           }')"
         artifact_entry="$(yank_entry "$tag" "$artifact_entry")"
 
@@ -223,47 +202,32 @@ pkgs.runCommand "pbs-index" {
         [ -f "$f" ] || continue
         base="$(basename "$f" .json)"
 
+        # Read identifying fields straight from the fat manifest. Section
+        # rows are lean — only what the resolver needs (DISTRIBUTION.md
+        # §Section-index).
         ext_name="$(jq -r '.name' "$f")"
-        # ext manifest version field is "<extver>+php<minor>"; we want just extver
-        ext_version_full="$(jq -r '.version' "$f")"
-        ext_version="''${ext_version_full%%+*}"
+        tag="$(jq -r '.tag' "$f")"
+        ext_version="$(jq -r '.version' "$f")"
         php_minor="$(jq -r '.abi.php' "$f")"
-        target="$(jq -r '.target_triple' "$f")"
-        abi_obj="$(jq -c '.abi' "$f")"
+        target="$(jq -r '.target' "$f")"
+        flavor="$(jq -r '.flavor' "$f")"
 
-        # Flavor from abi.ts field
-        ts="$(jq -r '.abi.ts' "$f")"
-        debug="$(jq -r '.abi.debug' "$f")"
-        if [ "$ts" = "true" ]; then
-          if [ "$debug" = "true" ]; then flavor="zts-debug"; else flavor="zts"; fi
-        else
-          if [ "$debug" = "true" ]; then flavor="nts-debug"; else flavor="nts"; fi
-        fi
-
-        tag="$ext_name-$ext_version+php''${php_minor//.}"-"$target-$flavor"
-
-        # Extension tarball → blob
+        # Extension tarball → blob. Verify against manifest's blob.sha256.
         tarball="$rel_dir/$base.tar.zst"
-        tarball_sha256="$(sha256sum "$tarball" | awk '{print $1}')"
-        add_blob "$tarball_sha256" "$tarball"
-
-        # libc_min from platform object
-        libc_kind="$(jq -r '.platform | if .libc? then .libc else "darwin" end' "$f")"
-        if [ "$libc_kind" = "glibc" ]; then
-          libc_min="$(jq -r '.platform.libc_min // "2.17"' "$f")"
-        else
-          libc_min="$(jq -r '.platform.min_macos_version // "11.0"' "$f")"
+        tarball_sha256_actual="$(sha256sum "$tarball" | awk '{print $1}')"
+        tarball_sha256_manifest="$(jq -r '.blob.sha256' "$f")"
+        if [ "$tarball_sha256_actual" != "$tarball_sha256_manifest" ]; then
+          echo "FATAL: extension $tag — manifest blob.sha256 ($tarball_sha256_manifest) does not match tarball ($tarball_sha256_actual)" >&2
+          exit 1
         fi
+        add_blob "$tarball_sha256_actual" "$tarball"
 
-        # Manifest relative URL from section location:
-        # section is at targets/<target>/sections/extension/<name>.json
-        # manifest is at targets/<target>/manifests/ext/<name>/<extver>/<tag>.json
-        # relative: ../../manifests/ext/<name>/<extver>/<tag>.json
-        manifest_rel="../../manifests/ext/$ext_name/$ext_version/$tag.json"
+        # Absolute server path; see interpreter loop above for why.
+        manifest_path="/targets/$target/manifests/ext/$ext_name/$ext_version/$tag.json"
         manifest_dest_key="$target/manifests/ext/$ext_name/$ext_version/$tag.json"
 
-        # Stage with {BLOB_BASE}/{INDEX_BASE} substituted (extension manifests
-        # carry {BLOB_BASE} URLs in closure[].url) and hash the staged content
+        # Stage with {BLOB_BASE} substituted (manifests carry {BLOB_BASE}
+        # URLs in blob.url and closure[].url) and hash the staged content
         # so section.manifest.sha256 matches the bytes that get served.
         staged_manifest="$(stage_manifest "$f")"
         manifest_srcs["$manifest_dest_key"]="$staged_manifest"
@@ -273,19 +237,17 @@ pkgs.runCommand "pbs-index" {
           --arg tag "$tag" \
           --arg version "$ext_version" \
           --arg flavor "$flavor" \
-          --arg libc_min "$libc_min" \
-          --argjson abi "$abi_obj" \
-          --arg manifest_url "$manifest_rel" \
+          --arg php_minor "$php_minor" \
+          --arg manifest_path "$manifest_path" \
           --arg manifest_sha256 "$manifest_sha256" \
           '{
             tag: $tag,
             version: $version,
             flavor: $flavor,
-            libc_min: $libc_min,
-            abi: $abi,
-            manifest: { url: $manifest_url, sha256: $manifest_sha256 },
+            php_minor: $php_minor,
+            manifest: { path: $manifest_path, sha256: $manifest_sha256 },
             yanked: false,
-            built: "'"$generated"'"
+            frozen: false
           }')"
         artifact_entry="$(yank_entry "$tag" "$artifact_entry")"
 
@@ -342,9 +304,15 @@ pkgs.runCommand "pbs-index" {
         ftarget="$(echo "$fentry" | jq -r '.target')"
         fkind="$(echo "$fentry" | jq -r '.kind')"
         fname="$(echo "$fentry" | jq -r '.name')"
-        fmanifest_rel_path="$(echo "$fentry" | jq -r '.manifest_relative_path')"
         fsection_entry="$(echo "$fentry" | jq -c '.section_entry')"
         fmanifest_body="$(echo "$fentry" | jq -S '.manifest')"
+
+        # On-disk manifest destination is derived from the section_entry's
+        # absolute manifest.path (DISTRIBUTION.md §Manifests-and-blobs).
+        # The path always starts with /targets/<target>/ — strip the leading
+        # / and rebase under $out.
+        fmanifest_path="$(echo "$fsection_entry" | jq -r '.manifest.path')"
+        fmanifest_dest_rel="''${fmanifest_path#/}"
 
         # Overlap check: tag must not appear in both live and frozen
         if [ -n "''${live_tags[$ftag]:-}" ]; then
@@ -373,22 +341,23 @@ pkgs.runCommand "pbs-index" {
           exit 1
         fi
 
-        # Substitute placeholders in the body for both the on-disk manifest
+        # Substitute {BLOB_BASE} in the body for both the on-disk manifest
         # and the recomputed section entry. The frozen file's recorded
-        # manifest.sha256 is host-agnostic; the live root needs the hash of
-        # the *served* (substituted) bytes instead.
-        substituted_body="$(echo "$fmanifest_body" | sed -e "s|{BLOB_BASE}|$BLOB_BASE|g" -e "s|{INDEX_BASE}|$INDEX_BASE|g")"
+        # manifest.sha256 is host-agnostic (placeholder bytes); the live
+        # root needs the hash of the *served* (substituted) bytes instead.
+        # Section rows themselves no longer carry URLs that need substitution
+        # (manifest.path is absolute and hostname-free), so only the manifest
+        # body needs sed.
+        substituted_body="$(echo "$fmanifest_body" | sed -e "s|{BLOB_BASE}|$BLOB_BASE|g")"
         substituted_sha256="$(echo "$substituted_body" | sha256sum | awk '{print $1}')"
 
-        manifest_dest="$out/targets/$ftarget/$fmanifest_rel_path"
+        manifest_dest="$out/$fmanifest_dest_rel"
         mkdir -p "$(dirname "$manifest_dest")"
         echo "$substituted_body" > "$manifest_dest"
 
-        # Augment section_entry: substitute any placeholder URLs it carries
-        # (interpreter entries embed tarball.url with {BLOB_BASE}), refresh
-        # manifest.sha256 to match the substituted body, and add frozen:true.
+        # Augment section_entry: refresh manifest.sha256 to match the
+        # substituted body and add frozen:true.
         augmented_entry="$(echo "$fsection_entry" \
-          | sed -e "s|{BLOB_BASE}|$BLOB_BASE|g" -e "s|{INDEX_BASE}|$INDEX_BASE|g" \
           | jq -S --arg sha "$substituted_sha256" \
               '. + {frozen: true, manifest: (.manifest + {sha256: $sha})}')"
         # Apply yanks lookup to the frozen entry too
