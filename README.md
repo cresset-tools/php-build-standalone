@@ -40,8 +40,9 @@ on macOS. Extract any of them anywhere, run `bin/php`.
 Beyond the interpreter tarball, there's a per-extension distribution layer
 (content-addressed `store/<name>-<ver>-<hash>/` layout, per-extension `.tar.zst`
 + JSON manifest declaring the closure of bundled C-lib store paths it needs).
-xdebug, pgsql, and pdo_pgsql currently ship via this layer:
-`nix build .#extension-xdebug-8_4`, `.#extension-pgsql-8_4`, `.#extension-pdo_pgsql-8_4`.
+xdebug, pgsql, pdo_pgsql, and gd currently ship via this layer:
+`nix build .#extension-xdebug-8_4`, `.#extension-pgsql-8_4`,
+`.#extension-pdo_pgsql-8_4`, `.#extension-gd-8_4`.
 `nix build .#release-bundle`
 emits the full cross-variant directory tree (`index.json` + every artifact)
 ready to rsync to a static host. See [`DESIGN.md`](DESIGN.md) for the
@@ -292,7 +293,7 @@ text-file gate.
 flake.nix                      fans out one variant per phpVersions entry;
                                outputs per minor: tarball-<m>, tree-<m>,
                                php-<m>, xdebug-<m>, closures-<m>,
-                               extension-{xdebug,pgsql,pdo_pgsql}-<m>,
+                               extension-{xdebug,pgsql,pdo_pgsql,gd}-<m>,
                                storePath-<dep>-<m>,
                                release-<m>; plus index, release-bundle
 flake.lock                     pinned nixpkgs revision
