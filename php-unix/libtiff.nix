@@ -9,6 +9,9 @@
 mkDep {
   name = "libtiff";
   builder = "autotools";
+  # Upstream tarball is `tiff-<v>.tar.gz` and extracts to `tiff-<v>/`,
+  # not `libtiff-<v>/` like our internal key.
+  srcSubdir = v: "tiff-${v}";
   deps = [ zlib libjpeg-turbo ];
   configureFlags = [
     "--disable-lzma"
