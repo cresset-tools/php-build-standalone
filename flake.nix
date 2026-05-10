@@ -67,6 +67,21 @@
           ncurses       = pkgs.callPackage ./php-unix/ncurses.nix       { inherit mkDep; };
           libedit       = pkgs.callPackage ./php-unix/libedit.nix       { inherit mkDep ncurses; };
           libpq         = pkgs.callPackage ./php-unix/libpq.nix         { inherit mkDep openssl zlib; };
+          # ImageMagick delegates. Stand-alone deps (libtiff, lcms2,
+          # openjpeg, libde265) live alongside the existing image libs;
+          # libheif sits on top of libde265, and imagemagick consumes
+          # all of them. Only pulled in by the imagick PECL extension —
+          # but they ship in the interpreter tarball alongside everything
+          # else (sharedDeps below).
+          libtiff       = pkgs.callPackage ./php-unix/libtiff.nix       { inherit mkDep zlib libjpeg-turbo; };
+          lcms2         = pkgs.callPackage ./php-unix/lcms2.nix         { inherit mkDep; };
+          openjpeg      = pkgs.callPackage ./php-unix/openjpeg.nix      { inherit mkDep zlib libpng libtiff lcms2; };
+          libde265      = pkgs.callPackage ./php-unix/libde265.nix      { inherit mkDep; };
+          libheif       = pkgs.callPackage ./php-unix/libheif.nix       { inherit mkDep libde265 libjpeg-turbo libpng; };
+          imagemagick   = pkgs.callPackage ./php-unix/imagemagick.nix   {
+            inherit mkDep zlib bzip2 libpng libjpeg-turbo libwebp freetype libxml2
+                    libtiff lcms2 openjpeg libheif libde265;
+          };
           # libiconv is Darwin-only (apple-sdk strips legacy headers).
           libiconv      = if darwin
             then pkgs.callPackage ./php-unix/libiconv.nix { inherit mkDep; }
@@ -76,7 +91,8 @@
           sharedDeps =
             [ zlib openssl libxml2 sqlite oniguruma libsodium bzip2
               libpng libjpeg-turbo libwebp freetype
-              nghttp2 libzip icu libcurl ncurses libedit libpq ]
+              nghttp2 libzip icu libcurl ncurses libedit libpq
+              libtiff lcms2 openjpeg libde265 libheif imagemagick ]
             ++ pkgs.lib.optionals darwin [ libiconv ];
 
           # Build one complete PHP variant (php + xdebug + tree + tarball
@@ -88,6 +104,7 @@
               phpSpec     = sources.phpVersions.${phpKey};
               phpMinor    = phpKey;  # "8.5", "8.4", etc.
               xdebugSpec  = sources.xdebugVersions.${phpSpec.xdebug};
+              imagickSpec = sources.imagickVersions.${phpSpec.imagick};
               php = pkgs.callPackage ./php-unix/php.nix ({
                 inherit mkDep phpSpec
                         zlib openssl libxml2 sqlite oniguruma libsodium bzip2
@@ -97,9 +114,12 @@
               xdebug = pkgs.callPackage ./php-unix/xdebug.nix {
                 inherit mkDep php xdebugSpec;
               };
+              imagick = pkgs.callPackage ./php-unix/imagick.nix {
+                inherit mkDep php imagemagick imagickSpec;
+              };
               tree = pkgs.callPackage ./php-unix/tree.nix {
                 bundledDeps = sharedDeps;
-                interpreterDeps = [ php xdebug ];
+                interpreterDeps = [ php xdebug imagick ];
                 inherit toolchain;
                 phpVersion = phpSpec.version;
               };
@@ -180,6 +200,23 @@
                 confFragment = "extension=pdo_pgsql";
               };
 
+              # Per-extension tarball for imagick. PECL ext built via phpize
+              # (build-imagick.sh), parallel to xdebug. confFragment auto-loads
+              # — imagick is a regular `extension=` module, not a zend_extension.
+              # extVersion = imagickSpec.version (separately versioned from PHP).
+              # Closure pulls in imagemagick + libtiff/lcms2/openjpeg/libheif/
+              # libde265 transitively via the closures.json walk.
+              extImagick = pkgs.callPackage ./php-unix/tarball-extension.nix {
+                inherit tree closures phpMinor;
+                bundledDeps = sharedDeps;
+                storePathTarballs = storePathTarballList;
+                extDrv    = imagick;
+                extName   = "imagick";
+                extVersion = imagickSpec.version;
+                phpVersion = phpSpec.version;
+                confFragment = "extension=imagick";
+              };
+
               # Per-extension tarball for exif. .so is produced by PHP's own
               # configure (--enable-exif=shared) and ships in the interpreter
               # tarball; this just packages it as a separately addressable
@@ -221,6 +258,8 @@
                   cp -a ${extPdoPgsql}/. "$out/" && chmod -R u+w "$out"
                   # exif per-extension tarball + manifest
                   cp -a ${extExif}/. "$out/" && chmod -R u+w "$out"
+                  # imagick per-extension tarball + manifest
+                  cp -a ${extImagick}/. "$out/" && chmod -R u+w "$out"
                   # Per-store-path tarballs
                   ${pkgs.lib.concatMapStringsSep "\n"
                     (spt: "cp -a ${spt}/. \"$out/\" && chmod -R u+w \"$out\"")
@@ -230,7 +269,7 @@
                 '';
               };
 
-            in { inherit php xdebug tree tarball closures extXdebug extPgsql extPdoPgsql extExif storePathTarballList release; };
+            in { inherit php xdebug imagick tree tarball closures extXdebug extPgsql extPdoPgsql extExif extImagick storePathTarballList release; };
 
           # Fan out over every entry in phpVersions. variants."8.4" = { php; xdebug; tree; tarball; }
           variants = builtins.mapAttrs (k: _: mkPhpVariant k) sources.phpVersions;
@@ -242,7 +281,8 @@
           sharedDepNames =
             [ "zlib" "openssl" "libxml2" "sqlite" "oniguruma" "libsodium"
               "bzip2" "libpng" "libjpeg-turbo" "libwebp" "freetype"
-              "nghttp2" "libzip" "icu" "libcurl" "ncurses" "libedit" "libpq" ]
+              "nghttp2" "libzip" "icu" "libcurl" "ncurses" "libedit" "libpq"
+              "libtiff" "lcms2" "openjpeg" "libde265" "libheif" "imagemagick" ]
             ++ pkgs.lib.optionals darwin [ "libiconv" ];
 
           # Flatten variants into top-level outputs keyed as php-<minor>,
@@ -279,6 +319,8 @@
                 "extension-pgsql-${k}"      = v.extPgsql;
                 "extension-pdo_pgsql-${k}"  = v.extPdoPgsql;
                 "extension-exif-${k}"       = v.extExif;
+                "extension-imagick-${k}"    = v.extImagick;
+                "imagick-${k}"              = v.imagick;
                 "release-${k}"              = v.release;
               })
             {}
@@ -288,7 +330,8 @@
             { inherit toolchain
                       zlib openssl libxml2 sqlite oniguruma libsodium bzip2
                       libpng libjpeg-turbo libwebp freetype
-                      nghttp2 libzip icu libcurl ncurses libedit libpq; }
+                      nghttp2 libzip icu libcurl ncurses libedit libpq
+                      libtiff lcms2 openjpeg libde265 libheif imagemagick; }
             // pkgs.lib.optionalAttrs (!darwin) { inherit sysroot; }
             // pkgs.lib.optionalAttrs darwin { inherit libiconv; };
 
