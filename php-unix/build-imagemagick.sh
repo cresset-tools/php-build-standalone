@@ -96,9 +96,13 @@ export PKG_CONFIG_PATH="$PBS_DEP_ZLIB/lib/pkgconfig:$PBS_DEP_BZIP2/lib/pkgconfig
 make -j"$NIX_BUILD_CORES"
 make install
 
-# Strip the CLI wrappers + share data we don't need at runtime. The
-# library + headers live under lib/ and include/ImageMagick-7/.
-rm -rf "$PBS_DEPS/bin"
+# Strip etc/ + share/ (config-file boilerplate, docs we don't need at
+# runtime). bin/ is preserved — under --without-utilities it contains
+# only the *-config helpers (MagickCore-config, MagickWand-config,
+# Magick++-config) that the imagick PECL configure consumes via
+# --with-imagick=$PBS_DEP_IMAGEMAGICK. The /nix/store leaks in those
+# scripts are detoxified by finalize-common.sh's text-file walk along
+# with every other .pc / *-config we ship.
 rm -rf "$PBS_DEPS/etc"
 rm -rf "$PBS_DEPS/share"
 
