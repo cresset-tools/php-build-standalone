@@ -35,17 +35,25 @@ cd "$src_dir"
 # We do NOT pass --enable-shared / --disable-static; PostgreSQL builds
 # both libpq.so and libpq.a by default and PHP's pgsql extension picks
 # the .so via the standard SONAME lookup. The .a is dropped post-install.
-# PBS_RPATH_VAR/PBS_DEPS_LDPATH wrapping: PostgreSQL configure runs
-# AC_RUN_IFELSE conftests (e.g. the "checking test program" probe) AFTER
-# its --with-openssl probe has appended `-lssl -lcrypto` to LIBS. Combined
-# with our wrapper CC's `-Wl,--no-as-needed`, those libs end up in the
-# conftest binary's DT_NEEDED. Without LD_LIBRARY_PATH pointing at the
-# bundled openssl, the conftest fails to load — visible as
-# "checking test program... failed" with no obvious cause. Linux setup-env
-# deliberately doesn't export this globally (would shadow the host libc
-# for build-tool processes); we scope it to configure only, same pattern
-# as build-libcurl.sh.
+# Belt-and-braces conftest-loadability wiring. PostgreSQL configure's
+# very first AC_RUN_IFELSE test ("checking test program") is the
+# canonical canary for "linker found the lib but loader can't". By that
+# point, --with-openssl has appended `-lssl -lcrypto` to LIBS, so every
+# subsequent conftest binary gets DT_NEEDED entries for libssl.so.3 +
+# libcrypto.so.3 (kept by setup-env-linux's `-Wl,--no-as-needed`).
+#
+# Two independent fixes for the conftest-loadability problem:
+#   1. -Wl,-rpath,$PBS_DEP_OPENSSL/lib in LDFLAGS — bakes a DT_RPATH
+#      into the conftest binary itself. DT_RPATH is consulted before
+#      LD_LIBRARY_PATH, so this is the load-bearing fix. RPATHs in
+#      conftest binaries are throwaway: finalize-linux.sh rewrites
+#      RPATH on the SHIPPED libpq.so via patchelf, untouched here.
+#   2. LD_LIBRARY_PATH=$PBS_DEPS_LDPATH scoped to configure — defense
+#      in depth; same pattern build-libcurl.sh already uses.
+# setup-env-linux deliberately doesn't export LD_LIBRARY_PATH globally
+# (would shadow the host libc for build tools).
 env "$PBS_RPATH_VAR=${PBS_DEPS_LDPATH:-}" \
+LDFLAGS="${LDFLAGS:-} -Wl,-rpath,$PBS_DEP_OPENSSL/lib" \
 ./configure \
   --prefix="$PBS_DEPS" \
   --libdir="$PBS_DEPS/lib" \
