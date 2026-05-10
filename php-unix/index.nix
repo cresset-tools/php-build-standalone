@@ -1,17 +1,17 @@
 # Index generator. Walks a list of release derivations and emits a
-# two-tier distribution tree under $out:
+# snapshot-model distribution tree under $out:
 #
 #   $out/
-#     index.json                          # root: per-target section dispatch
-#     targets/<target>/
-#       sections/
-#         interpreter/php.json            # this target's PHP runtimes
-#         extension/<name>.json           # this target's extension X
-#       manifests/
-#         php/<version>/<tag>.json        # interpreter manifest (copied verbatim)
-#         ext/<name>/<extver>/<tag>.json  # extension manifest (copied verbatim)
+#     index.json                                          # mutable root: version + per-target section dispatch
+#     versions/<publishVersion>/                          # immutable per-publish snapshot
+#       targets/<target>/sections/
+#         interpreter/php.json                            # this target's PHP runtimes
+#         extension/<name>.json                           # this target's extension X
+#     targets/<target>/manifests/                         # shared, content-addressed
+#       php/<minor>/<tag>.json                            # interpreter manifest (copied verbatim)
+#       ext/<name>/<extver>/<tag>.json                    # extension manifest (copied verbatim)
 #     blobs/
-#       <sha256[0:2]>/<sha256>            # all tarballs, content-addressed, no extension
+#       <sha256[0:2]>/<sha256>                            # all tarballs, content-addressed, no extension
 #
 # Inputs: releases — list of release-<minor> derivations. Each $out is a flat
 #   directory with interpreter + extension + store-path artifacts from one PHP
@@ -41,7 +41,20 @@
 #   are emitted at generation time (no post-build sed pass), so the section
 #   sha256s in the root match the served bytes byte-for-byte. Republishing
 #   under a different host means rebuilding the index.
-{ pkgs, releases, yanksFile ? null, frozenFiles ? [], indexHost, blobHost }:
+# publishVersion: opaque per-publish identifier (DISTRIBUTION.md §Snapshot
+#   consistency). Sections live at versions/<publishVersion>/...; the root
+#   carries it so clients can construct section URLs. The CI pipeline passes
+#   in an ISO-8601 timestamp; local builds default to a deterministic value
+#   so `nix build .#index` is reproducible.
+# gitCommit / gitRef: the source revision the publish was built from. Emitted
+#   into the root under `source` for audit trails — given an index, anyone can
+#   map back to the exact commit (and ref/tag/branch) that produced it.
+#   Default sentinels for local builds; CI passes the real values via env.
+{ pkgs, releases, yanksFile ? null, frozenFiles ? [], indexHost, blobHost
+, publishVersion ? "00000000T000000Z"
+, gitCommit ? "unknown"
+, gitRef ? "unknown"
+}:
 let
   inherit (pkgs) lib;
 in
@@ -408,7 +421,11 @@ pkgs.runCommand "pbs-index" {
         --argjson artifacts "$artifacts_sorted" \
         '{schema: ($schema | tonumber), name: $name, kind: $kind, target: $target, artifacts: $artifacts}')"
 
-      section_dir="$out/targets/$target/sections/$kind"
+      # Sections live under versions/<V>/ so each publish gets a fresh
+      # immutable URL — DISTRIBUTION.md §Snapshot-consistency. Old version
+      # directories remain reachable until GC, so a client following an
+      # old root can finish its sync from the matching snapshot.
+      section_dir="$out/versions/${publishVersion}/targets/$target/sections/$kind"
       mkdir -p "$section_dir"
       echo "$section_json" > "$section_dir/$name.json"
 
@@ -429,11 +446,25 @@ pkgs.runCommand "pbs-index" {
     done
 
     # ---- Emit root index.json ----
+    # `version` is the per-publish identifier clients embed in section URLs
+    # (DISTRIBUTION.md §Snapshot-consistency). The root is the only mutable
+    # URL in the protocol; everything it points at is immutable for life.
+    # `source` is informational — git commit + ref the publish was built
+    # from, for audit trails.
     jq -n -S \
       --argjson schema 1 \
+      --arg version "${publishVersion}" \
       --arg generated "$generated" \
+      --arg git_commit "${gitCommit}" \
+      --arg git_ref "${gitRef}" \
       --argjson targets "$root_targets_json" \
-      '{schema: $schema, generated: $generated, targets: $targets}' \
+      '{
+        schema: $schema,
+        version: $version,
+        generated: $generated,
+        source: { git_commit: $git_commit, git_ref: $git_ref },
+        targets: $targets
+      }' \
       > "$out/index.json"
 
     echo "index.json written"

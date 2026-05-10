@@ -93,20 +93,33 @@ The tree is split across two hostnames served by the same origin
 (see "Hosting" below for why):
 
 ```
-https://index.example.com/                         # CDN-fronted, JSON only
-  index.json                                       # root: per-target section dispatch
-  targets/<target>/
-    sections/
-      interpreter/php.json                         # this target's PHP runtimes
-      extension/<name>.json                        # this target's extension X
-    manifests/
-      php/<version>/<tag>.json                     # interpreter manifest
-      ext/<name>/<extver>/<tag>.json               # extension manifest
+https://index.example.com/                                     # CDN-fronted, JSON only
+  index.json                                                   # mutable root: version pointer + per-target section dispatch
+  index.json.sig                                               # signature over index.json bytes
+  versions/<V>/                                                # immutable per-publish snapshot of section files
+    targets/<target>/sections/
+      interpreter/php.json                                     # this target's PHP runtimes
+      extension/<name>.json                                    # this target's extension X
+  targets/<target>/manifests/                                  # shared, immutable manifest tree
+    php/<minor>/<tag>.json                                     # interpreter manifest
+    ext/<name>/<extver>/<tag>.json                             # extension manifest
 
-https://blobs.example.com/                         # direct origin, no CDN
+https://blobs.example.com/                                     # direct origin, no CDN
   blobs/
-    <sha256[0:2]>/<sha256>                         # all tarballs, by hash
+    <sha256[0:2]>/<sha256>                                     # all tarballs, by hash
 ```
+
+Three URL classes, three lifetimes:
+
+- **Mutable, must-revalidate:** `index.json` (and its `.sig`).
+  This is the only URL replaced in place per publish. Small (~tens
+  of KB), revalidated cheaply via ETag.
+- **Immutable, additive:** `versions/<V>/...sections/...`,
+  `targets/<target>/manifests/...`, `blobs/...`. Each URL is
+  written once and never changes. New publishes add new URLs
+  alongside the old ones; old URLs stay reachable so a client that
+  fetched the old root can still complete its sync from the
+  matching version snapshot.
 
 Manifests reference blobs by absolute URL on `blobs.example.com`;
 the index generator emits these at publish time. Clients never need
@@ -145,13 +158,15 @@ Five properties this layout enforces:
 
 ## Root manifest (`index.json`)
 
-Small, ETagged, always re-fetched on sync. Carries one section
-dispatch table per supported target:
+Small, ETagged, always re-fetched on sync. Carries the publish
+version pointer plus one section dispatch table per supported
+target:
 
 ```json
 {
   "schema": 1,
-  "generated": "2026-05-08T12:00:00Z",
+  "version": "20260510T093256Z",
+  "generated": "2026-05-10T09:32:56Z",
   "targets": {
     "x86_64-unknown-linux-gnu": {
       "sections": {
@@ -164,10 +179,17 @@ dispatch table per supported target:
     "aarch64-apple-darwin": {
       "sections": { … }
     }
-  },
-  "signature": "…"
+  }
 }
 ```
+
+The `version` field is an opaque per-publish identifier (the
+publish pipeline uses an ISO-8601 UTC timestamp; clients treat it
+as a path segment and never parse it). Combined with section
+content sha256s, it gives the snapshot model: every URL the root
+points at — directly via `version` for sections, indirectly via
+`manifest.path` and `blob.url` chains — is immutable for the
+lifetime of that root.
 
 The `targets` map is the dispatch table. Target keys are stable
 (target triples are not renamed). Section names within each target
@@ -178,11 +200,14 @@ Section URLs are not stored in the root — clients construct them
 from the documented path scheme:
 
 ```
-targets/<target>/sections/<section>.json
+versions/<root.version>/targets/<target>/sections/<section>.json
 ```
 
-This keeps the root smaller and makes the path scheme part of the
-protocol rather than per-publish data.
+The `<root.version>` segment is what makes section URLs
+content-immutable: a republish lands at a fresh path, so a CDN
+cache of the old URL never collides with the new content. The hash
+chain then verifies that the body the URL serves matches what the
+root signed for.
 
 Root file size at full saturation: ~6 targets × ~50 sections × ~80
 bytes per row ≈ 24 KB. Still small enough to refetch every sync;
@@ -190,6 +215,29 @@ ETag-based 304s on the unchanged case keep wire cost near zero.
 
 A client only reads its own target's sub-map; the other targets'
 entries pass through untouched (the signature still covers them).
+
+### Snapshot consistency
+
+Two publishes happening between when a client fetches the root and
+when it fetches a section used to surface as a section sha256
+mismatch — the cached root's expected sha pointed at the old
+section, the live origin served the new section. The version
+pointer eliminates this race by URL construction:
+
+- Each publish generates a fresh `<V>` and writes the new section
+  files at `versions/<V>/...`. Old `versions/<V-1>/...` directories
+  are not deleted.
+- The root is the only URL replaced in place. A client that fetched
+  the old root constructs section URLs against the old `<V-1>`,
+  which still exist; a client that fetches the new root constructs
+  URLs against the new `<V>`. Either path is internally consistent.
+- A single client never observes a mid-publish state because it
+  reads the root once per sync and uses that root's version for
+  every subsequent URL it constructs.
+
+Old version directories are pruned by a separate GC concern (a
+days-long retention is enough; clients don't keep stale roots
+beyond their must-revalidate TTL).
 
 ## Section index (per extension, plus one for interpreters)
 
@@ -317,6 +365,7 @@ sync():
     root = GET /index.json   with If-None-Match: <cached etag>
     if 304: return           # nothing changed at all
 
+    version = root.version       # frozen for the rest of this sync
     target_entry = root.targets[host_target]
     if target_entry is None:
         fail "no published artifacts for {host_target}"
@@ -327,7 +376,7 @@ sync():
         cached = local_cache.sections[host_target][section_name]
         if cached and cached.sha256 == meta.sha256:
             continue
-        body = GET targets/<host_target>/sections/<section_name>.json
+        body = GET versions/<version>/targets/<host_target>/sections/<section_name>.json
         verify sha256(body) == meta.sha256
         local_cache.sections[host_target][section_name] = (body, meta.sha256)
 ```
@@ -551,18 +600,26 @@ Day-one shape:
 - nginx with two vhosts — one for the index tree, one for the blob
   tree. Static files, no application layer.
 - TLS via Let's Encrypt, auto-renewed (one cert per hostname).
-- CI publish step: `rsync` the regenerated index tree + any new
-  blobs to the server over SSH. The index tree is staged to a
-  versioned directory under `/srv/index-versions/<version>/` and a
-  `/srv/index` symlink is flipped via `ln -s` + `mv -T` (one
-  `rename(2)`) — observers see either the old version or the new
-  version, never a tree where the new root references files that
-  haven't landed yet. Blobs go to `/srv/blobs/` directly: they're
-  content-addressed and additive (existing blobs are never rewritten,
-  new ones land before the symlink flip so the new root never
-  references missing blobs). Old version directories stay around so
-  clients with a cached old root keep working until they refresh; GC
-  of old versions is a separate cron concern.
+- CI publish step: a three-phase rsync drives the snapshot model
+  ("Root manifest" above):
+  1. Push blobs to `/srv/blobs/<prefix>/<sha>` and any new
+     manifests to `/srv/targets/<target>/manifests/...`. Both
+     trees are content-addressed at the URL level and additive —
+     existing files are bit-identical no-ops, new files land but
+     nothing references them yet because the root hasn't been
+     replaced.
+  2. Push the new versioned section tree to
+     `/srv/versions/<V>/targets/<target>/sections/...`. A fresh
+     directory at a fresh path; nothing references it yet either.
+  3. Replace `/srv/index.json` and `/srv/index.json.sig`
+     atomically (write to `.new`, then `mv -T`). This is the only
+     mutation visible to clients; from this point onward, new
+     fetches see the new root, which references the new section
+     tree and the new manifests/blobs that landed in phases 1–2.
+  Old `versions/<V-1>/...` directories stay reachable so clients
+  with a cached old root finish their sync from the matching
+  snapshot. GC of versions older than the root's must-revalidate
+  TTL is a separate cron concern.
 - Standard hardening (ufw, unattended-upgrades, fail2ban, SSH key
   only). The blast radius is "users get stale or 503'd installs",
   not data loss — the canonical artifact set lives in the build
@@ -752,7 +809,8 @@ concern.
 ## Generator responsibilities
 
 The index generator is a single script that runs in CI per publish
-event:
+event. It receives a `<V>` (publish version, opaque string — the
+pipeline uses an ISO-8601 timestamp) as input:
 
 1. Walk the set of published artifacts (interpreter manifests,
    extension manifests). Each carries a target triple.
@@ -764,15 +822,17 @@ event:
        (augmented with `frozen: true`) to the appropriate section
        accumulator. Fails if any tag appears in both a live build
        and a frozen file.
-3. Emit a section JSON file at `targets/<target>/sections/<section>.json`
-   for each `(target, section name)` group; record its sha256.
-4. Emit `index.json` from the per-target section-hash tables.
-5. Sign `index.json`.
-6. `rsync` the new index tree to a fresh versioned directory on the
-   origin, then atomically flip the live `/srv/index` symlink to point
-   at it (see "Hosting"). Blobs go to `/srv/blobs/` first; the symlink
-   flip is the last step, so the new root never becomes visible while
-   any of its referenced sections, manifests, or blobs are missing.
+3. Emit a section JSON file at
+   `versions/<V>/targets/<target>/sections/<section>.json` for each
+   `(target, section name)` group; record its sha256.
+4. Emit `index.json` carrying `version: "<V>"` and the per-target
+   section-hash tables.
+5. Sign `index.json` (the signature covers `version` plus all
+   section sha256s, which transitively cover everything else).
+6. `rsync` the resulting tree (see "Hosting" three-phase sequence):
+   blobs and any new manifests first (additive at content-addressed
+   paths), then the new `versions/<V>/` section tree, then the new
+   root + signature replace the previous root atomically.
 
 The generator is deterministic on its inputs: same artifact set, byte-
 identical index. This matters for the audit trail — comparing two

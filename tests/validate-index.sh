@@ -166,15 +166,22 @@ if [ "$schema" != "1" ]; then
   fail "root schema version mismatch: expected 1, got $schema"
 fi
 
+publish_version="$(jq -r '.version' "$ROOT_TMP")"
+if [ -z "$publish_version" ] || [ "$publish_version" = "null" ]; then
+  fail "root index.json missing required \`version\` field"
+  publish_version="00000000T000000Z"
+fi
 targets="$(jq -r '.targets | keys[]' "$ROOT_TMP")"
 echo "  targets: $(echo "$targets" | wc -l | tr -d ' ')"
+echo "  version: $publish_version"
 
 # ---- Step 2 + 3: sections and manifests ----
 for target in $targets; do
   section_keys="$(jq -r --arg t "$target" '.targets[$t].sections | keys[]' "$ROOT_TMP")"
   for section_key in $section_keys; do
-    # section_key is like "interpreter/php" or "extension/xdebug"
-    section_url="$BASE/targets/$target/sections/$section_key.json"
+    # section_key is like "interpreter/php" or "extension/xdebug".
+    # URL embeds the root's version per DISTRIBUTION.md §Snapshot-consistency.
+    section_url="$BASE/versions/$publish_version/targets/$target/sections/$section_key.json"
     expected_sha256="$(jq -r --arg t "$target" --arg s "$section_key" '.targets[$t].sections[$s].sha256' "$ROOT_TMP")"
     expected_size="$(jq -r --arg t "$target" --arg s "$section_key" '.targets[$t].sections[$s].size' "$ROOT_TMP")"
 
@@ -187,30 +194,22 @@ for target in $targets; do
     check_sha256 "$sec_tmp" "$expected_sha256" "section $target/$section_key" || { rm -f "$sec_tmp"; continue; }
     check_size "$sec_tmp" "$expected_size" "section $target/$section_key" || true
 
-    # Step 3: verify each manifest referenced from the section
+    # Step 3: verify each manifest referenced from the section.
+    # Section rows carry an absolute server path under .manifest.path
+    # (no hostname). Just prepend $BASE.
     artifact_count="$(jq '.artifacts | length' "$sec_tmp")"
     echo "    artifacts: $artifact_count"
 
     for i in $(seq 0 $(( artifact_count - 1 ))); do
-      manifest_url_rel="$(jq -r --argjson i "$i" '.artifacts[$i].manifest.url' "$sec_tmp")"
+      manifest_path="$(jq -r --argjson i "$i" '.artifacts[$i].manifest.path' "$sec_tmp")"
       manifest_sha256_expected="$(jq -r --argjson i "$i" '.artifacts[$i].manifest.sha256' "$sec_tmp")"
       artifact_tag="$(jq -r --argjson i "$i" '.artifacts[$i].tag' "$sec_tmp")"
 
-      # Resolve relative URL against the section's URL base
-      # section URL: $BASE/targets/$target/sections/$section_key.json
-      # manifest_url_rel: ../../manifests/...
-      section_dir="$BASE/targets/$target/sections/$(dirname "$section_key")"
-      manifest_url="$(python3 -c "
-import urllib.parse, sys
-base = '$section_dir/'
-rel  = '$manifest_url_rel'
-print(urllib.parse.urljoin(base, rel))
-" 2>/dev/null || echo "")"
-
-      if [ -z "$manifest_url" ]; then
-        fail "could not resolve manifest URL for $artifact_tag"
+      if [ -z "$manifest_path" ] || [ "$manifest_path" = "null" ]; then
+        fail "section row missing .manifest.path for $artifact_tag"
         continue
       fi
+      manifest_url="${BASE%/}${manifest_path}"
 
       man_tmp="$(fetch_body "$manifest_url")"
       if [ -z "$man_tmp" ]; then
@@ -238,20 +237,22 @@ print(urllib.parse.urljoin(base, rel))
         fi
       done
 
-      # Extension tarball blob (interpreter section has tarball.url)
-      for blob_field in tarball; do
-        blob_url="$(jq -r ".$blob_field.url // empty" "$man_tmp" 2>/dev/null || true)"
-        blob_sha="$(jq -r ".$blob_field.sha256 // empty" "$man_tmp" 2>/dev/null || true)"
-        [ -z "$blob_url" ] && continue
+      # Main artifact tarball — both interpreter and extension manifests
+      # carry it at .blob.{url,sha256} per DISTRIBUTION.md §Manifests-and-blobs.
+      blob_url="$(jq -r '.blob.url // empty' "$man_tmp" 2>/dev/null || true)"
+      blob_sha="$(jq -r '.blob.sha256 // empty' "$man_tmp" 2>/dev/null || true)"
+      if [ -n "$blob_url" ]; then
         case "$blob_url" in
-          *'{BLOB_BASE}'*) echo "    warning: unsubstituted {BLOB_BASE} in $artifact_tag $blob_field" >&2; continue ;;
+          *'{BLOB_BASE}'*) echo "    warning: unsubstituted {BLOB_BASE} in $artifact_tag .blob" >&2 ;;
+          *)
+            head_url "$blob_url" "$artifact_tag .blob" || true
+            CHECKED_BLOBS=$(( CHECKED_BLOBS + 1 ))
+            if [ "${#SAMPLED_BLOBS[@]}" -lt "$SAMPLE_BLOBS" ] && [ -n "$blob_sha" ] && [ "$blob_sha" != "null" ]; then
+              SAMPLED_BLOBS+=("$blob_url:$blob_sha")
+            fi
+            ;;
         esac
-        head_url "$blob_url" "$artifact_tag $blob_field" || true
-        CHECKED_BLOBS=$(( CHECKED_BLOBS + 1 ))
-        if [ "${#SAMPLED_BLOBS[@]}" -lt "$SAMPLE_BLOBS" ] && [ -n "$blob_sha" ] && [ "$blob_sha" != "null" ]; then
-          SAMPLED_BLOBS+=("$blob_url:$blob_sha")
-        fi
-      done
+      fi
 
       rm -f "$man_tmp"
     done

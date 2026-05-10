@@ -261,11 +261,28 @@
           blobHost =
             let e = builtins.getEnv "BLOB_HOST";
             in if e != "" then e else "blobs.bougie.tools";
+          # PUBLISH_VERSION names the immutable per-publish snapshot
+          # (DISTRIBUTION.md §Snapshot-consistency). CI sets it from the
+          # publish event timestamp; local builds get the deterministic
+          # default in index.nix so `nix build .#index` is reproducible.
+          publishVersion =
+            let e = builtins.getEnv "PUBLISH_VERSION";
+            in if e != "" then e else "00000000T000000Z";
+          # GIT_COMMIT / GIT_REF identify the source revision the publish
+          # was built from. Surfaces in index.json under `source` for
+          # audit. Defaults to "unknown" so local builds without these
+          # set still produce a valid root.
+          gitCommit =
+            let e = builtins.getEnv "GIT_COMMIT";
+            in if e != "" then e else "unknown";
+          gitRef =
+            let e = builtins.getEnv "GIT_REF";
+            in if e != "" then e else "unknown";
 
           index = pkgs.callPackage ./php-unix/index.nix {
             releases = allReleases;
             yanksFile = ./yanks.json;
-            inherit frozenFiles indexHost blobHost;
+            inherit frozenFiles indexHost blobHost publishVersion gitCommit gitRef;
           };
 
           # release-bundle: the full publishable distribution tree, produced
@@ -316,7 +333,7 @@
             ./scripts/sign-publish-index.sh;
 
           rsync-publish-tree = mkApp "rsync-publish-tree"
-            (with pkgs; [ rsync openssh coreutils ])
+            (with pkgs; [ rsync openssh coreutils jq ])
             ./scripts/rsync-publish-tree.sh;
 
           freeze-publish-entries = mkApp "freeze-publish-entries"
