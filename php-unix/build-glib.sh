@@ -38,6 +38,16 @@ export PKG_CONFIG_PATH="$PBS_DEP_LIBFFI/lib/pkgconfig:$PBS_DEP_PCRE2/lib/pkgconf
 export CFLAGS="$CFLAGS -Qunused-arguments"
 export CXXFLAGS="$CXXFLAGS -Qunused-arguments"
 
+# Darwin: Apple's <arpa/nameser.h> hides C_IN behind `#ifdef
+# BIND_8_COMPAT`, and glib's gio/meson.build:35 has a hard-fail check
+# for it. The fallback path #include <arpa/nameser_compat.h> doesn't
+# rescue us either because that header just `#define`s the legacy
+# names — it still requires BIND_8_COMPAT to expose C_IN through
+# nameser.h. Define unconditionally; harmless on Linux glibc, which
+# defines C_IN unconditionally regardless.
+export CFLAGS="$CFLAGS -DBIND_8_COMPAT=1"
+export CXXFLAGS="$CXXFLAGS -DBIND_8_COMPAT=1"
+
 # Darwin: glib's meson.build calls add_languages('objc') for Carbon /
 # Cocoa probing, which triggers a fresh compiler probe by basename
 # (clang, gcc) via PATH. Our toolchain wrapper exposes cc/c++ but not
