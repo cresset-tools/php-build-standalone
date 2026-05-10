@@ -780,13 +780,29 @@ generations of the index is a meaningful diff, not a noise diff.
 
 ## Open items
 
-- **Cache-Control headers.** Section, manifest, and blob responses
-  set `Cache-Control: public, max-age=31536000, immutable` —
-  everything below the root is content-addressed and never changes
-  at a given URL. The root sets `max-age=30, must-revalidate` plus
-  ETag so clients revalidate cheaply via 304s. Cloudflare honors
-  these directly on the index domain; the blob origin honors them
-  for downstream HTTP caches.
+- **Cache-Control headers.** Three tiers, matching mutability:
+  - **Root** (`/index.json`) and **section files**
+    (`/targets/<target>/sections/<section>.json`) are *mutable* —
+    the URL is stable but the body changes every publish (new tag,
+    yank, freeze). Both set
+    `Cache-Control: public, max-age=30, must-revalidate` plus an
+    `ETag` so revalidation is cheap (one round-trip, 304 if
+    unchanged). The root references sections by sha256, so a stale
+    section served against a fresh root surfaces as a hash mismatch
+    — the CLI refuses to use it (see `BougieError::ManifestHashMismatch`).
+  - **Manifests** (`/targets/<target>/manifests/...`) and **blobs**
+    (`/blobs/<prefix>/<sha256>`) are *truly immutable* — their URL
+    is content-addressed (manifest path embeds the tag, blob path
+    embeds the sha256). They set
+    `Cache-Control: public, max-age=31536000, immutable`. Cache
+    lifetime can be effectively infinite without correctness risk.
+
+  This must be enforced at the origin (nginx `add_header` per
+  location block); Cloudflare honors origin Cache-Control by
+  default. Setting `immutable` on section files is a bug — sections
+  are mutable pointers and `immutable` instructs caches not to
+  revalidate even on user-initiated reloads, so a republish doesn't
+  reach clients until the year-long max-age expires.
 - **Origin backups.** Blobs are reproducible from the build pipeline
   (re-derivable from source + recipe), so backup-of-record is the
   artifact build outputs, not the origin disk. Origin disk loss
