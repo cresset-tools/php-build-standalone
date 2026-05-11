@@ -308,6 +308,17 @@
     version = "8.16.1";
   };
 
+  # libgmp — GNU Multiple Precision arithmetic library. PHP's ext/gmp wraps
+  # libgmp for arbitrary-precision integer/rational/float math; used by
+  # JWT RSA/EC libraries, password hashers that compute modular exponents
+  # in userland, and crypto/blockchain code. Pure autotools build, no
+  # transitive deps.
+  libgmp = {
+    url = "https://gmplib.org/download/gmp/gmp-6.3.0.tar.xz";
+    sha256 = "a3c2b80201b89e68616f4ad30bc66aee4927c3ce50e33929ca819d5c43538898";
+    version = "6.3.0";
+  };
+
   # libedit — BSD editline library; provides line editing and history for
   # PHP's ext/readline (php -a interactive shell). We use libedit rather
   # than GNU readline because readline is GPL-licensed and redistributing
