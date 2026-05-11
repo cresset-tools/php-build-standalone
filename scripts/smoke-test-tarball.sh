@@ -7,8 +7,14 @@
 #   $1  path to php-*.tar.zst
 #   $2  (optional) expected PHP major.minor, e.g. "8.3"
 #
-# Checks: extraction, php -v, version match, php -m, intl currency probe,
+# Checks: extraction, php -v, version match, php -m, core-extension
+# functional probes (sodium → libsodium, dom → libxml2, openssl → openssl),
 # relocation (move install/ → relocated/, verify extension_dir tracks).
+#
+# The interpreter tarball is Debian-aligned (REFACTOR_DEBIAN_ALIGNED.md):
+# only the core extension set ships in the tarball. Optional extensions
+# (intl, curl, gd, mbstring, …) are installed via per-ext tarballs and
+# are NOT exercised here — see tests/smoke.sh for the per-ext gate.
 #
 # Outputs: grouped progress to stdout; exits non-zero on any failure.
 
@@ -51,8 +57,38 @@ echo "::group::php -m"
 "$PHP" -m
 echo "::endgroup::"
 
-echo "::group::expect intl currency formatting"
-"$PHP" -r 'echo NumberFormatter::create("en_US", NumberFormatter::CURRENCY)->formatCurrency(1234.56, "USD"), "\n";'
+echo "::group::core extension functional probes"
+# sodium → exercises bundled libsodium end-to-end (key generation +
+# detached signature verify). dom → exercises bundled libxml2 (parse +
+# XPath round-trip). openssl_random_pseudo_bytes → exercises bundled
+# openssl. Each probe loads a different bundled C-lib, so a regression
+# in any one shows up here as a load or runtime failure.
+# shellcheck disable=SC2016  # PHP code, intentionally not shell-expanded
+"$PHP" -r '
+  $kp = sodium_crypto_sign_keypair();
+  $sk = sodium_crypto_sign_secretkey($kp);
+  $pk = sodium_crypto_sign_publickey($kp);
+  $sig = sodium_crypto_sign_detached("hello", $sk);
+  if (!sodium_crypto_sign_verify_detached($sig, "hello", $pk)) {
+    fwrite(STDERR, "FAIL: sodium signature did not verify\n"); exit(1);
+  }
+  echo "sodium: ok\n";
+
+  $dom = new DOMDocument();
+  $dom->loadXML("<root><leaf>hi</leaf></root>");
+  $xp = new DOMXPath($dom);
+  $node = $xp->query("/root/leaf")->item(0);
+  if ($node->textContent !== "hi") {
+    fwrite(STDERR, "FAIL: dom roundtrip got " . var_export($node->textContent, true) . "\n"); exit(1);
+  }
+  echo "dom: ok\n";
+
+  $bytes = openssl_random_pseudo_bytes(16, $strong);
+  if (strlen($bytes) !== 16 || !$strong) {
+    fwrite(STDERR, "FAIL: openssl_random_pseudo_bytes did not return 16 strong bytes\n"); exit(1);
+  }
+  echo "openssl: ok\n";
+'
 echo "::endgroup::"
 
 echo "::group::expect relocation tracks the running binary"
