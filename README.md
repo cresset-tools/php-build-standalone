@@ -449,9 +449,21 @@ php/                           PHP interpreter, PECL extensions, and
   index.nix                      cross-variant index.json (interpreters +
                                  extensions + store_paths)
 
-mariadb/                       placeholder for a future MariaDB build
-                               (relocatable mariadbd + libmariadb + client
-                               tools), consumed by `bougie services`.
+mariadb/                       MariaDB server bundle (relocatable mariadbd
+                               + libmariadb + client tools), consumed by
+                               `bougie services`. Reuses shared/zlib,
+                               shared/openssl, shared/ncurses for the
+                               bundled C-lib stack.
+  mariadb.nix                    calls mkDep with the cmake-based build
+                                 script + the three bundled deps.
+  build-mariadb.sh               cmake + INSTALL_LAYOUT=STANDALONE +
+                                 relocatable RPATH + a curated plugin
+                                 deny-list (RocksDB, Mroonga, Spider,
+                                 ColumnStore, S3, OQGraph, Connect, …).
+  tarball.nix                    interpreter-shaped tarball + manifest;
+                                 manifest kind="service" routes into
+                                 shared/index.nix's service/<name>
+                                 section.
 tests/
   distros.txt                    expected pass/fail per distro image
   run-matrix.sh                  extract once, mount RO into each container

@@ -110,6 +110,12 @@
                       libtiff lcms2 openjpeg libheif libde265;
             };
             libgmp        = pkgs.callPackage ./shared/libgmp.nix        { inherit mkDep; };
+          } // pkgs.lib.optionalAttrs (!darwin) {
+            # libxcrypt (provides libcrypt.so.1). Linux-only: macOS's libc
+            # has its own crypt() implementation and consumers there use
+            # the system libcrypt.dylib. Built only when a downstream
+            # component (mariadb today) actually links it.
+            libxcrypt = pkgs.callPackage ./shared/libxcrypt.nix { inherit mkDep; };
           } // pkgs.lib.optionalAttrs darwin {
             libiconv = pkgs.callPackage ./shared/libiconv.nix { inherit mkDep; };
           } // (
@@ -409,11 +415,62 @@
             (phpKey: { name = minorKey pkgs phpKey; value = mkPhpVariant phpKey; })
             (builtins.attrNames sources.phpVersions));
 
+          # ---- MariaDB server bundle ----
+          # One build per system (no version fan-out yet — only one
+          # mariadb pin in sources.nix). Reuses the same bundled deps
+          # the PHP build pulls in (zlib + openssl + ncurses) so a
+          # consumer that already has those store/<X>/ directories from
+          # PHP doesn't pay for them twice.
+          mariadbSpec = sources.mariadb;
+          # libxcrypt is Linux-only (Darwin has crypt() in libc); add it to
+          # the bundle only when building for Linux. The mariadb derivation
+          # below mirrors the conditional so its deps list lines up.
+          mariadbBundledDepNames =
+            [ "zlib" "openssl" "ncurses" "pcre2" ]
+            ++ pkgs.lib.optional (!darwin) "libxcrypt";
+          mariadbBundledDeps = map (n: deps.${n}) mariadbBundledDepNames;
+          mariadb = pkgs.callPackage ./mariadb/mariadb.nix ({
+            inherit mkDep mariadbSpec;
+            inherit (deps) zlib openssl ncurses pcre2;
+          } // pkgs.lib.optionalAttrs (!darwin) {
+            inherit (deps) libxcrypt;
+          });
+          mariadbTree = pkgs.callPackage ./shared/tree.nix {
+            bundledDeps = mariadbBundledDeps;
+            interpreterDeps = [ mariadb ];
+            inherit toolchain;
+            phpVersion = mariadbSpec.version;
+          };
+          mariadbTarball = pkgs.callPackage ./mariadb/tarball.nix {
+            tree = mariadbTree;
+            inherit sources nixpkgsRev;
+            mariadbVersion = mariadbSpec.version;
+            bundledDepNames = mariadbBundledDepNames;
+          };
+          # Release aggregate for mariadb. Same flat-dir shape as the
+          # per-PHP-minor release derivation so shared/index.nix walks
+          # both kinds with the same loop.
+          mariadbRelease = pkgs.stdenvNoCC.mkDerivation {
+            pname = "pbs-release-mariadb";
+            version = mariadbSpec.version;
+            dontUnpack = true;
+            dontConfigure = true;
+            dontBuild = true;
+            dontFixup = true;
+            nativeBuildInputs = [ pkgs.coreutils ];
+            installPhase = ''
+              mkdir -p "$out"
+              cp -a ${mariadbTarball}/. "$out/" && chmod -R u+w "$out"
+            '';
+          };
+
           # Cross-variant index. Walks every release, parses per-extension
           # + interpreter manifests, reads .sha256 sidecars, and emits a
           # single index.json. Deduplication of store-path entries across
           # variants is enforced inside index.nix (collision = build error).
-          allReleases = map (v: v.release) (builtins.attrValues variants);
+          allReleases =
+            (map (v: v.release) (builtins.attrValues variants))
+            ++ [ mariadbRelease ];
           frozenFiles =
             let allFiles = pkgs.lib.filesystem.listFilesRecursive ./frozen;
             in builtins.filter
@@ -425,7 +482,7 @@
           # — rebuild if it changes. PUBLISH_VERSION names the immutable
           # per-publish snapshot (DISTRIBUTION.md §Snapshot-consistency).
           # GIT_COMMIT / GIT_REF surface in index.json `source` for audit.
-          index = pkgs.callPackage ./php/index.nix {
+          index = pkgs.callPackage ./shared/index.nix {
             releases = allReleases;
             yanksFile = ./yanks.json;
             inherit frozenFiles indexHost blobHost publishVersion gitCommit gitRef;
@@ -433,7 +490,8 @@
 
           latestVariant = variants.${minorKey pkgs sources.latestPhp};
         in {
-          inherit pkgs sources darwin sysroot toolchain deps variants index latestVariant;
+          inherit pkgs sources darwin sysroot toolchain deps variants index latestVariant
+                  mariadb mariadbTree mariadbTarball mariadbRelease;
         };
 
       ctx = forEach contextFor;
@@ -539,6 +597,14 @@
           default = c.latestVariant.tarball;
           inherit (c) index;
           release-bundle = c.index;
+          # MariaDB outputs at the top level: the bare derivation, the
+          # finalized install tree, the redistributable tarball + its
+          # manifest, and the release-flat-dir aggregate that feeds the
+          # index. Per-variant PHP outputs live under phpVariants.<system>.
+          mariadb         = c.mariadb;
+          mariadb-tree    = c.mariadbTree;
+          mariadb-tarball = c.mariadbTarball;
+          mariadb-release = c.mariadbRelease;
         });
 
       phpVariants  = forEach (system: ctx.${system}.variants);
