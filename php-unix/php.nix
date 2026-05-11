@@ -56,6 +56,15 @@ mkDep {
     PBS_PHP_ICONV_ARG = if stdenv.isDarwin
       then "--with-iconv=shared,${libiconv}"
       else "--with-iconv=shared";
+    # Linux: glibc's libintl (in libc itself), but PHP's ext/gettext
+    # config.m4 only looks under /usr/include and /usr/local/include for
+    # libintl.h, never consulting the sysroot. We point it at the CentOS 7
+    # sysroot's /usr explicitly. Darwin: Apple's libc ships only stub gettext
+    # symbols and no real translation lookup; until we bundle GNU gettext,
+    # the Darwin leg opts out entirely.
+    PBS_PHP_GETTEXT_ARG = if stdenv.isDarwin
+      then "--without-gettext"
+      else "--with-gettext=shared,__PBS_SYSROOT__/usr";
   } // lib.optionalAttrs stdenv.isDarwin {
     # nixpkgs darwin.libresolv provides build-time -L/<store>/lib +
     # libresolv.dylib for ld to satisfy `-lresolv` (used by ext/standard/dns).
