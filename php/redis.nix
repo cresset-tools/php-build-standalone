@@ -13,6 +13,7 @@
 { mkDep, pkgs, php, redisSpec }:
 mkDep {
   name = "redis";
+  buildScript = ./build-redis.sh;
   version = redisSpec.version;
   src = pkgs.fetchurl { inherit (redisSpec) url sha256; };
   deps = [ php ];

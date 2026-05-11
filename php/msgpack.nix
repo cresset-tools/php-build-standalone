@@ -6,6 +6,7 @@
 { mkDep, pkgs, php, msgpackSpec }:
 mkDep {
   name = "msgpack";
+  buildScript = ./build-msgpack.sh;
   version = msgpackSpec.version;
   src = pkgs.fetchurl { inherit (msgpackSpec) url sha256; };
   deps = [ php ];

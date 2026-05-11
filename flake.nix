@@ -1,5 +1,5 @@
 {
-  description = "php-build-standalone — portable PHP tarballs, built in a Nix sandbox";
+  description = "build-standalone — portable tarballs for bougie components (PHP, MariaDB, …), built in a Nix sandbox";
 
   inputs = {
     # FlakeHub mirror of nixpkgs. The 0.1.x series tracks nixos-unstable;
@@ -48,7 +48,7 @@
       contextFor = system:
         let
           pkgs = import nixpkgs { inherit system; };
-          sources = import ./php-unix/sources.nix;
+          sources = import ./shared/sources.nix;
           nixpkgsRev = nixpkgs.rev or "dirty";
           darwin = isDarwin system;
 
@@ -57,23 +57,23 @@
           # trick). Darwin uses a thin wrapper around nixpkgs's clang +
           # MACOSX_DEPLOYMENT_TARGET=11.0 (Big Sur) — system libc is
           # ABI-stable so no sysroot is needed.
-          sysroot = if darwin then null else pkgs.callPackage ./php-unix/sysroot.nix {};
+          sysroot = if darwin then null else pkgs.callPackage ./shared/sysroot.nix {};
           toolchain = if darwin
-            then pkgs.callPackage ./php-unix/toolchain-darwin.nix {
+            then pkgs.callPackage ./shared/toolchain-darwin.nix {
               clang = pkgs.clang;
               llvmPackages = pkgs.llvmPackages;
             }
-            else pkgs.callPackage ./php-unix/clang-toolchain.nix { inherit sysroot; };
+            else pkgs.callPackage ./shared/clang-toolchain.nix { inherit sysroot; };
 
           # mkDep is the derivation factory used by every per-dep wrapper.
           # Single file, branches internally on stdenv.isDarwin to pick
           # toolchain pkg list, sysroot exports, and the post-build
           # install_name normalization hook.
-          mkDep = pkgs.callPackage ./php-unix/mkDep.nix { inherit sources toolchain; };
+          mkDep = pkgs.callPackage ./shared/mkDep.nix { inherit sources toolchain; };
 
           # Every bundled C-lib derivation, keyed by short name. Built
           # once and shared across all PHP variants. Wrappers live in
-          # php-unix/ and dispatch to platform-specific build-*.sh
+          # shared/ and dispatch to platform-specific build-*.sh
           # scripts via mkDep's pathExists fallback (mkDep-darwin tries
           # build-<name>-darwin.sh first, falls through to build-<name>.sh).
           # ImageMagick delegates (libtiff, lcms2, openjpeg, libde265,
@@ -82,36 +82,36 @@
           # ship in the interpreter tarball alongside everything else.
           # libiconv is Darwin-only (apple-sdk strips legacy headers).
           deps = rec {
-            zlib          = pkgs.callPackage ./php-unix/zlib.nix          { inherit mkDep; };
-            openssl       = pkgs.callPackage ./php-unix/openssl.nix       { inherit mkDep zlib; };
-            libxml2       = pkgs.callPackage ./php-unix/libxml2.nix       { inherit mkDep zlib; };
-            sqlite        = pkgs.callPackage ./php-unix/sqlite.nix        { inherit mkDep; };
-            oniguruma     = pkgs.callPackage ./php-unix/oniguruma.nix     { inherit mkDep; };
-            libsodium     = pkgs.callPackage ./php-unix/libsodium.nix     { inherit mkDep; };
-            bzip2         = pkgs.callPackage ./php-unix/bzip2.nix         { inherit mkDep; };
-            libpng        = pkgs.callPackage ./php-unix/libpng.nix        { inherit mkDep zlib; };
-            libjpeg-turbo = pkgs.callPackage ./php-unix/libjpeg-turbo.nix { inherit mkDep; };
-            libwebp       = pkgs.callPackage ./php-unix/libwebp.nix       { inherit mkDep; };
-            freetype      = pkgs.callPackage ./php-unix/freetype.nix      { inherit mkDep zlib bzip2; };
-            nghttp2       = pkgs.callPackage ./php-unix/nghttp2.nix       { inherit mkDep; };
-            libzip        = pkgs.callPackage ./php-unix/libzip.nix        { inherit mkDep zlib bzip2 openssl; };
-            icu           = pkgs.callPackage ./php-unix/icu.nix           { inherit mkDep; };
-            libcurl       = pkgs.callPackage ./php-unix/libcurl.nix       { inherit mkDep openssl zlib nghttp2; };
-            ncurses       = pkgs.callPackage ./php-unix/ncurses.nix       { inherit mkDep; };
-            libedit       = pkgs.callPackage ./php-unix/libedit.nix       { inherit mkDep ncurses; };
-            libpq         = pkgs.callPackage ./php-unix/libpq.nix         { inherit mkDep openssl zlib; };
-            libtiff       = pkgs.callPackage ./php-unix/libtiff.nix       { inherit mkDep zlib libjpeg-turbo; };
-            lcms2         = pkgs.callPackage ./php-unix/lcms2.nix         { inherit mkDep; };
-            openjpeg      = pkgs.callPackage ./php-unix/openjpeg.nix      { inherit mkDep zlib libpng libtiff lcms2; };
-            libde265      = pkgs.callPackage ./php-unix/libde265.nix      { inherit mkDep; };
-            libheif       = pkgs.callPackage ./php-unix/libheif.nix       { inherit mkDep libde265 libjpeg-turbo libpng; };
-            imagemagick   = pkgs.callPackage ./php-unix/imagemagick.nix   {
+            zlib          = pkgs.callPackage ./shared/zlib.nix          { inherit mkDep; };
+            openssl       = pkgs.callPackage ./shared/openssl.nix       { inherit mkDep zlib; };
+            libxml2       = pkgs.callPackage ./shared/libxml2.nix       { inherit mkDep zlib; };
+            sqlite        = pkgs.callPackage ./shared/sqlite.nix        { inherit mkDep; };
+            oniguruma     = pkgs.callPackage ./shared/oniguruma.nix     { inherit mkDep; };
+            libsodium     = pkgs.callPackage ./shared/libsodium.nix     { inherit mkDep; };
+            bzip2         = pkgs.callPackage ./shared/bzip2.nix         { inherit mkDep; };
+            libpng        = pkgs.callPackage ./shared/libpng.nix        { inherit mkDep zlib; };
+            libjpeg-turbo = pkgs.callPackage ./shared/libjpeg-turbo.nix { inherit mkDep; };
+            libwebp       = pkgs.callPackage ./shared/libwebp.nix       { inherit mkDep; };
+            freetype      = pkgs.callPackage ./shared/freetype.nix      { inherit mkDep zlib bzip2; };
+            nghttp2       = pkgs.callPackage ./shared/nghttp2.nix       { inherit mkDep; };
+            libzip        = pkgs.callPackage ./shared/libzip.nix        { inherit mkDep zlib bzip2 openssl; };
+            icu           = pkgs.callPackage ./shared/icu.nix           { inherit mkDep; };
+            libcurl       = pkgs.callPackage ./shared/libcurl.nix       { inherit mkDep openssl zlib nghttp2; };
+            ncurses       = pkgs.callPackage ./shared/ncurses.nix       { inherit mkDep; };
+            libedit       = pkgs.callPackage ./shared/libedit.nix       { inherit mkDep ncurses; };
+            libpq         = pkgs.callPackage ./shared/libpq.nix         { inherit mkDep openssl zlib; };
+            libtiff       = pkgs.callPackage ./shared/libtiff.nix       { inherit mkDep zlib libjpeg-turbo; };
+            lcms2         = pkgs.callPackage ./shared/lcms2.nix         { inherit mkDep; };
+            openjpeg      = pkgs.callPackage ./shared/openjpeg.nix      { inherit mkDep zlib libpng libtiff lcms2; };
+            libde265      = pkgs.callPackage ./shared/libde265.nix      { inherit mkDep; };
+            libheif       = pkgs.callPackage ./shared/libheif.nix       { inherit mkDep libde265 libjpeg-turbo libpng; };
+            imagemagick   = pkgs.callPackage ./shared/imagemagick.nix   {
               inherit mkDep zlib bzip2 libpng libjpeg-turbo libwebp freetype libxml2
                       libtiff lcms2 openjpeg libheif libde265;
             };
-            libgmp        = pkgs.callPackage ./php-unix/libgmp.nix        { inherit mkDep; };
+            libgmp        = pkgs.callPackage ./shared/libgmp.nix        { inherit mkDep; };
           } // pkgs.lib.optionalAttrs darwin {
-            libiconv = pkgs.callPackage ./php-unix/libiconv.nix { inherit mkDep; };
+            libiconv = pkgs.callPackage ./shared/libiconv.nix { inherit mkDep; };
           } // (
             # vips stack. Wrapped in its own `let` because these attrs
             # need forward references between each other (glib uses
@@ -124,17 +124,17 @@
             # BIND headers <arpa/nameser.h>, which glib's gio needs for
             # its DNS resolver). See build-glib.sh for the wiring.
             let
-              libffi  = pkgs.callPackage ./php-unix/libffi.nix  { inherit mkDep; };
-              pcre2   = pkgs.callPackage ./php-unix/pcre2.nix   { inherit mkDep; };
-              expat   = pkgs.callPackage ./php-unix/expat.nix   { inherit mkDep; };
-              glib    = pkgs.callPackage ./php-unix/glib.nix    ({
+              libffi  = pkgs.callPackage ./shared/libffi.nix  { inherit mkDep; };
+              pcre2   = pkgs.callPackage ./shared/pcre2.nix   { inherit mkDep; };
+              expat   = pkgs.callPackage ./shared/expat.nix   { inherit mkDep; };
+              glib    = pkgs.callPackage ./shared/glib.nix    ({
                 inherit mkDep sources libffi pcre2;
                 zlib = deps.zlib;
               } // pkgs.lib.optionalAttrs darwin {
-                libiconv = pkgs.callPackage ./php-unix/libiconv.nix { inherit mkDep; };
+                libiconv = pkgs.callPackage ./shared/libiconv.nix { inherit mkDep; };
                 libresolv = pkgs.darwin.libresolv;
               });
-              libvips = pkgs.callPackage ./php-unix/libvips.nix {
+              libvips = pkgs.callPackage ./shared/libvips.nix {
                 inherit mkDep glib expat;
                 inherit (deps) libpng libjpeg-turbo libwebp libtiff libheif lcms2
                                 libxml2 zlib;
@@ -173,7 +173,7 @@
               apcuSpec     = pickOnly sources.apcuVersions;
               pcovSpec     = pickOnly sources.pcovVersions;
 
-              php = pkgs.callPackage ./php-unix/php.nix ({
+              php = pkgs.callPackage ./php/php.nix ({
                 inherit mkDep phpSpec;
                 inherit (deps)
                   zlib openssl libxml2 sqlite oniguruma libsodium bzip2
@@ -181,33 +181,33 @@
                   nghttp2 libzip icu libcurl ncurses libedit libpq libgmp;
               } // pkgs.lib.optionalAttrs darwin { inherit (deps) libiconv; });
 
-              xdebug = pkgs.callPackage ./php-unix/xdebug.nix {
+              xdebug = pkgs.callPackage ./php/xdebug.nix {
                 inherit mkDep php xdebugSpec;
               };
-              imagick = pkgs.callPackage ./php-unix/imagick.nix {
+              imagick = pkgs.callPackage ./php/imagick.nix {
                 inherit mkDep php imagickSpec;
                 inherit (deps) imagemagick;
               };
-              redis = pkgs.callPackage ./php-unix/redis.nix {
+              redis = pkgs.callPackage ./php/redis.nix {
                 inherit mkDep php redisSpec;
               };
-              vips = pkgs.callPackage ./php-unix/vips.nix {
+              vips = pkgs.callPackage ./php/vips.nix {
                 inherit mkDep php vipsSpec;
                 inherit (deps) libvips glib;
               };
-              igbinary = pkgs.callPackage ./php-unix/igbinary.nix {
+              igbinary = pkgs.callPackage ./php/igbinary.nix {
                 inherit mkDep php igbinarySpec;
               };
-              msgpack = pkgs.callPackage ./php-unix/msgpack.nix {
+              msgpack = pkgs.callPackage ./php/msgpack.nix {
                 inherit mkDep php msgpackSpec;
               };
-              apcu = pkgs.callPackage ./php-unix/apcu.nix {
+              apcu = pkgs.callPackage ./php/apcu.nix {
                 inherit mkDep php apcuSpec;
               };
-              pcov = pkgs.callPackage ./php-unix/pcov.nix {
+              pcov = pkgs.callPackage ./php/pcov.nix {
                 inherit mkDep php pcovSpec;
               };
-              tree = pkgs.callPackage ./php-unix/tree.nix {
+              tree = pkgs.callPackage ./shared/tree.nix {
                 bundledDeps = sharedDeps;
                 interpreterDeps = [
                   php xdebug imagick vips redis igbinary msgpack apcu pcov
@@ -242,7 +242,7 @@
               coreDepNames = [
                 "zlib" "openssl" "libxml2" "libsodium" "libedit" "ncurses"
               ] ++ pkgs.lib.optional darwin "libiconv";
-              tarball = pkgs.callPackage ./php-unix/tarball.nix {
+              tarball = pkgs.callPackage ./php/tarball.nix {
                 inherit tree sources nixpkgsRev phpSpec xdebugSpec
                         coreExtensions coreDepNames deps;
                 phpVersion = phpSpec.version;
@@ -251,7 +251,7 @@
               # Phase 3: closure map. Walks the finalized tree and records
               # each ELF's transitive store-path closure. Read-only against
               # tree, so it doesn't invalidate any already-built derivation.
-              closures = pkgs.callPackage ./php-unix/closure.nix {
+              closures = pkgs.callPackage ./shared/closure.nix {
                 inherit tree;
                 storeManifestFile = tree.passthru.storeManifestFile;
               };
@@ -263,7 +263,7 @@
               # storeName in its filename — the attribute name only needs
               # to be stable enough to address the output.
               storePathTarballs = builtins.mapAttrs
-                (_: dep: pkgs.callPackage ./php-unix/tarball-store-path.nix { inherit dep; })
+                (_: dep: pkgs.callPackage ./shared/tarball-store-path.nix { inherit dep; })
                 deps;
 
               # Shared args for every per-extension tarball. Keeps the per-
@@ -282,7 +282,7 @@
                 storePathTarballs = builtins.attrValues storePathTarballs;
                 phpVersion = phpSpec.version;
               };
-              mkExt = args: pkgs.callPackage ./php-unix/tarball-extension.nix (extArgs // args);
+              mkExt = args: pkgs.callPackage ./php/tarball-extension.nix (extArgs // args);
 
               # Helper for trivial built-in extensions: the .so is
               # produced by PHP's own configure (--enable-X=shared /
@@ -425,7 +425,7 @@
           # — rebuild if it changes. PUBLISH_VERSION names the immutable
           # per-publish snapshot (DISTRIBUTION.md §Snapshot-consistency).
           # GIT_COMMIT / GIT_REF surface in index.json `source` for audit.
-          index = pkgs.callPackage ./php-unix/index.nix {
+          index = pkgs.callPackage ./php/index.nix {
             releases = allReleases;
             yanksFile = ./yanks.json;
             inherit frozenFiles indexHost blobHost publishVersion gitCommit gitRef;
@@ -596,8 +596,8 @@
           c = ctx.${system};
           pkgs = c.pkgs;
           toolchainPkgs = if c.darwin
-            then import ./php-unix/toolchain-pkgs-darwin.nix { inherit pkgs; toolchain = c.toolchain; }
-            else import ./php-unix/toolchain.nix             { inherit pkgs; toolchain = c.toolchain; };
+            then import ./shared/toolchain-pkgs-darwin.nix { inherit pkgs; toolchain = c.toolchain; }
+            else import ./shared/toolchain.nix             { inherit pkgs; toolchain = c.toolchain; };
         in {
           default = (pkgs.mkShell.override { stdenv = pkgs.stdenvNoCC; }) {
             packages = toolchainPkgs;

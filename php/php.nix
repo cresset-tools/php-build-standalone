@@ -24,6 +24,7 @@ let
 in
 mkDep {
   name = "php";
+  buildScript = ./build-php.sh;
   version = phpSpec.version;
   src = pkgs.fetchurl { inherit (phpSpec) url sha256; };
   deps = [

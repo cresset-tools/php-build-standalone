@@ -10,11 +10,11 @@ config are tracked elsewhere.
 What already exists:
 
 - Per-artifact tarballs and `.json` manifests for interpreter
-  (`php-unix/tarball.nix`), extension (`php-unix/tarball-extension.nix`),
-  and store-path (`php-unix/tarball-store-path.nix`) outputs.
-- Closure walking via `php-unix/closure.nix`, populating the per-
+  (`php/tarball.nix`), extension (`php/tarball-extension.nix`),
+  and store-path (`shared/tarball-store-path.nix`) outputs.
+- Closure walking via `shared/closure.nix`, populating the per-
   extension manifest's `closure` array.
-- A single-file `index.json` generator at `php-unix/index.nix` with
+- A single-file `index.json` generator at `php/index.nix` with
   `interpreters[]`, `extensions[]`, `store_paths[]` arrays; uses
   `{INDEX_BASE}` placeholder for self-anchoring URLs.
 - CI in `.github/workflows/build.yml` builds the matrix, assembles
@@ -68,14 +68,14 @@ Section files carry per-artifact records for that target only;
 their `target` is implicit in their location.
 
 **Files affected:**
-- `php-unix/index.nix` — refactor: instead of one big `jq`
+- `php/index.nix` — refactor: instead of one big `jq`
   reduction across all releases, partition by `(target, section
   name)`, emit one file per section under
   `targets/<target>/sections/`, then emit the root over the
   per-target section-hash tables.
 - `flake.nix` — surface the new tree as the `index` derivation
   output (replacing the current single-file output).
-- `php-unix/tarball*.nix` — manifests already carry `target_triple`
+- `php/tarball*.nix` — manifests already carry `target_triple`
   per the existing build pipeline; no change required there, only
   in how the generator consumes that field.
 
@@ -95,13 +95,13 @@ they remain in place so the index is self-anchoring under any host
 pair.
 
 **Files affected:**
-- `php-unix/tarball-extension.nix` — closure entries currently emit
+- `php/tarball-extension.nix` — closure entries currently emit
   `{INDEX_BASE}/store/<storeName>.tar.zst`; rewrite to
   `{BLOB_BASE}/blobs/<sha256[0:2]>/<sha256>` once Phase 4 lands the
   content-addressed blob path. Until then, keep the current placeholder
   and update both during the same change.
-- `php-unix/tarball.nix` — same change for interpreter manifests.
-- `php-unix/index.nix` — pass through both placeholders unchanged.
+- `php/tarball.nix` — same change for interpreter manifests.
+- `php/index.nix` — pass through both placeholders unchanged.
 
 **Effort:** half a day on its own; bundle with Phase 4.
 
@@ -118,7 +118,7 @@ all extensions together; the new shape groups by name. This is the
 load-bearing property for the "publish a new xdebug version touches
 one section file" sync efficiency claim.
 
-**Files affected:** `php-unix/index.nix` only.
+**Files affected:** `php/index.nix` only.
 
 **Effort:** rolled into Phase 1.
 
@@ -136,9 +136,9 @@ scheme defeats this — a rebuild with identical content lands at the
 same URL only because tag and content happen to line up.
 
 **Files affected:**
-- `php-unix/index.nix` — emit blob paths under `blobs/` keyed by
+- `php/index.nix` — emit blob paths under `blobs/` keyed by
   the per-tarball sha256 already computed.
-- `php-unix/tarball*.nix` — manifests reference blobs via the new
+- `php/tarball*.nix` — manifests reference blobs via the new
   layout.
 - The CI publish step assembles the tree under the new layout.
 
@@ -164,7 +164,7 @@ becomes unwanted.
 **Files affected:**
 - `.github/workflows/build.yml` — new step in the `release` job:
   `cosign sign-blob --yes index.json > index.json.sig`.
-- `php-unix/index.nix` — pass through `index.json.sig` if present
+- `php/index.nix` — pass through `index.json.sig` if present
   (signing happens outside the Nix build, in CI, after the
   derivation has produced the unsigned root).
 
@@ -177,9 +177,9 @@ file, set by editing a small `yanks.json` (or similar) and
 re-running the index generator. No artifact rebuild required.
 
 **Files affected:**
-- New `php-unix/yanks.nix` or a top-level `yanks.json` consumed by
+- New `shared/yanks.nix` or a top-level `yanks.json` consumed by
   `index.nix` during generation.
-- `php-unix/index.nix` — read the yanks list; merge `yanked: true`
+- `php/index.nix` — read the yanks list; merge `yanked: true`
   + `yanked_reason` into matching artifact entries.
 
 **Effort:** half a day.
@@ -270,7 +270,7 @@ substitution.
 **Files affected:**
 - `frozen/` — new directory with a `.gitkeep`; one `php-<minor>.json` per
   frozen minor.
-- `php-unix/index.nix` — new `frozenFiles ? []` parameter; Phase 2a splice
+- `php/index.nix` — new `frozenFiles ? []` parameter; Phase 2a splice
   loop; overlap and duplicate-tag validation; per-entry integrity check
   (sha256 of `jq -S .manifest` must match `section_entry.manifest.sha256`).
 - `flake.nix` — populate `frozenFiles` by walking `./frozen/*.json` via
@@ -289,7 +289,7 @@ substitution.
 
 ## Sequencing
 
-Phases 1, 3, 4 are one combined refactor of `php-unix/index.nix` —
+Phases 1, 3, 4 are one combined refactor of `php/index.nix` —
 do them as a single PR. Phase 2 (URL placeholder split) bundles
 into the same PR since it touches the same files.
 

@@ -13,6 +13,7 @@
 { mkDep, pkgs, php, xdebugSpec }:
 mkDep {
   name = "xdebug";
+  buildScript = ./build-xdebug.sh;
   version = xdebugSpec.version;
   src = pkgs.fetchurl { inherit (xdebugSpec) url sha256; };
   deps = [ php ];

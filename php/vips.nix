@@ -8,6 +8,7 @@
 { mkDep, pkgs, php, libvips, glib, vipsSpec }:
 mkDep {
   name = "vips";
+  buildScript = ./build-vips.sh;
   version = vipsSpec.version;
   src = pkgs.fetchurl { inherit (vipsSpec) url sha256; };
   # glib appears here in addition to libvips because vips.pc has

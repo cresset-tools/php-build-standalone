@@ -60,7 +60,7 @@ if ! git rev-parse --verify "$base_ref" >/dev/null 2>&1; then
 fi
 
 # ---- Stage current + baseline sources.nix to tempfiles ----
-# Using `nix eval --expr 'import ./php-unix/sources.nix'` would resolve
+# Using `nix eval --expr 'import ./shared/sources.nix'` would resolve
 # the path through the flake's tree (staged/HEAD), making unstaged edits
 # invisible. Copy the working-tree file to a tempfile and eval that
 # absolute path — matches how the baseline is handled and gives the lint
@@ -69,8 +69,8 @@ curr_file="$(mktemp --suffix=.nix)"
 prev_file="$(mktemp --suffix=.nix)"
 trap 'rm -f "$curr_file" "$prev_file"' EXIT
 
-cp php-unix/sources.nix "$curr_file"
-git show "$base_ref:php-unix/sources.nix" > "$prev_file"
+cp shared/sources.nix "$curr_file"
+git show "$base_ref:shared/sources.nix" > "$prev_file"
 
 curr_versions="$(nix eval --json --impure --expr \
   "(import $curr_file).phpVersions" \

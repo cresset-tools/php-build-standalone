@@ -7,6 +7,7 @@
 { mkDep, pkgs, php, pcovSpec }:
 mkDep {
   name = "pcov";
+  buildScript = ./build-pcov.sh;
   version = pcovSpec.version;
   src = pkgs.fetchurl { inherit (pcovSpec) url sha256; };
   deps = [ php ];

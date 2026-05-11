@@ -12,6 +12,7 @@
 { mkDep, pkgs, php, imagemagick, imagickSpec }:
 mkDep {
   name = "imagick";
+  buildScript = ./build-imagick.sh;
   version = imagickSpec.version;
   src = pkgs.fetchurl { inherit (imagickSpec) url sha256; };
   deps = [ php imagemagick ];

@@ -1,4 +1,4 @@
-# nativeBuildInputs for Darwin builds. Mirrors php-unix/toolchain.nix
+# nativeBuildInputs for Darwin builds. Mirrors shared/toolchain.nix
 # but drops Linux-only tools (patchelf, rpm, cpio) and skips the
 # old-glibc sysroot wiring.
 { pkgs, toolchain }:

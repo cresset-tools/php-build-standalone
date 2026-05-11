@@ -8,6 +8,7 @@
 { mkDep, pkgs, php, apcuSpec }:
 mkDep {
   name = "apcu";
+  buildScript = ./build-apcu.sh;
   version = apcuSpec.version;
   src = pkgs.fetchurl { inherit (apcuSpec) url sha256; };
   deps = [ php ];
