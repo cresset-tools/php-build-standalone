@@ -47,19 +47,23 @@ rm -f "$script"
 [ "$rc" -eq 0 ] || die "php script.php exited rc=$rc (139 = zend_ini_deactivate segfault); output: $out"
 [ "$out" = "ok" ] || die "php script.php produced unexpected output: $out"
 
-# 3. php -m must list the bundled extensions that are auto-loaded. Note:
-#    opcache and xdebug are zend_extensions and are NOT auto-loaded — they
-#    have dedicated gates below that exercise dlopen via -dzend_extension.
+# 3. php -m must list the Debian-aligned core extension set that the
+#    interpreter tarball auto-loads (REFACTOR_DEBIAN_ALIGNED.md).
+#    Optional extensions (curl, intl, mbstring, gd, mysqli, pgsql, sqlite3,
+#    bz2, zip, soap, exif, the trivial bucket) are NOT in the interpreter
+#    tarball — they ship via per-ext tarballs and are tested separately.
+#    opcache + xdebug are zend_extensions and are NOT auto-loaded; dedicated
+#    gates below exercise their dlopen path via -dzend_extension.
 emit "php -m"
 modules=$("$PHP" -m) || die "php -m failed"
 printf '%s\n' "$modules"
-for ext in Core curl date dom exif intl json mbstring openssl pcre pdo_sqlite \
-           pdo_pgsql pgsql sodium sqlite3 zip zlib iconv \
-           bcmath calendar ftp pcntl shmop sockets sysvmsg sysvsem sysvshm \
-           soap; do
+for ext in Core ctype date dom fileinfo filter hash iconv json libxml \
+           openssl pcre PDO Phar posix readline Reflection session \
+           SimpleXML sodium SPL standard tokenizer xml xmlreader \
+           xmlwriter zlib; do
     printf '%s\n' "$modules" | grep -qx "$ext" || \
         printf '%s\n' "$modules" | grep -qix "$ext" || \
-        die "expected extension '$ext' not loaded"
+        die "expected core extension '$ext' not loaded"
 done
 
 # 4. xdebug must dlopen and report its version. This is the central use
@@ -87,11 +91,12 @@ else
     emit "NOTICE: run with XDEBUG_SO=<path> or extract the per-extension tarball alongside /php to test xdebug"
 fi
 
-# 4c. imagick must dlopen + version-check. Same dual-layout policy as
-#     xdebug: imagick is shipped as a per-extension tarball; the .so is
-#     also present in the interpreter tarball (interpreterDeps in tree.nix
-#     pulls it in alongside xdebug). When the .so is missing the gate is
-#     skipped with a NOTICE — covers interpreter-only smoke runs.
+# 4c. imagick must dlopen + version-check when the per-ext tarball has
+#     been installed. After the Debian-aligned split (REFACTOR_DEBIAN_
+#     ALIGNED.md), imagick.so is NEVER in the interpreter tarball — it
+#     ships only via its per-ext tarball. The gate skips with a NOTICE
+#     when imagick.so is absent (interpreter-only smoke run); set
+#     IMAGICK_SO=<path> for explicit testing of the per-ext layout.
 emit "imagick load"
 _imagick_so="${IMAGICK_SO:-$ext_dir/imagick.so}"
 if [ -f "$_imagick_so" ]; then
@@ -101,7 +106,7 @@ if [ -f "$_imagick_so" ]; then
     printf '%s\n' "$out"
     case "$out" in imagick=*) : ;; *) die "imagick did not report a version: $out" ;; esac
 else
-    emit "NOTICE: imagick.so not found at $_imagick_so — skipping imagick dlopen gate"
+    emit "NOTICE: imagick.so not found at $_imagick_so — skipping imagick dlopen gate (per-ext tarball not extracted)"
 fi
 
 # 4b. opcache (zend_extension) must register. On 8.1-8.4 it ships as
@@ -118,18 +123,38 @@ out=$("$PHP" -r 'echo extension_loaded("Zend OPcache") ? "opcache=ok\n" : "opcac
 printf '%s\n' "$out"
 case "$out" in opcache=ok) : ;; *) die "opcache did not register: $out" ;; esac
 
-# 5. intl (ICU) must format a currency — exercises the bundled libicu.
-emit "intl currency"
-out=$("$PHP" -r 'echo NumberFormatter::create("en_US",
-    NumberFormatter::CURRENCY)->formatCurrency(1234.56, "USD"), "\n";') \
-    || die "intl format failed"
+# 5. dom (libxml2) must parse + XPath a small document — exercises the
+#    bundled libxml2 end-to-end (was previously an intl currency probe;
+#    intl moved out of the interpreter tarball with the Debian-aligned
+#    split and its own per-ext tarball is exercised separately).
+emit "dom + libxml2 roundtrip"
+out=$("$PHP" -r '
+    $d = new DOMDocument();
+    $d->loadXML("<r><n>hi</n></r>");
+    $xp = new DOMXPath($d);
+    echo $xp->query("/r/n")->item(0)->textContent, "\n";
+') || die "dom roundtrip failed"
 printf '%s\n' "$out"
+[ "$out" = "hi" ] || die "dom roundtrip got '$out', expected 'hi'"
 
 # 6. openssl must complete a real handshake-equivalent op (not just load).
 emit "openssl + hash"
 out=$("$PHP" -r 'echo bin2hex(openssl_random_pseudo_bytes(8)), " ",
     hash("sha256", "abc"), "\n";') || die "openssl op failed"
 printf '%s\n' "$out"
+
+# 6b. sodium (libsodium) keypair + signature roundtrip — exercises the
+#     bundled libsodium and confirms ext/sodium loads correctly.
+emit "sodium signature roundtrip"
+out=$("$PHP" -r '
+    $kp = sodium_crypto_sign_keypair();
+    $sig = sodium_crypto_sign_detached("msg",
+        sodium_crypto_sign_secretkey($kp));
+    echo sodium_crypto_sign_verify_detached($sig, "msg",
+        sodium_crypto_sign_publickey($kp)) ? "ok\n" : "fail\n";
+') || die "sodium op failed"
+printf '%s\n' "$out"
+[ "$out" = "ok" ] || die "sodium roundtrip did not verify: $out"
 
 # 7. Relocation: extension_dir is computed from /proc/self/exe at runtime,
 #    so it should track wherever bin/php currently lives. The mount point

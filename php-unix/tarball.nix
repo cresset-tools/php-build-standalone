@@ -12,6 +12,16 @@
 , target ? if pkgs.stdenv.isDarwin then "aarch64-apple-darwin" else "x86_64-unknown-linux-gnu"
 , phpVersion ? "8.4"
 , nixpkgsRev
+, coreExtensions  # list of extension names to keep in the interpreter
+                  # tarball. Everything else built shared by PHP is pruned
+                  # out at staging time; it ships only via per-ext tarballs.
+, coreDepNames    # short names of bundled C-lib deps to keep in store/.
+                  # Phase B: optional deps ship only via per-store-path
+                  # tarballs that the CLI fetches when an optional
+                  # extension declares them in its closure manifest.
+, deps            # the full deps attrset (short name → derivation, with
+                  # passthru.storeName) — used to translate coreDepNames
+                  # into the on-disk store/<storeName>/ paths to keep.
 }:
 let
   inherit (pkgs) stdenv lib;
@@ -144,11 +154,70 @@ pkgs.stdenvNoCC.mkDerivation {
     # so it needs write permission, even when the parent is unchanged).
     chmod -R u+w "$staging/install"
 
-    # Phase 3: xdebug ships via its own per-extension tarball. Remove it
-    # from the interpreter tarball so consumers don't accidentally load it
-    # from the wrong path and to keep the interpreter-tarball closure tight.
-    # xdebug is a zend_extension and has no conf.d fragment to remove.
-    find "$staging/install/lib/extensions" -name "xdebug.so" -delete 2>/dev/null || true
+    # Debian-aligned split: the interpreter tarball ships only the core
+    # extension set (REFACTOR_DEBIAN_ALIGNED.md). Everything else built
+    # shared by PHP — and the PECL extensions xdebug/imagick/redis/vips —
+    # gets pruned here and is distributed via per-ext tarballs instead.
+    #
+    # Two-step prune:
+    #   (a) lib/extensions/<api>/<name>.so — drop every .so whose basename
+    #       (sans .so) is not in the core allowlist.
+    #   (b) etc/php/conf.d/*-<name>.ini — drop every auto-loader fragment
+    #       whose target extension is no longer present, so the shipped
+    #       interpreter doesn't fail to start with "Unable to load
+    #       dynamic library 'X.so'".
+    #
+    # The set of *kept* names below mirrors flake.nix's coreExtensions list.
+    # Any optional .so still needed by a project gets installed via its
+    # per-ext tarball, which carries its own conf.d fragment alongside.
+    keep_re='${pkgs.lib.concatStringsSep "|" coreExtensions}'
+    ext_dir="$(find "$staging/install/lib/extensions" -mindepth 1 -maxdepth 1 -type d | head -n1)"
+    if [ -n "$ext_dir" ]; then
+      # Use shell extglob so the regex above can be evaluated as a literal
+      # word boundary check; simpler than awk/find regex flag dance.
+      while IFS= read -r so; do
+        bn="$(basename "$so" .so)"
+        if ! printf '%s\n' "$bn" | grep -qE "^($keep_re)$"; then
+          rm -f "$so"
+        fi
+      done < <(find "$ext_dir" -maxdepth 1 -type f -name '*.so')
+    fi
+    if [ -d "$staging/install/etc/php/conf.d" ]; then
+      while IFS= read -r ini; do
+        # Filename shape: NN-<extname>.ini (build-php.sh emits 10-/20-/30-
+        # /35-/40-/50- prefixes).
+        bn="$(basename "$ini" .ini)"
+        ext_name="''${bn#*-}"
+        if ! printf '%s\n' "$ext_name" | grep -qE "^($keep_re)$"; then
+          rm -f "$ini"
+        fi
+      done < <(find "$staging/install/etc/php/conf.d" -maxdepth 1 -type f -name '*.ini')
+    fi
+
+    # Phase B: prune store/<storeName>/ entries down to the core C-libs
+    # that bin/php and the core extensions actually need at runtime.
+    # Optional bundled deps (icu, libcurl, libpq, oniguruma, sqlite, …)
+    # are reachable only via the per-store-path tarballs produced by
+    # tarball-store-path.nix; the CLI materializes them under store/ when
+    # the user installs an optional extension that declares them in its
+    # closure manifest.
+    #
+    # Audit gates already ran inside tree.nix's finalize step against the
+    # full pre-prune tree, so RPATHs were validated end-to-end. The
+    # interpreter binaries shipped here keep their original RPATHs
+    # pointing at $ORIGIN/../store/<optional-storeName>/lib — those
+    # paths just don't resolve until the consumer also installs the
+    # matching per-store-path tarball.
+    keep_stores='${pkgs.lib.concatStringsSep "|" (map
+      (n: deps.${n}.passthru.storeName) coreDepNames)}'
+    if [ -d "$staging/install/store" ]; then
+      while IFS= read -r d; do
+        bn="$(basename "$d")"
+        if ! printf '%s\n' "$bn" | grep -qE "^($keep_stores)$"; then
+          rm -rf "$d"
+        fi
+      done < <(find "$staging/install/store" -mindepth 1 -maxdepth 1 -type d)
+    fi
 
     # Reproducible tar: --sort=name + clamp mtime via SOURCE_DATE_EPOCH.
     export SOURCE_DATE_EPOCH=1704067200

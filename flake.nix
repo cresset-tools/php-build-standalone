@@ -152,13 +152,21 @@
           # Build one complete PHP variant from a phpVersions key.
           # Bundled C deps are shared; only the PHP and per-extension
           # derivations differ between variants.
+          # Per-extension series resolver. Today each <ext>Versions map has
+          # exactly one entry; pick it. If/when an extension grows a second
+          # series with PHP-minor-specific selection, replace this with a
+          # lookup against an extensionMatrix table in sources.nix.
+          pickOnly = attrs:
+            let names = builtins.attrNames attrs; in
+            assert builtins.length names == 1; attrs.${builtins.head names};
+
           mkPhpVariant = phpKey:
             let
               phpSpec     = sources.phpVersions.${phpKey};
-              xdebugSpec  = sources.xdebugVersions.${phpSpec.xdebug};
-              imagickSpec = sources.imagickVersions.${phpSpec.imagick};
-              redisSpec   = sources.redisVersions.${phpSpec.redis};
-              vipsSpec    = sources.vipsVersions.${phpSpec.vips};
+              xdebugSpec  = pickOnly sources.xdebugVersions;
+              imagickSpec = pickOnly sources.imagickVersions;
+              redisSpec   = pickOnly sources.redisVersions;
+              vipsSpec    = pickOnly sources.vipsVersions;
 
               php = pkgs.callPackage ./php-unix/php.nix ({
                 inherit mkDep phpSpec;
@@ -188,8 +196,36 @@
                 inherit toolchain;
                 phpVersion = phpSpec.version;
               };
+              # Core extensions (per REFACTOR_DEBIAN_ALIGNED.md): these
+              # ship in the interpreter tarball with auto-loading conf.d
+              # fragments. Everything else built shared by PHP gets
+              # pruned out of the interpreter tarball during staging and
+              # is reachable only via per-ext tarballs.
+              # opcache is a zend_extension; on PHP 8.5 it's static-built
+              # into bin/php and produces no .so (build-php.sh's loader
+              # generation already conditional-skips it). Listing it here
+              # is a no-op on 8.5 and load-bearing on 8.1–8.4.
+              coreExtensions = [
+                "ctype" "dom" "fileinfo" "filter" "iconv" "opcache"
+                "openssl" "pdo" "phar" "posix" "session" "simplexml"
+                "sodium" "tokenizer" "xml" "xmlreader" "xmlwriter"
+              ];
+              # Core C-libs (Phase B): the only bundled deps that stay in
+              # the interpreter tarball's store/ tree. bin/php and the core
+              # extensions DT_NEEDED these (zlib + openssl for HTTPS streams
+              # / phar signatures / mysqlnd TLS, libxml2 for the dom/xml
+              # family, libsodium for sodium, libedit + ncurses for the
+              # readline REPL). libiconv is added on Darwin only because
+              # apple-sdk strips its headers; Linux's glibc ships iconv.
+              # Every other bundled dep is reachable only via per-store-path
+              # tarballs that the CLI fetches when an optional extension
+              # declares them in its closure manifest.
+              coreDepNames = [
+                "zlib" "openssl" "libxml2" "libsodium" "libedit" "ncurses"
+              ] ++ pkgs.lib.optional darwin "libiconv";
               tarball = pkgs.callPackage ./php-unix/tarball.nix {
-                inherit tree sources nixpkgsRev phpSpec xdebugSpec;
+                inherit tree sources nixpkgsRev phpSpec xdebugSpec
+                        coreExtensions coreDepNames deps;
                 phpVersion = phpSpec.version;
               };
 
@@ -243,40 +279,53 @@
                 confFragment = "extension=${extName}";
               };
 
-              # Per-extension tarballs.
+              # Per-extension tarballs. After the Debian-aligned split,
+              # everything outside the core set ships only via these per-ext
+              # tarballs (the interpreter tarball drops the corresponding
+              # .so + conf.d fragment in tarball.nix).
+              #
               #   xdebug: confFragment=null because xdebug is a
               #     zend_extension and must NOT be auto-loaded; users opt
               #     in explicitly at runtime.
-              #   imagick: PECL ext built via phpize (build-imagick.sh).
-              #     Closure pulls in imagemagick + libtiff/lcms2/openjpeg/
-              #     libheif/libde265 transitively.
-              #   pgsql / pdo_pgsql and the trivial bucket (exif,
-              #     bcmath, calendar, ftp, pcntl, shmop, sockets, sysv*,
-              #     soap): built shared by PHP's own configure and live
-              #     in tree; each is just packaged separately with its
-              #     closure recorded. Auto-loaded via a 20-X.ini conf.d
-              #     fragment. The 20-/30- conf.d ordering between e.g.
-              #     pdo_pgsql.ini and pdo.ini is benign — PHP reorders
+              #   imagick / vips: PECL exts built via phpize, with heavy
+              #     C-lib closures (imagemagick + delegates; libvips + glib).
+              #   redis: PECL ext, no external C library.
+              #   built-ins (everything else): produced by PHP's own
+              #     configure --enable-X=shared / --with-X=shared and live
+              #     in tree; each is packaged separately with its closure
+              #     recorded. Auto-loaded via a 20-X.ini conf.d fragment.
+              #     The 20-/30-/40- conf.d ordering between e.g.
+              #     pdo_mysql.ini and pdo.ini is benign — PHP reorders
               #     MINIT to honor ZEND_MOD_REQUIRED("pdo") regardless
               #     of conf.d order.
               extensions = ({
-                xdebug    = mkExt { extDrv = xdebug;  extName = "xdebug";  extVersion = xdebugSpec.version;  confFragment = null; };
-                imagick   = mkExt { extDrv = imagick; extName = "imagick"; extVersion = imagickSpec.version; confFragment = "extension=imagick"; };
-                redis     = mkExt { extDrv = redis;   extName = "redis";   extVersion = redisSpec.version;   confFragment = "extension=redis"; };
-                pgsql     = mkBuiltinExt "pgsql";
-                pdo_pgsql = mkBuiltinExt "pdo_pgsql";
-                exif      = mkBuiltinExt "exif";
-                bcmath    = mkBuiltinExt "bcmath";
-                calendar  = mkBuiltinExt "calendar";
-                ftp       = mkBuiltinExt "ftp";
-                pcntl     = mkBuiltinExt "pcntl";
-                shmop     = mkBuiltinExt "shmop";
-                sockets   = mkBuiltinExt "sockets";
-                sysvmsg   = mkBuiltinExt "sysvmsg";
-                sysvsem   = mkBuiltinExt "sysvsem";
-                sysvshm   = mkBuiltinExt "sysvshm";
-                soap      = mkBuiltinExt "soap";
-                vips      = mkExt { extDrv = vips;    extName = "vips";    extVersion = vipsSpec.version;    confFragment = "extension=vips"; };
+                xdebug      = mkExt { extDrv = xdebug;  extName = "xdebug";  extVersion = xdebugSpec.version;  confFragment = null; };
+                imagick     = mkExt { extDrv = imagick; extName = "imagick"; extVersion = imagickSpec.version; confFragment = "extension=imagick"; };
+                redis       = mkExt { extDrv = redis;   extName = "redis";   extVersion = redisSpec.version;   confFragment = "extension=redis"; };
+                vips        = mkExt { extDrv = vips;    extName = "vips";    extVersion = vipsSpec.version;    confFragment = "extension=vips"; };
+                mbstring    = mkBuiltinExt "mbstring";
+                intl        = mkBuiltinExt "intl";
+                curl        = mkBuiltinExt "curl";
+                gd          = mkBuiltinExt "gd";
+                bz2         = mkBuiltinExt "bz2";
+                zip         = mkBuiltinExt "zip";
+                mysqli      = mkBuiltinExt "mysqli";
+                pdo_mysql   = mkBuiltinExt "pdo_mysql";
+                sqlite3     = mkBuiltinExt "sqlite3";
+                pdo_sqlite  = mkBuiltinExt "pdo_sqlite";
+                pgsql       = mkBuiltinExt "pgsql";
+                pdo_pgsql   = mkBuiltinExt "pdo_pgsql";
+                exif        = mkBuiltinExt "exif";
+                bcmath      = mkBuiltinExt "bcmath";
+                calendar    = mkBuiltinExt "calendar";
+                ftp         = mkBuiltinExt "ftp";
+                pcntl       = mkBuiltinExt "pcntl";
+                shmop       = mkBuiltinExt "shmop";
+                sockets     = mkBuiltinExt "sockets";
+                sysvmsg     = mkBuiltinExt "sysvmsg";
+                sysvsem     = mkBuiltinExt "sysvsem";
+                sysvshm     = mkBuiltinExt "sysvshm";
+                soap        = mkBuiltinExt "soap";
               });
 
               # Release aggregate: collects every artifact for this PHP

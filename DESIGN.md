@@ -219,20 +219,40 @@ until the index policy decides to evict GC-able paths).
 
 ## Interpreter tarball
 
-The interpreter tarball ships:
+The interpreter tarball is **Debian-aligned** — it ships only the core
+extension set and the bundled C-libs that core actually needs at runtime.
+See [`REFACTOR_DEBIAN_ALIGNED.md`](REFACTOR_DEBIAN_ALIGNED.md) for the full
+rationale and tables.
 
 - `bin/php`, `bin/php-fpm`, `bin/phar`, etc — SAPI binaries.
-- `lib/extensions/<api>/` — the "always-shipped" extension set
-  (mbstring, intl, curl, pdo, pdo_mysql, pdo_sqlite, sqlite3, sodium,
-  bz2, zip, gd, fileinfo, filter, phar, posix, session, tokenizer,
-  ctype, dom, xml, xmlreader, xmlwriter, simplexml, mysqli, openssl,
-  opcache).
-- `etc/php/conf.d/` — fragments for the always-shipped set only.
-  User-installed extensions land in *project-local* conf.d, not
-  here (see CLI integration below).
-- `store/` — full closure for the always-shipped set + SAPIs.
+- `lib/extensions/<api>/` — the **core** set: ctype, dom, fileinfo, filter,
+  iconv, opcache (.so on 8.1–8.4; static-built into bin/php on 8.5),
+  openssl, pdo, phar, posix, session, simplexml, sodium, tokenizer, xml,
+  xmlreader, xmlwriter. Mirrors what `php8.x-cli` provides on Debian
+  Bookworm. Every other extension PHP's configure produced (mbstring, intl,
+  curl, gd, mysqli, pdo_mysql, sqlite3, pdo_sqlite, pgsql, pdo_pgsql, bz2,
+  zip, soap, exif, the trivial bucket, plus the PECL extensions xdebug,
+  imagick, redis, vips) ships only via the per-extension distribution
+  layer. The `.so` files are still produced at build time so per-ext
+  tarballs can package them; they're pruned out of the interpreter
+  tarball during staging in `tarball.nix`.
+- `etc/php/conf.d/` — auto-loading fragments for the core set only. Pruning
+  in `tarball.nix` keeps these in lock-step with the .so allowlist so the
+  shipped interpreter never references a missing .so on startup.
+- `store/` — closure for the core set: zlib, openssl, libxml2, libsodium,
+  libedit, ncurses (+ libiconv on Darwin). Optional bundled deps (icu,
+  libcurl + nghttp2, libpq, oniguruma, sqlite, the gd/imagemagick image
+  delegate stack, glib + libvips, etc.) ship via per-store-path tarballs
+  that the CLI fetches on demand.
 - `etc/php/php.ini`, `etc/php/php-fpm.conf` — relocatable defaults
   per V1's existing patches.
+
+Audit gates inside `tree.nix`'s finalize step still walk the *full*
+pre-prune tree, so RPATHs are validated end-to-end at build time. The
+shipped binaries keep their original `$ORIGIN/../store/<storeName>/lib`
+RPATHs pointing at optional store paths — those entries just don't
+resolve until the consumer also installs the matching per-store-path
+tarball.
 
 The tarball's `store/` is the canonical seed for the per-system
 store. The CLI lays an install out so its `<install>/store/` is a
