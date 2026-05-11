@@ -357,6 +357,11 @@
                 sysvsem     = mkBuiltinExt "sysvsem";
                 sysvshm     = mkBuiltinExt "sysvshm";
                 soap        = mkBuiltinExt "soap";
+              } // pkgs.lib.optionalAttrs (!darwin) {
+                # gettext is Linux-only (apple-sdk_14 + Apple's libc don't
+                # provide a real libintl implementation; build-php.sh sets
+                # --without-gettext on Darwin and produces no gettext.so).
+                gettext = mkBuiltinExt "gettext";
               });
 
               # Release aggregate: collects every artifact for this PHP

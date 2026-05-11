@@ -145,6 +145,7 @@ fetches the matching per-store-path tarballs on demand:
 | **msgpack** | — |
 | **apcu** | — |
 | **pcov** | — |
+| **gettext** *(Linux)* | — (uses glibc's libintl in libc) |
 
 Each per-store-path tarball lives at `store/<name>-<ver>-<hash>/` after
 extraction; PHP and the extensions reach them via per-binary RPATHs that
