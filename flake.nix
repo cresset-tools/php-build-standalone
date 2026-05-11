@@ -162,11 +162,14 @@
 
           mkPhpVariant = phpKey:
             let
-              phpSpec     = sources.phpVersions.${phpKey};
-              xdebugSpec  = pickOnly sources.xdebugVersions;
-              imagickSpec = pickOnly sources.imagickVersions;
-              redisSpec   = pickOnly sources.redisVersions;
-              vipsSpec    = pickOnly sources.vipsVersions;
+              phpSpec      = sources.phpVersions.${phpKey};
+              xdebugSpec   = pickOnly sources.xdebugVersions;
+              imagickSpec  = pickOnly sources.imagickVersions;
+              redisSpec    = pickOnly sources.redisVersions;
+              vipsSpec     = pickOnly sources.vipsVersions;
+              igbinarySpec = pickOnly sources.igbinaryVersions;
+              msgpackSpec  = pickOnly sources.msgpackVersions;
+              apcuSpec     = pickOnly sources.apcuVersions;
 
               php = pkgs.callPackage ./php-unix/php.nix ({
                 inherit mkDep phpSpec;
@@ -190,9 +193,20 @@
                 inherit mkDep php vipsSpec;
                 inherit (deps) libvips glib;
               };
+              igbinary = pkgs.callPackage ./php-unix/igbinary.nix {
+                inherit mkDep php igbinarySpec;
+              };
+              msgpack = pkgs.callPackage ./php-unix/msgpack.nix {
+                inherit mkDep php msgpackSpec;
+              };
+              apcu = pkgs.callPackage ./php-unix/apcu.nix {
+                inherit mkDep php apcuSpec;
+              };
               tree = pkgs.callPackage ./php-unix/tree.nix {
                 bundledDeps = sharedDeps;
-                interpreterDeps = [ php xdebug imagick vips redis ];
+                interpreterDeps = [
+                  php xdebug imagick vips redis igbinary msgpack apcu
+                ];
                 inherit toolchain;
                 phpVersion = phpSpec.version;
               };
@@ -299,10 +313,19 @@
               #     MINIT to honor ZEND_MOD_REQUIRED("pdo") regardless
               #     of conf.d order.
               extensions = ({
-                xdebug      = mkExt { extDrv = xdebug;  extName = "xdebug";  extVersion = xdebugSpec.version;  confFragment = null; };
-                imagick     = mkExt { extDrv = imagick; extName = "imagick"; extVersion = imagickSpec.version; confFragment = "extension=imagick"; };
-                redis       = mkExt { extDrv = redis;   extName = "redis";   extVersion = redisSpec.version;   confFragment = "extension=redis"; };
-                vips        = mkExt { extDrv = vips;    extName = "vips";    extVersion = vipsSpec.version;    confFragment = "extension=vips"; };
+                xdebug      = mkExt { extDrv = xdebug;   extName = "xdebug";   extVersion = xdebugSpec.version;   confFragment = null; };
+                imagick     = mkExt { extDrv = imagick;  extName = "imagick";  extVersion = imagickSpec.version;  confFragment = "extension=imagick"; };
+                redis       = mkExt { extDrv = redis;    extName = "redis";    extVersion = redisSpec.version;    confFragment = "extension=redis"; };
+                vips        = mkExt { extDrv = vips;     extName = "vips";     extVersion = vipsSpec.version;     confFragment = "extension=vips"; };
+                igbinary    = mkExt { extDrv = igbinary; extName = "igbinary"; extVersion = igbinarySpec.version; confFragment = "extension=igbinary"; };
+                # confPrefix=40: msgpack 3.0.0's session-serializer integration
+                # references ps_globals (compiled in unconditionally because PHP's
+                # main/php_config.h sets HAVE_PHP_SESSION=1). dlopen would fail with
+                # "undefined symbol: ps_globals" if msgpack.so loaded before
+                # session.so. The core ships session at 20-session.ini, so msgpack's
+                # auto-loader has to land at a later prefix.
+                msgpack     = mkExt { extDrv = msgpack;  extName = "msgpack";  extVersion = msgpackSpec.version;  confFragment = "extension=msgpack"; confPrefix = "40"; };
+                apcu        = mkExt { extDrv = apcu;     extName = "apcu";     extVersion = apcuSpec.version;     confFragment = "extension=apcu"; };
                 mbstring    = mkBuiltinExt "mbstring";
                 intl        = mkBuiltinExt "intl";
                 curl        = mkBuiltinExt "curl";

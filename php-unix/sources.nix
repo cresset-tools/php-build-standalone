@@ -412,6 +412,47 @@
     };
   };
 
+  # igbinary PECL extension. Fast binary serializer, an order of magnitude
+  # smaller and faster than serialize() / json_encode() for round-tripping
+  # PHP values. Commonly used as a serializer backend for Redis (phpredis)
+  # and Memcached. No external C-library — pure C built via phpize.
+  #
+  # 3.2.17RC1 is the first release that compiles against PHP 8.4+ — the
+  # 3.2.16 stable predates PHP's removal of `ext/standard/php_smart_string.h`
+  # (replaced by Zend/zend_smart_string.h) and fails to build on 8.4/8.5.
+  # PECL's <s>stable</s> tag flags 3.2.17RC1 as stable despite the RC suffix.
+  igbinaryVersions = {
+    "3.2" = {
+      version = "3.2.17RC1";
+      url = "https://pecl.php.net/get/igbinary-3.2.17RC1.tgz";
+      sha256 = "91da821443db125282a6aea039f24588dd28ff5d71e8187f6ecc41165bceafbc";
+    };
+  };
+
+  # msgpack PECL extension. MessagePack codec — alternative compact serializer.
+  # Like igbinary, an opt-in serializer backend for Redis/Memcached. 3.0.0 is
+  # the first stable release supporting PHP 8.4+. No external C-library — the
+  # MessagePack format implementation is vendored in the PECL source.
+  msgpackVersions = {
+    "3.0" = {
+      version = "3.0.0";
+      url = "https://pecl.php.net/get/msgpack-3.0.0.tgz";
+      sha256 = "55306a84797d399c6b269181ec484634f18bea1330bbd9d7405043c597de69cd";
+    };
+  };
+
+  # APCu PECL extension. Userspace shared-memory cache; the standard backend
+  # for Symfony's `cache.app`, Laravel's array-cache-with-process-persistence,
+  # Composer's class-loader cache, and many other libraries. No external
+  # C-library — POSIX shm/mmap only. 5.1.x covers PHP 7.0 through 8.5.
+  apcuVersions = {
+    "5.1" = {
+      version = "5.1.24";
+      url = "https://pecl.php.net/get/apcu-5.1.24.tgz";
+      sha256 = "5c28a55b27082c69657e25b7ecf553e2cf6b74ec3fa77d6b76f4fb982e001e43";
+    };
+  };
+
   # The key into phpVersions that `default` and the unqualified CLI output
   # should resolve to. Bump this when a new stable PHP is promoted.
   latestPhp = "8.5";

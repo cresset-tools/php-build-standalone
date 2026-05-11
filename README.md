@@ -141,6 +141,9 @@ fetches the matching per-store-path tarballs on demand:
 | **imagick** | imagemagick + libtiff, lcms2, openjpeg, libheif, libde265 |
 | **redis** | — |
 | **vips** *(Linux)* | libvips, glib, libffi, pcre2, expat |
+| **igbinary** | — |
+| **msgpack** | — |
+| **apcu** | — |
 
 Each per-store-path tarball lives at `store/<name>-<ver>-<hash>/` after
 extraction; PHP and the extensions reach them via per-binary RPATHs that
