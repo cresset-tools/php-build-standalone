@@ -28,8 +28,8 @@ The interpreter tarball is **Debian-aligned**: it ships only the core set of
 extensions and bundled C libraries (everything `php8.x-cli` provides on Debian
 Bookworm — see [`REFACTOR_DEBIAN_ALIGNED.md`](REFACTOR_DEBIAN_ALIGNED.md)).
 Every other extension ships as a separately-addressable per-extension download
-that the [bougie](#) CLI installs on top — the same model uv uses for Python's
-optional stdlib bits.
+that the [bougie](https://github.com/cresset-tools/bougie) CLI installs on top
+— the same model uv uses for Python's optional stdlib bits.
 
 Build a specific PHP minor instead with the typed schema (underscore, not dot
 — the Nix CLI treats `.` as an attribute-path separator):
@@ -104,7 +104,7 @@ the toolchain is a thin wrapper around nixpkgs's `clang`. `@rpath/`-relative
 
 ### What ships in the interpreter tarball (the core)
 
-Aligned with what `php8.2-cli` provides on Debian Bookworm — the set Composer,
+Aligned with what `php8.x-cli` provides on Debian Bookworm — the set Composer,
 modern frameworks, and the `php -a` REPL all assume:
 
 - **Core extensions:** ctype, dom, fileinfo, filter, iconv, opcache,
@@ -157,7 +157,7 @@ No bundled libstdc++ / libgcc_s; those are statically linked into PHP itself.
 
 ```sh
 # Build
-nix build github:modulargento/php-build-standalone
+nix build github:cresset-tools/php-build-standalone
 
 # Extract
 mkdir -p ~/php && tar -C ~/php --use-compress-program=unzstd \
@@ -169,12 +169,18 @@ mkdir -p ~/php && tar -C ~/php --use-compress-program=unzstd \
 ```
 
 The interpreter tarball alone gives you the Debian-aligned core. To load
-xdebug, extract its per-ext tarball over the same `install/` and
-opt in at runtime — bougie automates this end-to-end:
+xdebug, install its per-ext tarball over the same `install/` — and any
+per-store-path tarballs the per-ext manifest's `closure` declares (xdebug
+itself has none; curl pulls libcurl + nghttp2; intl pulls ICU; etc).
+[bougie](https://github.com/cresset-tools/bougie) walks the manifest
+closure and fetches both layers automatically; the manual flow is:
 
 ```sh
-# Manual: extract the per-ext tarball and the closure tarballs it lists
+# 1. Extract the per-ext tarball into the same install/ root
 tar -C ~/php/install --use-compress-program=unzstd -xf xdebug-3.5.1+php85-*.tar.zst
+# 2. (For exts with non-empty closure) extract each per-store-path tarball
+#    listed in <ext>.json's `closure` array into install/store/
+# 3. xdebug is a zend_extension — opt in at runtime rather than auto-loading
 ~/php/install/bin/php -dzend_extension=xdebug -dxdebug.mode=develop \
   -r 'var_dump(["a"=>1, "b"=>[2,3]]);'
 ```
@@ -221,9 +227,11 @@ lives inside `mkDep` rather than scattered across shell scripts. About
 half the bundled deps fit `mkDep`'s built-in `builder = "autotools"`
 template (extract → `./configure` → `make install` → cleanup → audit,
 driven by declarative knobs like `configureFlags` / `postInstallCleanup`
-/ `auditLibs`); the rest (`bzip2`, `ncurses`, `openssl`, `libcurl`,
-`libxml2`, `icu`, plus the cmake-based `libjpeg-turbo` / `libzip`)
-still use a per-dep `build-<dep>.sh` for genuinely-custom logic.
+/ `auditLibs`); the rest use a per-dep `build-<dep>.sh` for genuinely-
+custom logic — the cmake-based deps (`libjpeg-turbo`, `libzip`, `libheif`,
+`openjpeg`, `imagemagick`), the meson-based deps (`glib`, `libvips`),
+and the autotools deps with bespoke configure shapes (`bzip2`, `ncurses`,
+`openssl`, `libcurl`, `libxml2`, `icu`, `libpq`).
 
 ```
    ┌──────────────────────────────────────────────────────────┐
@@ -234,7 +242,7 @@ still use a per-dep `build-<dep>.sh` for genuinely-custom logic.
                             │
                             ▼
    ┌──────────────────────────────────────────────────────────┐
-   │  Per-dep derivations (17 + libiconv on Darwin)           │
+   │  Per-dep derivations (~30, +libiconv on Darwin)          │
    │    <dep>.nix → mkDep autotools template, OR              │
    │    <dep>.nix + build-<dep>.sh for custom-logic deps      │
    │       → $out/lib/<dep>.{so,dylib}                        │
@@ -249,8 +257,10 @@ still use a per-dep `build-<dep>.sh` for genuinely-custom logic.
                             │
                             ▼
    ┌──────────────────────────────────────────────────────────┐
-   │  xdebug derivation                                       │
-   │    via the just-shipped bin/phpize (cross-checks patches)│
+   │  PECL extension derivations (xdebug, imagick, redis,     │
+   │  vips) — built via the just-shipped bin/phpize against   │
+   │  the relocated PHP. Doubles as a cross-check that the    │
+   │  phpize/php-config relocation patches resolve correctly. │
    └──────────────────────────────────────────────────────────┘
                             │
                             ▼
@@ -266,6 +276,8 @@ still use a per-dep `build-<dep>.sh` for genuinely-custom logic.
                             ▼
    ┌──────────────────────────────────────────────────────────┐
    │  tarball.nix          → interpreter .tar.zst + JSON      │
+   │                         (prunes optional .so + store/    │
+   │                          to the Debian-aligned core set) │
    │  tarball-extension.nix → per-extension .tar.zst + manifest│
    │  tarball-store-path.nix → per-store-path .tar.zst        │
    │  index.nix            → cross-variant index.json         │
@@ -361,7 +373,8 @@ DESIGN.md                      content-addressed store + extension
 php-unix/                      single source tree; platform branching is
                                on the Nix side (mkDep.nix, php.nix)
   sources.nix                    per-dep {url, sha256, version} +
-                                 phpVersions / xdebugVersions / latestPhp
+                                 phpVersions / <ext>Versions
+                                 (xdebug/imagick/redis/vips) / latestPhp
   sysroot.nix                    CentOS 7 RPM-based glibc-2.17 sysroot (Linux)
   clang-toolchain.nix            wrapped clang-18 + lld targeting sysroot
   toolchain-darwin.nix           thin nixpkgs-clang wrapper (Darwin)
@@ -374,11 +387,14 @@ php-unix/                      single source tree; platform branching is
                                  autotools template (extract → configure
                                  → make install → cleanup → audit) driven
                                  by declarative knobs in <dep>.nix
-  build-<dep>.sh                 per-dep configure/make/install for the
-                                 ~8 deps that don't fit the autotools
-                                 template (bzip2, ncurses, openssl,
-                                 libcurl, libxml2, icu, libjpeg-turbo,
-                                 libzip) — OS-agnostic where possible
+  build-<dep>.sh                 per-dep configure/make/install for deps
+                                 that don't fit the autotools template:
+                                 cmake (libjpeg-turbo, libzip, libheif,
+                                 openjpeg, imagemagick), meson (glib,
+                                 libvips), and bespoke autotools shapes
+                                 (bzip2, ncurses, openssl, libcurl,
+                                 libxml2, icu, libpq) — OS-agnostic where
+                                 possible
   <dep>.nix                      calls mkDep — either with builder =
                                  "autotools" + configureFlags /
                                  postInstallCleanup / auditLibs, or
@@ -393,14 +409,19 @@ php-unix/                      single source tree; platform branching is
   build-php-post-install-{darwin,noop}.sh    Darwin libresolv install_name fix
   build-php-audit-extra-{linux,noop}.sh      Linux DT_NEEDED bare-soname check
   php.nix                        calls mkDep with all deps + extraEnv
-  build-xdebug.sh                builds xdebug via the shipped phpize
-  xdebug.nix                     calls mkDep with deps=[php]
+  xdebug.nix + build-xdebug.sh   xdebug PECL ext, built via the shipped
+  imagick.nix + build-imagick.sh phpize against bundled deps. Each .nix
+  redis.nix + build-redis.sh     calls mkDep with deps=[php (+ delegate
+  vips.nix + build-vips.sh       libs)]; doubles as a phpize relocation
+                                 cross-check.
   tree.nix                       merges per-dep $outs, runs finalize driver
   finalize-common.sh             shared .la/.pc/text detoxify + phpize rewrite
   finalize-linux.sh              strip → patchelf → audits A–E
   finalize-darwin.sh             install_name + LC_RPATH walks + codesign
   closure.nix                    walks finalized tree, emits closures.json
   tarball.nix                    interpreter .tar.zst + JSON metadata
+                                 (prunes optional .so + store/<dep>/ to
+                                 the Debian-aligned core set at staging)
   tarball-extension.nix          per-extension .tar.zst + manifest
   tarball-store-path.nix         per-store-path .tar.zst + .sha256
   index.nix                      cross-variant index.json (interpreters +
