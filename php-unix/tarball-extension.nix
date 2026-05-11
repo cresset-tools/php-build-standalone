@@ -47,6 +47,13 @@
                      # actual tar.zst the CLI will download).
 , target ? if pkgs.stdenv.isDarwin then "aarch64-apple-darwin" else "x86_64-unknown-linux-gnu"
 , confFragment ? null  # null → no conf.d; non-null → include this .ini content
+, confPrefix ? "20"    # numeric prefix on the conf.d filename (NN-<ext>.ini).
+                       # Default 20 matches the regular-extension bucket
+                       # build-php.sh emits for the core. Use a higher number
+                       # for extensions that resolve symbols from another ext
+                       # at dlopen time and so must be loaded after it (e.g.
+                       # msgpack uses session symbols → 40-msgpack.ini loads
+                       # after 20-session.ini).
 }:
 let
   inherit (pkgs) stdenv lib;
@@ -191,7 +198,7 @@ pkgs.stdenvNoCC.mkDerivation {
 
     ${lib.optionalString (confFragment != null) ''
       mkdir -p "$staging/etc/php/conf.d"
-      cat > "$staging/etc/php/conf.d/20-${extName}.ini" << 'INIEOF'
+      cat > "$staging/etc/php/conf.d/${confPrefix}-${extName}.ini" << 'INIEOF'
       ${confFragment}
       INIEOF
     ''}
