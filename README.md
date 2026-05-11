@@ -144,6 +144,7 @@ fetches the matching per-store-path tarballs on demand:
 | **igbinary** | — |
 | **msgpack** | — |
 | **apcu** | — |
+| **pcov** | — |
 | **gettext** *(Linux)* | — (uses glibc's libintl in libc) |
 
 Each per-store-path tarball lives at `store/<name>-<ver>-<hash>/` after
