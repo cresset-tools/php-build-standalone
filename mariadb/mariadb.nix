@@ -8,9 +8,12 @@
 #
 # PCRE2 is built from MariaDB's vendored copy under extra/pcre2/ — that
 # copy is patched for MariaDB's regex needs and using the system one
-# tends to expose minor API drift bugs. libedit is also built from
-# MariaDB's bundled copy (extra/libedit/) because its interactive client
-# integrates with the bundled copy via internal headers.
+# tends to expose minor API drift bugs. Line-editing in the interactive
+# client uses MariaDB's bundled readline (extra/readline/) selected by
+# cmake/readline.cmake's fallback when no system readline/libedit is
+# found; build-mariadb.sh additionally patches out client/mysql.cc's
+# Apple-only `editline/readline.h` shortcut so Darwin uses the same
+# bundled path Linux does.
 #
 # `mariadbSpec` is sources.mariadb — kept as a separate arg so flake.nix
 # can pin alternate MariaDB versions in the future without duplicating
