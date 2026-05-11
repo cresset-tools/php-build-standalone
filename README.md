@@ -15,43 +15,49 @@ bundling its C deps in `lib/`, and pointing every RPATH at `$ORIGIN/../lib`.
 
 ## What you get
 
-`nix build` produces a single ~25–29 MB `.tar.zst` for the latest stable PHP:
+`nix build` produces a small (~11 MB compressed) `.tar.zst` for the latest
+stable PHP:
 
 ```
 result/
-├── php-8.5.5-x86_64-unknown-linux-gnu.tar.zst    # the artifact
-└── php-8.5.5-x86_64-unknown-linux-gnu.json       # metadata (ABI, versions, hash)
+├── php-8.5.6-x86_64-unknown-linux-gnu.tar.zst    # the artifact
+└── php-8.5.6-x86_64-unknown-linux-gnu.json       # metadata (ABI, versions, hash)
 ```
 
-Build a specific PHP minor instead with `.#tarball-<minor>` (underscore, not dot
+The interpreter tarball is **Debian-aligned**: it ships only the core set of
+extensions and bundled C libraries (everything `php8.x-cli` provides on Debian
+Bookworm — see [`REFACTOR_DEBIAN_ALIGNED.md`](REFACTOR_DEBIAN_ALIGNED.md)).
+Every other extension ships as a separately-addressable per-extension download
+that the [bougie](#) CLI installs on top — the same model uv uses for Python's
+optional stdlib bits.
+
+Build a specific PHP minor instead with the typed schema (underscore, not dot
 — the Nix CLI treats `.` as an attribute-path separator):
 
 ```sh
-nix build .#tarball-8_1   # → php-8.1.31-<target>.tar.zst
-nix build .#tarball-8_2   # → 8.2.26
-nix build .#tarball-8_3   # → 8.3.14
-nix build .#tarball-8_4   # → 8.4.3
-nix build .#tarball-8_5   # → 8.5.5  (same as the default)
+nix build .#phpVariants.x86_64-linux.8_1.tarball   # → php-8.1.34-<target>.tar.zst
+nix build .#phpVariants.x86_64-linux.8_5.tarball   # → 8.5.6 (latest)
 ```
 
 `<target>` is `x86_64-unknown-linux-gnu` on Linux or `aarch64-apple-darwin`
-on macOS. Extract any of them anywhere, run `bin/php`.
+on macOS. Extract anywhere, run `bin/php`.
 
-Beyond the interpreter tarball, there's a per-extension distribution layer
-(content-addressed `store/<name>-<ver>-<hash>/` layout, per-extension `.tar.zst`
-+ JSON manifest declaring the closure of bundled C-lib store paths it needs).
-xdebug, pgsql, pdo_pgsql, exif, imagick, redis, bcmath, calendar, ftp, pcntl, shmop,
-sockets, sysvmsg, sysvsem, sysvshm, and soap currently ship via this layer:
-`nix build .#extension-xdebug-8_4`, `.#extension-pgsql-8_4`, `.#extension-pdo_pgsql-8_4`,
-`.#extension-exif-8_4`, `.#extension-imagick-8_4`, `.#extension-redis-8_4`,
-`.#extension-bcmath-8_4`, `.#extension-calendar-8_4`, `.#extension-ftp-8_4`,
-`.#extension-pcntl-8_4`, `.#extension-shmop-8_4`, `.#extension-sockets-8_4`,
-`.#extension-sysvmsg-8_4`, `.#extension-sysvsem-8_4`, `.#extension-sysvshm-8_4`,
-`.#extension-soap-8_4`.
-`nix build .#release-bundle`
-emits the full cross-variant directory tree (`index.json` + every artifact)
-ready to rsync to a static host. See [`DESIGN.md`](DESIGN.md) for the
-distribution model.
+Beyond the core interpreter, the per-extension distribution layer
+(content-addressed `store/<name>-<ver>-<hash>/` layout, per-extension
+`.tar.zst` + JSON manifest declaring its bundled C-lib closure) covers
+everything outside the core. Examples:
+
+```sh
+nix build .#phpVariants.x86_64-linux.8_5.extensions.xdebug
+nix build .#phpVariants.x86_64-linux.8_5.extensions.curl
+nix build .#phpVariants.x86_64-linux.8_5.extensions.intl
+```
+
+`nix build .#release-bundle` emits the full cross-variant directory tree
+(`index.json` + every artifact) ready to rsync to a static host. See
+[`DESIGN.md`](DESIGN.md) for the distribution model and
+[`REFACTOR_DEBIAN_ALIGNED.md`](REFACTOR_DEBIAN_ALIGNED.md) for the rationale
+behind the core / optional split.
 
 ### Host requirements
 
@@ -80,40 +86,65 @@ only. Apple's libc is ABI-stable across releases so no sysroot is needed —
 the toolchain is a thin wrapper around nixpkgs's `clang`. `@rpath/`-relative
 `LC_RPATH` entries do the equivalent of `$ORIGIN` on Linux.
 
-### Bundled
+### Built (across the whole build matrix)
 
-- **PHP 8.1.31 / 8.2.26 / 8.3.14 / 8.4.3 / 8.5.5** — five separate variants,
+- **PHP 8.1.34 / 8.2.31 / 8.3.31 / 8.4.21 / 8.5.6** — five separate variants,
   each NTS, CLI + FPM SAPIs. Patch versions track the latest stable in each
   line (and pin above the libxml2 2.13 compatibility floor: 8.1.30 / 8.2.20
   / 8.3.8). The dep stack below is shared across all five.
-- **xdebug 3.5.1** as a loadable Zend extension at
-  `lib/extensions/no-debug-non-zts-<api>/xdebug.so`. Single pin — 3.5 is the
-  first xdebug release supporting PHP 8.5; it covers 8.1 through 8.5.
-- **imagick 3.8.1** as a loadable PHP extension at
-  `lib/extensions/no-debug-non-zts-<api>/imagick.so`, linked against the
-  bundled ImageMagick 7. Single pin — 3.8 covers PHP 8.1 through 8.5.
-- **redis 6.3.0** (phpredis) as a loadable PHP extension at
-  `lib/extensions/no-debug-non-zts-<api>/redis.so`. No external C-library
-  dependency; speaks the redis wire protocol directly. Single pin covers
-  PHP 8.1 through 8.5. Optional serializer/compression backends (igbinary,
-  msgpack, lzf, zstd, lz4) are not enabled.
-- 49 PHP extensions: bcmath, calendar, ctype, curl, date, dom, exif, fileinfo,
-  filter, ftp, gd (jpeg/png/webp/freetype), hash, iconv, imagick (ImageMagick),
-  intl (ICU), json, libxml, mbstring (oniguruma), mysqli, mysqlnd, openssl,
-  pcntl, pcre, pdo_sqlite, pdo_mysql, pdo_pgsql, pgsql (libpq), phar, posix,
-  readline (libedit), reflection, session, shmop, simplexml, soap, sockets,
-  sodium, spl, sqlite3, sysvmsg, sysvsem, sysvshm, tokenizer, xml, xmlreader,
-  xmlwriter, zip, zlib, opcache (zend_extension)
-- 24 bundled C libraries: zlib 1.3.1, openssl 3.5.6, libxml2 2.13.5, sqlite 3.47.2,
-  oniguruma 6.9.10, libsodium 1.0.20, bzip2 1.0.8, libpng 1.6.44, libjpeg-turbo 3.0.4,
-  libwebp 1.4.0, freetype 2.13.3, nghttp2 1.64.0, libzip 1.10.1, ICU 75.1, libcurl 8.11.0,
-  ncurses 6.5, libedit 20240808-3.1, libpq 17.2 (PostgreSQL client only),
-  libtiff 4.7.0, lcms2 2.17, openjpeg 2.5.3, libde265 1.0.16, libheif 1.20.1,
-  ImageMagick 7.1.2-21. macOS adds libiconv 1.17 (apple-sdk strips
-  the legacy iconv headers; glibc provides iconv natively). Each C library installs
-  to its own content-addressed `store/<name>-<ver>-<hash>/` subtree; PHP and the
-  extensions reference them via per-binary RPATHs that list only the deps each ELF
-  actually needs.
+- **xdebug 3.5.1** as a per-ext download. 3.5 is the first xdebug release
+  supporting PHP 8.5; it covers 8.1 through 8.5.
+- **imagick 3.8.1** as a per-ext download, linked against bundled
+  ImageMagick 7. Single pin covers PHP 8.1 through 8.5.
+- **redis 6.3.0** (phpredis) as a per-ext download. No external C-library
+  dependency; speaks the redis wire protocol directly. Optional serializer
+  backends (igbinary, msgpack, lzf, zstd, lz4) are not enabled.
+- **vips 1.0.13** as a per-ext download (Linux only), linked against bundled
+  libvips + glib.
+
+### What ships in the interpreter tarball (the core)
+
+Aligned with what `php8.2-cli` provides on Debian Bookworm — the set Composer,
+modern frameworks, and the `php -a` REPL all assume:
+
+- **Core extensions:** ctype, dom, fileinfo, filter, iconv, opcache,
+  openssl, pdo, phar, posix, session, simplexml, sodium, tokenizer, xml,
+  xmlreader, xmlwriter — plus the always-built-in set (Core / Zend /
+  standard, date, hash, json, pcre, reflection, spl, mysqlnd, libxml,
+  readline). opcache is a zend_extension, statically linked into bin/php
+  on PHP 8.5 and shipped as a .so on 8.1–8.4.
+- **Bundled C libraries:** zlib 1.3.2, openssl 3.5.6, libxml2 2.13.9,
+  libsodium 1.0.22, libedit 20251016-3.1, ncurses 6.6 (+ libiconv 1.19 on
+  Darwin only — apple-sdk strips iconv headers; glibc provides iconv natively).
+
+### What ships separately (per-ext downloads)
+
+Every other extension built by PHP's configure plus the PECL set ships as a
+per-extension `.tar.zst` paired with a JSON manifest that declares the
+content-addressed closure of bundled C-lib store paths it needs. The CLI
+fetches the matching per-store-path tarballs on demand:
+
+| Extension(s) | Bundled C-lib closure |
+|---|---|
+| curl | libcurl, nghttp2, openssl, zlib |
+| gd | libpng, libjpeg-turbo, libwebp, freetype |
+| intl | ICU |
+| mbstring | oniguruma |
+| mysqli, pdo_mysql | — (mysqlnd is core) |
+| pgsql, pdo_pgsql | libpq |
+| sqlite3, pdo_sqlite | sqlite |
+| bz2 | bzip2 |
+| zip | libzip |
+| soap | (libxml2 — already in core) |
+| exif, bcmath, calendar, ftp, pcntl, shmop, sockets, sysv{msg,sem,shm} | — |
+| **xdebug** | — |
+| **imagick** | imagemagick + libtiff, lcms2, openjpeg, libheif, libde265 |
+| **redis** | — |
+| **vips** *(Linux)* | libvips, glib, libffi, pcre2, expat |
+
+Each per-store-path tarball lives at `store/<name>-<ver>-<hash>/` after
+extraction; PHP and the extensions reach them via per-binary RPATHs that
+list only the deps each ELF actually needs.
 
 ### Consumer-side dependency surface
 
@@ -135,8 +166,15 @@ mkdir -p ~/php && tar -C ~/php --use-compress-program=unzstd \
 # Run
 ~/php/install/bin/php -v
 ~/php/install/bin/php -m
+```
 
-# With xdebug
+The interpreter tarball alone gives you the Debian-aligned core. To load
+xdebug, extract its per-ext tarball over the same `install/` and
+opt in at runtime — bougie automates this end-to-end:
+
+```sh
+# Manual: extract the per-ext tarball and the closure tarballs it lists
+tar -C ~/php/install --use-compress-program=unzstd -xf xdebug-3.5.1+php85-*.tar.zst
 ~/php/install/bin/php -dzend_extension=xdebug -dxdebug.mode=develop \
   -r 'var_dump(["a"=>1, "b"=>[2,3]]);'
 ```
@@ -307,15 +345,16 @@ text-file gate.
 ## Project tree
 
 ```
-flake.nix                      fans out one variant per phpVersions entry;
-                               outputs per minor: tarball-<m>, tree-<m>,
-                               php-<m>, xdebug-<m>, closures-<m>,
-                               extension-{xdebug,pgsql,pdo_pgsql,exif,imagick,
-                                          bcmath,calendar,ftp,pcntl,shmop,
-                                          sockets,sysvmsg,sysvsem,sysvshm,
-                                          soap}-<m>,
-                               storePath-<dep>-<m>,
-                               release-<m>; plus index, release-bundle
+flake.nix                      fans out one variant per phpVersions entry
+                               under phpVariants.<system>.<minor>.{php,
+                               tree, tarball, closures, extensions.<name>,
+                               storePathTarballs.<dep>, release}; plus
+                               packages.<system>.{default, index, release-
+                               bundle}, bundledDeps, toolchain, sysroot.
+                               Defines coreExtensions + coreDepNames —
+                               the Debian-aligned set kept in the
+                               interpreter tarball; everything else is
+                               pruned at staging and ships per-ext.
 flake.lock                     pinned nixpkgs revision
 DESIGN.md                      content-addressed store + extension
                                distribution model
