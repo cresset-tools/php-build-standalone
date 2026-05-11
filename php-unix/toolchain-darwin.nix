@@ -28,8 +28,8 @@
 , lib
 , clang
 , llvmPackages
+, cctools
 , bash
-, apple-sdk_11 ? null
 }:
 let
   # Use nixpkgs's wrapped clang. On aarch64-darwin it already knows the
@@ -78,6 +78,12 @@ stdenvNoCC.mkDerivation {
     for t in ar nm strip objdump ranlib objcopy; do
       ln -s ${llvmTools}/bin/llvm-$t $out/bin/$t
     done
+
+    # cctools' lipo: meson's library-resolution path calls bare `lipo`
+    # via Popen (darwin_get_object_archs); not in PATH from llvm-tools
+    # alone. cctools' `ar`/`nm`/`strip` would shadow the llvm-* entries
+    # above, so we only symlink lipo specifically.
+    ln -s ${cctools}/bin/lipo $out/bin/lipo
 
     runHook postBuild
   '';
