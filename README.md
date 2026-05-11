@@ -40,13 +40,14 @@ on macOS. Extract any of them anywhere, run `bin/php`.
 Beyond the interpreter tarball, there's a per-extension distribution layer
 (content-addressed `store/<name>-<ver>-<hash>/` layout, per-extension `.tar.zst`
 + JSON manifest declaring the closure of bundled C-lib store paths it needs).
-xdebug, pgsql, pdo_pgsql, exif, imagick, bcmath, calendar, ftp, pcntl, shmop,
+xdebug, pgsql, pdo_pgsql, exif, imagick, redis, bcmath, calendar, ftp, pcntl, shmop,
 sockets, sysvmsg, sysvsem, sysvshm, and soap currently ship via this layer:
 `nix build .#extension-xdebug-8_4`, `.#extension-pgsql-8_4`, `.#extension-pdo_pgsql-8_4`,
-`.#extension-exif-8_4`, `.#extension-imagick-8_4`, `.#extension-bcmath-8_4`,
-`.#extension-calendar-8_4`, `.#extension-ftp-8_4`, `.#extension-pcntl-8_4`,
-`.#extension-shmop-8_4`, `.#extension-sockets-8_4`, `.#extension-sysvmsg-8_4`,
-`.#extension-sysvsem-8_4`, `.#extension-sysvshm-8_4`, `.#extension-soap-8_4`.
+`.#extension-exif-8_4`, `.#extension-imagick-8_4`, `.#extension-redis-8_4`,
+`.#extension-bcmath-8_4`, `.#extension-calendar-8_4`, `.#extension-ftp-8_4`,
+`.#extension-pcntl-8_4`, `.#extension-shmop-8_4`, `.#extension-sockets-8_4`,
+`.#extension-sysvmsg-8_4`, `.#extension-sysvsem-8_4`, `.#extension-sysvshm-8_4`,
+`.#extension-soap-8_4`.
 `nix build .#release-bundle`
 emits the full cross-variant directory tree (`index.json` + every artifact)
 ready to rsync to a static host. See [`DESIGN.md`](DESIGN.md) for the
@@ -91,6 +92,11 @@ the toolchain is a thin wrapper around nixpkgs's `clang`. `@rpath/`-relative
 - **imagick 3.8.1** as a loadable PHP extension at
   `lib/extensions/no-debug-non-zts-<api>/imagick.so`, linked against the
   bundled ImageMagick 7. Single pin — 3.8 covers PHP 8.1 through 8.5.
+- **redis 6.3.0** (phpredis) as a loadable PHP extension at
+  `lib/extensions/no-debug-non-zts-<api>/redis.so`. No external C-library
+  dependency; speaks the redis wire protocol directly. Single pin covers
+  PHP 8.1 through 8.5. Optional serializer/compression backends (igbinary,
+  msgpack, lzf, zstd, lz4) are not enabled.
 - 49 PHP extensions: bcmath, calendar, ctype, curl, date, dom, exif, fileinfo,
   filter, ftp, gd (jpeg/png/webp/freetype), hash, iconv, imagick (ImageMagick),
   intl (ICU), json, libxml, mbstring (oniguruma), mysqli, mysqlnd, openssl,

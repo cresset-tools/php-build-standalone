@@ -260,6 +260,7 @@
       sha256 = "ffa9e0982e82eeaea848f57687b425ed173aa278fe563001310ae2638db5c251";
       xdebug = "3.5";
       imagick = "3.8";
+      redis = "6.3";
     };
     "8.2" = {
       version = "8.2.31";
@@ -267,6 +268,7 @@
       sha256 = "95eae411d594fe6f6e5678b76645dc13ae47d3c0a5325c1d969b58dea56ee45a";
       xdebug = "3.5";
       imagick = "3.8";
+      redis = "6.3";
     };
     "8.3" = {
       version = "8.3.31";
@@ -274,6 +276,7 @@
       sha256 = "66410cee07f4b2baeb0843140bb2a2b52ef930b5cf9b3d6e6d158b33aae8fa37";
       xdebug = "3.5";
       imagick = "3.8";
+      redis = "6.3";
     };
     "8.4" = {
       version = "8.4.21";
@@ -281,6 +284,7 @@
       sha256 = "7cf5d8ab12c3b2016875bcfaec71bef1ef0b07bed6148f2c447577074431f984";
       xdebug = "3.5";
       imagick = "3.8";
+      redis = "6.3";
     };
     "8.5" = {
       version = "8.5.6";
@@ -288,6 +292,7 @@
       sha256 = "826c600b7c6f956bd335558ca3bdbcab23b22126c1cc8d9348be2280a2204bb7";
       xdebug = "3.5";
       imagick = "3.8";
+      redis = "6.3";
     };
   };
 
@@ -319,6 +324,20 @@
       version = "3.8.1";
       url = "https://pecl.php.net/get/imagick-3.8.1.tgz";
       sha256 = "3a3587c0a524c17d0dad9673a160b90cd776e836838474e173b549ed864352ee";
+    };
+  };
+
+  # phpredis (the `redis` PECL extension) version matrix. 6.3.x covers PHP
+  # 8.0 through 8.5. Built with the default feature set: no igbinary,
+  # msgpack, lzf, zstd, or lz4 backends — those would each need their own
+  # bundled dep and are typically opt-in. The wire protocol still works
+  # against any redis-server regardless; the optional backends only affect
+  # SERIALIZER_/COMPRESSION_ choices that user code can request.
+  redisVersions = {
+    "6.3" = {
+      version = "6.3.0";
+      url = "https://pecl.php.net/get/redis-6.3.0.tgz";
+      sha256 = "0d5141f634bd1db6c1ddcda053d25ecf2c4fc1c395430d534fd3f8d51dd7f0b5";
     };
   };
 

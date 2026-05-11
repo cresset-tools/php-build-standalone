@@ -127,6 +127,7 @@
               phpSpec     = sources.phpVersions.${phpKey};
               xdebugSpec  = sources.xdebugVersions.${phpSpec.xdebug};
               imagickSpec = sources.imagickVersions.${phpSpec.imagick};
+              redisSpec   = sources.redisVersions.${phpSpec.redis};
 
               php = pkgs.callPackage ./php-unix/php.nix ({
                 inherit mkDep phpSpec;
@@ -143,9 +144,12 @@
                 inherit mkDep php imagickSpec;
                 inherit (deps) imagemagick;
               };
+              redis = pkgs.callPackage ./php-unix/redis.nix {
+                inherit mkDep php redisSpec;
+              };
               tree = pkgs.callPackage ./php-unix/tree.nix {
                 bundledDeps = sharedDeps;
-                interpreterDeps = [ php xdebug imagick ];
+                interpreterDeps = [ php xdebug imagick redis ];
                 inherit toolchain;
                 phpVersion = phpSpec.version;
               };
@@ -223,6 +227,7 @@
               extensions = {
                 xdebug    = mkExt { extDrv = xdebug;  extName = "xdebug";  extVersion = xdebugSpec.version;  confFragment = null; };
                 imagick   = mkExt { extDrv = imagick; extName = "imagick"; extVersion = imagickSpec.version; confFragment = "extension=imagick"; };
+                redis     = mkExt { extDrv = redis;   extName = "redis";   extVersion = redisSpec.version;   confFragment = "extension=redis"; };
                 pgsql     = mkBuiltinExt "pgsql";
                 pdo_pgsql = mkBuiltinExt "pdo_pgsql";
                 exif      = mkBuiltinExt "exif";
