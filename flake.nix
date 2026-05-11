@@ -109,22 +109,30 @@
               inherit mkDep zlib bzip2 libpng libjpeg-turbo libwebp freetype libxml2
                       libtiff lcms2 openjpeg libheif libde265;
             };
-          } // pkgs.lib.optionalAttrs (!darwin) (
-            # vips stack — Linux-only for now. glib 2.82's gio hard-requires
-            # `<arpa/nameser.h>` which nixpkgs's Darwin SDK closure doesn't
-            # currently ship. See build-glib.sh for the reintroduction
-            # checklist. Wrapped in its own `let` because these attrs need
-            # forward references between each other (glib uses libffi /
-            # pcre2; libvips uses glib + expat) and the `rec` block above
-            # is already closed.
+          } // pkgs.lib.optionalAttrs darwin {
+            libiconv = pkgs.callPackage ./php-unix/libiconv.nix { inherit mkDep; };
+          } // (
+            # vips stack. Wrapped in its own `let` because these attrs
+            # need forward references between each other (glib uses
+            # libffi / pcre2; libvips uses glib + expat) and the `rec`
+            # block above is already closed.
+            #
+            # On Darwin, glib needs two extra inputs that don't apply on
+            # Linux: bundled libiconv (apple-sdk strips its headers) and
+            # darwin.libresolv (nixpkgs's apple-sdk_14 omits the legacy
+            # BIND headers <arpa/nameser.h>, which glib's gio needs for
+            # its DNS resolver). See build-glib.sh for the wiring.
             let
               libffi  = pkgs.callPackage ./php-unix/libffi.nix  { inherit mkDep; };
               pcre2   = pkgs.callPackage ./php-unix/pcre2.nix   { inherit mkDep; };
               expat   = pkgs.callPackage ./php-unix/expat.nix   { inherit mkDep; };
-              glib    = pkgs.callPackage ./php-unix/glib.nix    {
-                inherit mkDep libffi pcre2;
+              glib    = pkgs.callPackage ./php-unix/glib.nix    ({
+                inherit mkDep sources libffi pcre2;
                 zlib = deps.zlib;
-              };
+              } // pkgs.lib.optionalAttrs darwin {
+                libiconv = pkgs.callPackage ./php-unix/libiconv.nix { inherit mkDep; };
+                libresolv = pkgs.darwin.libresolv;
+              });
               libvips = pkgs.callPackage ./php-unix/libvips.nix {
                 inherit mkDep glib expat;
                 inherit (deps) libpng libjpeg-turbo libwebp libtiff libheif lcms2
@@ -133,9 +141,7 @@
             in {
               inherit libffi pcre2 expat glib libvips;
             }
-          ) // pkgs.lib.optionalAttrs darwin {
-            libiconv = pkgs.callPackage ./php-unix/libiconv.nix { inherit mkDep; };
-          };
+          );
 
           # Parallel list form for derivations that take a positional
           # bundled-dep list (tree.nix, tarball-extension.nix). attrValues
@@ -151,7 +157,7 @@
               phpSpec     = sources.phpVersions.${phpKey};
               xdebugSpec  = sources.xdebugVersions.${phpSpec.xdebug};
               imagickSpec = sources.imagickVersions.${phpSpec.imagick};
-              vipsSpec    = if darwin then null else sources.vipsVersions.${phpSpec.vips};
+              vipsSpec    = sources.vipsVersions.${phpSpec.vips};
 
               php = pkgs.callPackage ./php-unix/php.nix ({
                 inherit mkDep phpSpec;
@@ -168,14 +174,13 @@
                 inherit mkDep php imagickSpec;
                 inherit (deps) imagemagick;
               };
-              vips = if darwin then null else pkgs.callPackage ./php-unix/vips.nix {
+              vips = pkgs.callPackage ./php-unix/vips.nix {
                 inherit mkDep php vipsSpec;
                 inherit (deps) libvips glib;
               };
               tree = pkgs.callPackage ./php-unix/tree.nix {
                 bundledDeps = sharedDeps;
-                interpreterDeps = [ php xdebug imagick ]
-                  ++ pkgs.lib.optionals (!darwin) [ vips ];
+                interpreterDeps = [ php xdebug imagick vips ];
                 inherit toolchain;
                 phpVersion = phpSpec.version;
               };
@@ -266,9 +271,7 @@
                 sysvsem   = mkBuiltinExt "sysvsem";
                 sysvshm   = mkBuiltinExt "sysvshm";
                 soap      = mkBuiltinExt "soap";
-              } // pkgs.lib.optionalAttrs (!darwin) {
-                # vips is Linux-only — see deps wiring above.
-                vips    = mkExt { extDrv = vips;    extName = "vips";    extVersion = vipsSpec.version;    confFragment = "extension=vips"; };
+                vips      = mkExt { extDrv = vips;    extName = "vips";    extVersion = vipsSpec.version;    confFragment = "extension=vips"; };
               });
 
               # Release aggregate: collects every artifact for this PHP

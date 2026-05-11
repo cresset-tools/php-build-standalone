@@ -253,6 +253,19 @@
     version = "10.45";
   };
 
+  # proxy-libintl — Darwin-only stub for the gettext intl API. macOS's
+  # libc doesn't provide dgettext/bindtextdomain/etc.; glib 2.82's meson
+  # depends on `intl` independently of NLS and falls back to the
+  # proxy-libintl meson subproject. The wrap file uses wrap-git, which
+  # needs network + git access neither of which is available inside the
+  # Nix sandbox. We pre-populate subprojects/proxy-libintl/ from this
+  # tarball in build-glib.sh.
+  proxy-libintl = {
+    url = "https://github.com/frida/proxy-libintl/archive/refs/tags/0.4.tar.gz";
+    sha256 = "13ef3eea0a3bc0df55293be368dfbcff5a8dd5f4759280f28e030d1494a5dffb";
+    version = "0.4";
+  };
+
   # GLib — the GLib/GObject/GIO foundation. Required by libvips (libvips's
   # core types are GObject classes; image I/O goes through GIO streams).
   # First meson-based dep we ship; build-glib.sh handles the meson/ninja

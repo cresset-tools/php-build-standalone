@@ -24,8 +24,10 @@ mkdir -p "$PBS_SOURCES"
 tar -xf "$PBS_SRC_GLIB" -C "$PBS_SOURCES"
 cd "$src_dir"
 
-# meson resolves libffi / pcre2 / zlib via pkg-config.
-export PKG_CONFIG_PATH="$PBS_DEP_LIBFFI/lib/pkgconfig:$PBS_DEP_PCRE2/lib/pkgconfig:$PBS_DEP_ZLIB/lib/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
+# meson resolves libffi / pcre2 / zlib via pkg-config; libiconv is
+# Darwin-only (PBS_DEP_LIBICONV unset on Linux because libiconv isn't a
+# dep there).
+export PKG_CONFIG_PATH="$PBS_DEP_LIBFFI/lib/pkgconfig:$PBS_DEP_PCRE2/lib/pkgconfig:$PBS_DEP_ZLIB/lib/pkgconfig${PBS_DEP_LIBICONV:+:$PBS_DEP_LIBICONV/lib/pkgconfig}${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
 
 # Meson's compile-only probes (-c) trip clang's
 # -Werror=unused-command-line-argument because our CC wrapper has
@@ -35,29 +37,61 @@ export PKG_CONFIG_PATH="$PBS_DEP_LIBFFI/lib/pkgconfig:$PBS_DEP_PCRE2/lib/pkgconf
 # meson re-adding -Werror later in the command line can't undo it.
 export CFLAGS="$CFLAGS -Qunused-arguments"
 export CXXFLAGS="$CXXFLAGS -Qunused-arguments"
+# Same rationale for Objective-C — meson runs separate compile probes
+# (Cocoa / Carbon detection on Darwin) under the objc compiler with -c,
+# which trips our wrapper's link-side -Wl flags under
+# -Werror=unused-command-line-argument. Without this, glib_have_cocoa
+# is detected as false and giomodule.c ends up referencing
+# g_cocoa_notification_backend_get_type without the .m file being
+# compiled, breaking the link.
+export OBJCFLAGS="${OBJCFLAGS:-} -Qunused-arguments"
+export OBJCXXFLAGS="${OBJCXXFLAGS:-} -Qunused-arguments"
 
-# NOTE: build-glib.sh is Linux-only right now. glib 2.82's
-# gio/meson.build hard-requires <arpa/nameser.h> for its DNS resolver,
-# and that header isn't shipped in nixpkgs's Darwin SDK closure
-# (apple-sdk_14 omits the legacy BIND headers; libSystem-B doesn't
-# carry them either). flake.nix only wires `libvips` and `vips` into
-# the dep set on Linux; the Darwin matrix builds the same way as
-# before this PR.
-#
-# If Darwin support is reintroduced later, additionally:
-#   - export OBJC="$CC"           (objc add_languages probe by basename)
-#   - export CFLAGS+=-DBIND_8_COMPAT=1 (Apple's nameser.h gates C_IN on it)
-#   - patch glib gio to use its __BIONIC__ inline-defines fallback on
-#     __APPLE__ as well, OR vendor arpa/nameser*.h headers.
+# Darwin: glib's meson.build calls add_languages('objc') for Carbon /
+# Cocoa probing, which triggers a fresh compiler probe by basename
+# (clang, gcc) via PATH. Our toolchain wrapper exposes cc/c++ but not
+# bare `clang`, so the probe fails with "Unknown compiler(s)". Meson
+# respects OBJC for Objective-C the same way it respects CC for C;
+# point it at our wrapper so it skips the basename probe entirely.
+# Harmless on Linux (glib's meson.build only uses objc under
+# host_system == 'darwin'); set unconditionally to keep one path.
+export OBJC="$CC"
+
+# Darwin: nixpkgs's apple-sdk_14 omits <arpa/nameser.h> and
+# <arpa/nameser_compat.h>; nixpkgs ships them via darwin.libresolv's
+# dev output instead. glib 2.82's gio/meson.build:35 hard-requires
+# C_IN from nameser.h, and Apple's nameser.h gates C_IN behind
+# `#ifdef BIND_8_COMPAT` (the legacy BIND-4/8 name set). -isystem
+# slots the libresolv-91 headers in as system headers so they don't
+# trip -W diagnostics; the define makes C_IN visible. Both are
+# Linux no-ops: PBS_DEP_LIBRESOLV_INCLUDE is unset there, and glibc's
+# nameser.h defines C_IN unconditionally.
+if [ -n "${PBS_DEP_LIBRESOLV_INCLUDE:-}" ]; then
+  export CFLAGS="$CFLAGS -isystem $PBS_DEP_LIBRESOLV_INCLUDE/include -DBIND_8_COMPAT=1"
+  export CXXFLAGS="$CXXFLAGS -isystem $PBS_DEP_LIBRESOLV_INCLUDE/include -DBIND_8_COMPAT=1"
+  # gio's res_query() probe tries `-lresolv` first; satisfy it via
+  # nixpkgs's darwin.libresolv (Apple opensource libresolv-91, same
+  # .dylib PHP itself links). The build-time /nix/store path baked
+  # into LC_LOAD_DYLIB is rewritten to /usr/lib/libresolv.9.dylib by
+  # the post-build install_name normalization hook below.
+  export LDFLAGS="$LDFLAGS -L$PBS_DEP_LIBRESOLV_DIR/lib"
+fi
 
 build_dir="$src_dir/build"
 rm -rf "$build_dir"
 
-# NOTE: proxy-libintl handling for Darwin was removed alongside glib's
-# Linux-only constraint — see comment block above. If reintroducing
-# Darwin support, also re-add the subprojects/proxy-libintl/ unpack
-# here, the source fetch in glib.nix, and the proxy-libintl entry in
-# sources.nix.
+# Darwin: glib 2.82's meson requires the gettext intl API independently
+# of NLS. macOS libc doesn't provide dgettext/bindtextdomain/etc., so
+# meson falls back to the proxy-libintl subproject. Its wrap file uses
+# wrap-git (network + git), neither available inside the Nix sandbox.
+# Pre-populate subprojects/proxy-libintl/ from the tarball we fetched
+# via Nix; meson sees the source already there and skips the fetch.
+if [ -n "${PBS_SRC_PROXY_LIBINTL:-}" ]; then
+  rm -rf "$src_dir/subprojects/proxy-libintl"
+  tar -xf "$PBS_SRC_PROXY_LIBINTL" -C "$src_dir/subprojects"
+  mv "$src_dir/subprojects/proxy-libintl-${PBS_VER_PROXY_LIBINTL}" \
+     "$src_dir/subprojects/proxy-libintl"
+fi
 
 # Nix sandbox has no /usr/bin/env; the helper python scripts under tools/
 # carry "#!/usr/bin/env python3" shebangs. Rewrite to the absolute python3
@@ -120,6 +154,28 @@ rm -rf "$PBS_DEPS/share/bash-completion"
 # an absolute /nix/store path that would trip the finalize text-leak
 # audit; finalize-common.sh's text-detox phase drops store/glib-*/bin/
 # from the final tree post-merge so the runtime tarball stays clean.
+
+# Darwin: gio links against libresolv (for res_query()) at the
+# /nix/store path we passed via -L; rewrite that LC_LOAD_DYLIB to the
+# consumer-visible /usr/lib/libresolv.9.dylib so the final dylib loads
+# the system libresolv at runtime instead of a build-store path that
+# won't exist on consumer machines. Same pattern as
+# build-php-post-install-darwin.sh. pbs_audit_lib runs after, so the
+# rewrite happens before the text-leak / install_name audit.
+if [ -n "${PBS_DEP_LIBRESOLV_DIR:-}" ]; then
+  for dylib in "$PBS_DEPS"/lib/*.dylib; do
+    [ -L "$dylib" ] && continue
+    [ -f "$dylib" ] || continue
+    /usr/bin/file -b "$dylib" 2>/dev/null | grep -q '^Mach-O' || continue
+    while IFS= read -r dep; do
+      case "$dep" in
+        */libresolv*.dylib)
+          /usr/bin/install_name_tool -change "$dep" /usr/lib/libresolv.9.dylib "$dylib"
+          ;;
+      esac
+    done < <(/usr/bin/otool -L "$dylib" 2>/dev/null | awk 'NR>1 {print $1}')
+  done
+fi
 
 for libname in libglib-2.0 libgobject-2.0 libgmodule-2.0 libgio-2.0 libgthread-2.0; do
   lib="$PBS_DEPS/lib/${libname}.${PBS_LIB_EXT}"
