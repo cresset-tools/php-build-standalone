@@ -452,6 +452,19 @@
     };
   };
 
+  # pcov PECL extension. Code-coverage driver for PHPUnit / Pest, an order
+  # of magnitude faster than xdebug's coverage mode and the standard pick
+  # when xdebug's other features (step debugging, var dumps, tracing) aren't
+  # also wanted. No external C-library — built via phpize. 1.0.x covers PHP
+  # 7.1 through 8.5.
+  pcovVersions = {
+    "1.0" = {
+      version = "1.0.12";
+      url = "https://pecl.php.net/get/pcov-1.0.12.tgz";
+      sha256 = "23255c8c9335a9636ccb743f5302436a97a582a0bbde9869485be911bbc15da8";
+    };
+  };
+
   # APCu PECL extension. Userspace shared-memory cache; the standard backend
   # for Symfony's `cache.app`, Laravel's array-cache-with-process-persistence,
   # Composer's class-loader cache, and many other libraries. No external

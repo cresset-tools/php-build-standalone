@@ -42,6 +42,7 @@ set -euo pipefail
 : "${PBS_PHP_POST_INSTALL:?set by php.nix}"
 : "${PBS_PHP_AUDIT_EXTRA:?set by php.nix}"
 : "${PBS_PHP_ICONV_ARG:?set by php.nix}"
+: "${PBS_PHP_GETTEXT_ARG:?set by php.nix}"
 
 src_dir="$PBS_SOURCES/php-${PBS_VER_PHP}"
 rm -rf "$src_dir"
@@ -140,6 +141,7 @@ source "$PBS_PHP_PRE_CONFIGURE"
   --enable-soap=shared \
   --with-gmp="shared,$PBS_DEP_LIBGMP" \
   "$PBS_PHP_ICONV_ARG" \
+  "${PBS_PHP_GETTEXT_ARG//__PBS_SYSROOT__/${PBS_SYSROOT:-/dev/null}}" \
   --with-libedit="$PBS_DEP_LIBEDIT" \
   --enable-opcache \
   PKG_CONFIG_PATH="$PBS_DEP_LIBZIP/lib/pkgconfig:$PBS_DEP_ICU/lib/pkgconfig:$PBS_DEP_LIBPNG/lib/pkgconfig:$PBS_DEP_LIBWEBP/lib/pkgconfig:$PBS_DEP_FREETYPE/lib/pkgconfig:$PBS_DEP_LIBJPEG_TURBO/lib/pkgconfig:$PBS_DEP_OPENSSL/lib/pkgconfig:$PBS_DEP_LIBCURL/lib/pkgconfig:$PBS_DEP_LIBXML2/lib/pkgconfig:$PBS_DEP_ONIGURUMA/lib/pkgconfig:$PBS_DEP_ZLIB/lib/pkgconfig:$PBS_DEP_SQLITE/lib/pkgconfig:$PBS_DEP_LIBSODIUM/lib/pkgconfig:$PBS_DEP_BZIP2/lib/pkgconfig:$PBS_DEP_NGHTTP2/lib/pkgconfig:$PBS_DEP_LIBEDIT/lib/pkgconfig:$PBS_DEP_NCURSES/lib/pkgconfig:$PBS_DEP_LIBPQ/lib/pkgconfig"
@@ -237,6 +239,13 @@ _ini 50-xmlreader.ini  "extension=xmlreader"
 _ini 50-xmlwriter.ini  "extension=xmlwriter"
 _ini 50-simplexml.ini  "extension=simplexml"
 _ini 50-soap.ini       "extension=soap"
+# gettext is Linux-only (Apple's libc lacks a real libintl implementation —
+# see PBS_PHP_GETTEXT_ARG in php.nix). Emit the loader fragment only when
+# configure actually produced gettext.so so Darwin builds don't end up with
+# a dangling reference.
+if [ -n "$ext_dir" ] && [ -f "$ext_dir/gettext.so" ]; then
+  _ini 20-gettext.ini    "extension=gettext"
+fi
 
 # Confirm readline (libedit-backed) is compiled into the binary. PHP
 # builds ext/readline statically into the CLI (no readline.so), so we
@@ -268,6 +277,11 @@ for _ext in mbstring intl curl pdo pdo_mysql pdo_sqlite pdo_pgsql sqlite3 \
   _check_ext "$_ext"
   echo "  ext OK: $_ext"
 done
+# gettext is Linux-only; check only when configure actually built it.
+if [ -n "$ext_dir" ] && [ -f "$ext_dir/gettext.so" ]; then
+  _check_ext gettext
+  echo "  ext OK: gettext"
+fi
 echo "all always-shipped extensions OK"
 
 # Sanity: a request-bearing run (script file argument) must shut down
