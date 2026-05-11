@@ -56,6 +56,14 @@ mkDep {
     PBS_PHP_ICONV_ARG = if stdenv.isDarwin
       then "--with-iconv=shared,${libiconv}"
       else "--with-iconv=shared";
+    # Linux: glibc provides libintl natively (bindtextdomain/dgettext live
+    # in libc), so --with-gettext=shared is enough. Darwin: Apple's libc
+    # ships only the gettext stub ABI and no real translation lookup; PHP's
+    # ext/gettext would need a bundled GNU gettext or equivalent. Until we
+    # bundle one, opt the Darwin matrix leg out of gettext entirely.
+    PBS_PHP_GETTEXT_ARG = if stdenv.isDarwin
+      then "--without-gettext"
+      else "--with-gettext=shared";
   } // lib.optionalAttrs stdenv.isDarwin {
     # nixpkgs darwin.libresolv provides build-time -L/<store>/lib +
     # libresolv.dylib for ld to satisfy `-lresolv` (used by ext/standard/dns).
