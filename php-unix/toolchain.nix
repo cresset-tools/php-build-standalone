@@ -23,6 +23,8 @@ with pkgs; [
   bison
   flex
   re2c
+  meson
+  ninja
   patchelf
   file
   xz

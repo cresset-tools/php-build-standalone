@@ -234,6 +234,75 @@
     version = "7.1.2-21";
   };
 
+  # libffi — closures / FFI runtime. Required transitively by glib (GObject
+  # closures invoke C callbacks via libffi); also pulled in by libvips. We
+  # build it from upstream rather than relying on a system copy so the musl
+  # / old-glibc Linux portability story stays intact.
+  libffi = {
+    url = "https://github.com/libffi/libffi/releases/download/v3.4.8/libffi-3.4.8.tar.gz";
+    sha256 = "bc9842a18898bfacb0ed1252c4febcc7e78fa139fd27fdc7a3e30d9d9356119b";
+    version = "3.4.8";
+  };
+
+  # PCRE2 — Perl-compatible regex engine. Required by glib (GRegex);
+  # glib 2.74+ removed the ability to use a bundled PCRE copy. Built with
+  # 8-bit code units (the configure default; matches every distro packaging).
+  pcre2 = {
+    url = "https://github.com/PCRE2Project/pcre2/releases/download/pcre2-10.45/pcre2-10.45.tar.gz";
+    sha256 = "0e138387df7835d7403b8351e2226c1377da804e0737db0e071b48f07c9d12ee";
+    version = "10.45";
+  };
+
+  # proxy-libintl — Darwin-only stub for the gettext intl API. macOS's
+  # libc doesn't provide dgettext/bindtextdomain/etc.; glib 2.82's meson
+  # depends on `intl` independently of NLS and falls back to the
+  # proxy-libintl meson subproject. The wrap file uses wrap-git, which
+  # needs network + git access neither of which is available inside the
+  # Nix sandbox. We pre-populate subprojects/proxy-libintl/ from this
+  # tarball in build-glib.sh.
+  proxy-libintl = {
+    url = "https://github.com/frida/proxy-libintl/archive/refs/tags/0.4.tar.gz";
+    sha256 = "13ef3eea0a3bc0df55293be368dfbcff5a8dd5f4759280f28e030d1494a5dffb";
+    version = "0.4";
+  };
+
+  # GLib — the GLib/GObject/GIO foundation. Required by libvips (libvips's
+  # core types are GObject classes; image I/O goes through GIO streams).
+  # First meson-based dep we ship; build-glib.sh handles the meson/ninja
+  # invocation. We disable everything optional we can: no docs, no tests,
+  # no introspection, no Tracing/Sysprof, NLS off (gettext at runtime is
+  # only used for message translations which we don't ship), no man pages.
+  glib = {
+    url = "https://download.gnome.org/sources/glib/2.82/glib-2.82.5.tar.xz";
+    sha256 = "05c2031f9bdf6b5aba7a06ca84f0b4aced28b19bf1b50c6ab25cc675277cbc3f";
+    version = "2.82.5";
+  };
+
+  # expat — small streaming XML parser. Required by libvips unconditionally
+  # (libvips uses expat's SAX API for parsing ICC profile descriptions and
+  # libheif's nclx metadata). We already bundle libxml2 but libvips's
+  # configure does not accept it as an alternative. Trivially-built
+  # autotools dep, no transitive deps.
+  expat = {
+    url = "https://github.com/libexpat/libexpat/releases/download/R_2_7_2/expat-2.7.2.tar.xz";
+    sha256 = "21b778b34ec837c2ac285aef340f9fb5fa063a811b21ea4d2412a9702c88995c";
+    version = "2.7.2";
+  };
+
+  # libvips — image processing library; consumed by the vips PECL extension
+  # for fast, low-memory image manipulation. meson-based. Built minimal:
+  # only the image format delegates we already bundle (libpng, libjpeg,
+  # libwebp, libtiff, libheif, lcms2). All other optional deps are
+  # disabled to keep the dep graph tractable: fft, orc, librsvg, openexr,
+  # poppler, openslide, libimagequant, libexif, magick (we don't link to
+  # ImageMagick from libvips even though we bundle it elsewhere), pdfium,
+  # cgif, matio, niftiio, nifticlib, fontconfig, pangocairo.
+  libvips = {
+    url = "https://github.com/libvips/libvips/releases/download/v8.16.1/vips-8.16.1.tar.xz";
+    sha256 = "d114d7c132ec5b45f116d654e17bb4af84561e3041183cd4bfd79abfb85cf724";
+    version = "8.16.1";
+  };
+
   # libedit — BSD editline library; provides line editing and history for
   # PHP's ext/readline (php -a interactive shell). We use libedit rather
   # than GNU readline because readline is GPL-licensed and redistributing
@@ -261,6 +330,7 @@
       xdebug = "3.5";
       imagick = "3.8";
       redis = "6.3";
+      vips = "1.0";
     };
     "8.2" = {
       version = "8.2.31";
@@ -269,6 +339,7 @@
       xdebug = "3.5";
       imagick = "3.8";
       redis = "6.3";
+      vips = "1.0";
     };
     "8.3" = {
       version = "8.3.31";
@@ -277,6 +348,7 @@
       xdebug = "3.5";
       imagick = "3.8";
       redis = "6.3";
+      vips = "1.0";
     };
     "8.4" = {
       version = "8.4.21";
@@ -285,6 +357,7 @@
       xdebug = "3.5";
       imagick = "3.8";
       redis = "6.3";
+      vips = "1.0";
     };
     "8.5" = {
       version = "8.5.6";
@@ -293,6 +366,7 @@
       xdebug = "3.5";
       imagick = "3.8";
       redis = "6.3";
+      vips = "1.0";
     };
   };
 
@@ -338,6 +412,15 @@
       version = "6.3.0";
       url = "https://pecl.php.net/get/redis-6.3.0.tgz";
       sha256 = "0d5141f634bd1db6c1ddcda053d25ecf2c4fc1c395430d534fd3f8d51dd7f0b5";
+    };
+  };
+  # vips PECL extension version matrix. Keyed by series tag, parallel to
+  # imagickVersions. 1.0.13 is the current stable line; covers PHP 8.x.
+  vipsVersions = {
+    "1.0" = {
+      version = "1.0.13";
+      url = "https://pecl.php.net/get/vips-1.0.13.tgz";
+      sha256 = "4e655843e5ee8150c927c10853dfa0d2a3b924bc2453ed8fb5e5a2a90e686f8f";
     };
   };
 

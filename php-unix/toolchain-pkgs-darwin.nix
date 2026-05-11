@@ -13,6 +13,8 @@ with pkgs; [
   bison
   flex
   re2c
+  meson
+  ninja
   file
   xz
   zstd
