@@ -75,7 +75,20 @@ prev_file="$(mktemp --suffix=.nix)"
 trap 'rm -f "$curr_file" "$prev_file"' EXIT
 
 cp shared/sources.nix "$curr_file"
-git show "$base_ref:shared/sources.nix" > "$prev_file"
+# The baseline ref may predate the shared/php restructure (when
+# sources.nix lived at php-unix/sources.nix), or this lint may run
+# against a branch that simply hasn't introduced sources.nix yet.
+# Fall back to the legacy path; if neither exists in base_ref, there's
+# nothing to compare against — emit a WARN and exit clean rather than
+# hard-failing the CI gate.
+if git show "$base_ref:shared/sources.nix" > "$prev_file" 2>/dev/null; then
+  :
+elif git show "$base_ref:php-unix/sources.nix" > "$prev_file" 2>/dev/null; then
+  :
+else
+  echo "WARN: neither shared/sources.nix nor php-unix/sources.nix exists in $base_ref; skipping lint." >&2
+  exit 0
+fi
 
 curr_versions="$(nix eval --json --impure --expr \
   "(import $curr_file).phpVersions" \
