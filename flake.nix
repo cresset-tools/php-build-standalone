@@ -109,6 +109,7 @@
               inherit mkDep zlib bzip2 libpng libjpeg-turbo libwebp freetype libxml2
                       libtiff lcms2 openjpeg libheif libde265;
             };
+            libgmp        = pkgs.callPackage ./php-unix/libgmp.nix        { inherit mkDep; };
           } // pkgs.lib.optionalAttrs darwin {
             libiconv = pkgs.callPackage ./php-unix/libiconv.nix { inherit mkDep; };
           } // (
@@ -177,7 +178,7 @@
                 inherit (deps)
                   zlib openssl libxml2 sqlite oniguruma libsodium bzip2
                   libpng libjpeg-turbo libwebp freetype
-                  nghttp2 libzip icu libcurl ncurses libedit libpq;
+                  nghttp2 libzip icu libcurl ncurses libedit libpq libgmp;
               } // pkgs.lib.optionalAttrs darwin { inherit (deps) libiconv; });
 
               xdebug = pkgs.callPackage ./php-unix/xdebug.nix {
@@ -357,6 +358,7 @@
                 sysvsem     = mkBuiltinExt "sysvsem";
                 sysvshm     = mkBuiltinExt "sysvshm";
                 soap        = mkBuiltinExt "soap";
+                gmp         = mkBuiltinExt "gmp";
               } // pkgs.lib.optionalAttrs (!darwin) {
                 # gettext is Linux-only (apple-sdk_14 + Apple's libc don't
                 # provide a real libintl implementation; build-php.sh sets

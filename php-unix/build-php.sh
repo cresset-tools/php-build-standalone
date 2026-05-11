@@ -37,6 +37,7 @@ set -euo pipefail
 : "${PBS_DEP_NCURSES:?}"
 : "${PBS_DEP_LIBEDIT:?}"
 : "${PBS_DEP_LIBPQ:?}"
+: "${PBS_DEP_LIBGMP:?}"
 : "${PBS_PHP_PRE_CONFIGURE:?set by php.nix}"
 : "${PBS_PHP_POST_INSTALL:?set by php.nix}"
 : "${PBS_PHP_AUDIT_EXTRA:?set by php.nix}"
@@ -138,6 +139,7 @@ source "$PBS_PHP_PRE_CONFIGURE"
   --enable-sysvsem=shared \
   --enable-sysvshm=shared \
   --enable-soap=shared \
+  --with-gmp="shared,$PBS_DEP_LIBGMP" \
   "$PBS_PHP_ICONV_ARG" \
   "${PBS_PHP_GETTEXT_ARG//__PBS_SYSROOT__/${PBS_SYSROOT:-/dev/null}}" \
   --with-libedit="$PBS_DEP_LIBEDIT" \
@@ -214,6 +216,7 @@ _ini 20-sockets.ini    "extension=sockets"
 _ini 20-sysvmsg.ini    "extension=sysvmsg"
 _ini 20-sysvsem.ini    "extension=sysvsem"
 _ini 20-sysvshm.ini    "extension=sysvshm"
+_ini 20-gmp.ini        "extension=gmp"
 _ini 20-fileinfo.ini   "extension=fileinfo"
 _ini 20-filter.ini     "extension=filter"
 _ini 20-phar.ini       "extension=phar"
@@ -270,7 +273,7 @@ for _ext in mbstring intl curl pdo pdo_mysql pdo_sqlite pdo_pgsql sqlite3 \
             pgsql sodium bz2 zip gd exif fileinfo filter phar posix session \
             tokenizer ctype iconv dom xml xmlreader xmlwriter simplexml \
             mysqli openssl bcmath calendar ftp pcntl shmop sockets \
-            sysvmsg sysvsem sysvshm soap; do
+            sysvmsg sysvsem sysvshm soap gmp; do
   _check_ext "$_ext"
   echo "  ext OK: $_ext"
 done
