@@ -152,13 +152,21 @@
           # Build one complete PHP variant from a phpVersions key.
           # Bundled C deps are shared; only the PHP and per-extension
           # derivations differ between variants.
+          # Per-extension series resolver. Today each <ext>Versions map has
+          # exactly one entry; pick it. If/when an extension grows a second
+          # series with PHP-minor-specific selection, replace this with a
+          # lookup against an extensionMatrix table in sources.nix.
+          pickOnly = attrs:
+            let names = builtins.attrNames attrs; in
+            assert builtins.length names == 1; attrs.${builtins.head names};
+
           mkPhpVariant = phpKey:
             let
               phpSpec     = sources.phpVersions.${phpKey};
-              xdebugSpec  = sources.xdebugVersions.${phpSpec.xdebug};
-              imagickSpec = sources.imagickVersions.${phpSpec.imagick};
-              redisSpec   = sources.redisVersions.${phpSpec.redis};
-              vipsSpec    = sources.vipsVersions.${phpSpec.vips};
+              xdebugSpec  = pickOnly sources.xdebugVersions;
+              imagickSpec = pickOnly sources.imagickVersions;
+              redisSpec   = pickOnly sources.redisVersions;
+              vipsSpec    = pickOnly sources.vipsVersions;
 
               php = pkgs.callPackage ./php-unix/php.nix ({
                 inherit mkDep phpSpec;
