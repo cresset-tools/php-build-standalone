@@ -210,8 +210,22 @@
                 "openssl" "pdo" "phar" "posix" "session" "simplexml"
                 "sodium" "tokenizer" "xml" "xmlreader" "xmlwriter"
               ];
+              # Core C-libs (Phase B): the only bundled deps that stay in
+              # the interpreter tarball's store/ tree. bin/php and the core
+              # extensions DT_NEEDED these (zlib + openssl for HTTPS streams
+              # / phar signatures / mysqlnd TLS, libxml2 for the dom/xml
+              # family, libsodium for sodium, libedit + ncurses for the
+              # readline REPL). libiconv is added on Darwin only because
+              # apple-sdk strips its headers; Linux's glibc ships iconv.
+              # Every other bundled dep is reachable only via per-store-path
+              # tarballs that the CLI fetches when an optional extension
+              # declares them in its closure manifest.
+              coreDepNames = [
+                "zlib" "openssl" "libxml2" "libsodium" "libedit" "ncurses"
+              ] ++ pkgs.lib.optional darwin "libiconv";
               tarball = pkgs.callPackage ./php-unix/tarball.nix {
-                inherit tree sources nixpkgsRev phpSpec xdebugSpec coreExtensions;
+                inherit tree sources nixpkgsRev phpSpec xdebugSpec
+                        coreExtensions coreDepNames deps;
                 phpVersion = phpSpec.version;
               };
 

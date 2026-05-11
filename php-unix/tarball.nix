@@ -15,6 +15,13 @@
 , coreExtensions  # list of extension names to keep in the interpreter
                   # tarball. Everything else built shared by PHP is pruned
                   # out at staging time; it ships only via per-ext tarballs.
+, coreDepNames    # short names of bundled C-lib deps to keep in store/.
+                  # Phase B: optional deps ship only via per-store-path
+                  # tarballs that the CLI fetches when an optional
+                  # extension declares them in its closure manifest.
+, deps            # the full deps attrset (short name → derivation, with
+                  # passthru.storeName) — used to translate coreDepNames
+                  # into the on-disk store/<storeName>/ paths to keep.
 }:
 let
   inherit (pkgs) stdenv lib;
@@ -185,6 +192,31 @@ pkgs.stdenvNoCC.mkDerivation {
           rm -f "$ini"
         fi
       done < <(find "$staging/install/etc/php/conf.d" -maxdepth 1 -type f -name '*.ini')
+    fi
+
+    # Phase B: prune store/<storeName>/ entries down to the core C-libs
+    # that bin/php and the core extensions actually need at runtime.
+    # Optional bundled deps (icu, libcurl, libpq, oniguruma, sqlite, …)
+    # are reachable only via the per-store-path tarballs produced by
+    # tarball-store-path.nix; the CLI materializes them under store/ when
+    # the user installs an optional extension that declares them in its
+    # closure manifest.
+    #
+    # Audit gates already ran inside tree.nix's finalize step against the
+    # full pre-prune tree, so RPATHs were validated end-to-end. The
+    # interpreter binaries shipped here keep their original RPATHs
+    # pointing at $ORIGIN/../store/<optional-storeName>/lib — those
+    # paths just don't resolve until the consumer also installs the
+    # matching per-store-path tarball.
+    keep_stores='${pkgs.lib.concatStringsSep "|" (map
+      (n: deps.${n}.passthru.storeName) coreDepNames)}'
+    if [ -d "$staging/install/store" ]; then
+      while IFS= read -r d; do
+        bn="$(basename "$d")"
+        if ! printf '%s\n' "$bn" | grep -qE "^($keep_stores)$"; then
+          rm -rf "$d"
+        fi
+      done < <(find "$staging/install/store" -mindepth 1 -maxdepth 1 -type d)
     fi
 
     # Reproducible tar: --sort=name + clamp mtime via SOURCE_DATE_EPOCH.
