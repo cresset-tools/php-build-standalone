@@ -170,6 +170,7 @@
               igbinarySpec = pickOnly sources.igbinaryVersions;
               msgpackSpec  = pickOnly sources.msgpackVersions;
               apcuSpec     = pickOnly sources.apcuVersions;
+              pcovSpec     = pickOnly sources.pcovVersions;
 
               php = pkgs.callPackage ./php-unix/php.nix ({
                 inherit mkDep phpSpec;
@@ -202,10 +203,13 @@
               apcu = pkgs.callPackage ./php-unix/apcu.nix {
                 inherit mkDep php apcuSpec;
               };
+              pcov = pkgs.callPackage ./php-unix/pcov.nix {
+                inherit mkDep php pcovSpec;
+              };
               tree = pkgs.callPackage ./php-unix/tree.nix {
                 bundledDeps = sharedDeps;
                 interpreterDeps = [
-                  php xdebug imagick vips redis igbinary msgpack apcu
+                  php xdebug imagick vips redis igbinary msgpack apcu pcov
                 ];
                 inherit toolchain;
                 phpVersion = phpSpec.version;
@@ -326,6 +330,10 @@
                 # auto-loader has to land at a later prefix.
                 msgpack     = mkExt { extDrv = msgpack;  extName = "msgpack";  extVersion = msgpackSpec.version;  confFragment = "extension=msgpack"; confPrefix = "40"; };
                 apcu        = mkExt { extDrv = apcu;     extName = "apcu";     extVersion = apcuSpec.version;     confFragment = "extension=apcu"; };
+                # pcov ships without an auto-loader conf.d fragment (confFragment=null,
+                # mirroring xdebug): coverage is a per-run opt-in, not always-on
+                # instrumentation, so the user enables it via -dextension=pcov in CI.
+                pcov        = mkExt { extDrv = pcov;     extName = "pcov";     extVersion = pcovSpec.version;     confFragment = null; };
                 mbstring    = mkBuiltinExt "mbstring";
                 intl        = mkBuiltinExt "intl";
                 curl        = mkBuiltinExt "curl";
