@@ -9,17 +9,16 @@
 # PCRE2 is built from MariaDB's vendored copy under extra/pcre2/ — that
 # copy is patched for MariaDB's regex needs and using the system one
 # tends to expose minor API drift bugs. Line-editing in the interactive
-# client uses MariaDB's bundled readline (extra/readline/) selected by
-# cmake/readline.cmake's fallback when no system readline/libedit is
-# found; build-mariadb.sh additionally patches out client/mysql.cc's
-# Apple-only `editline/readline.h` shortcut so Darwin uses the same
-# bundled path Linux does.
+# `mariadb` client links against PBS's BSD-licensed libedit (the same
+# choice Debian, Homebrew, and FreeBSD ports make over GPLv3 GNU readline);
+# build-mariadb.sh hints LIBEDIT_INCLUDE_DIR / LIBEDIT_LIBRARY so MariaDB's
+# MYSQL_FIND_SYSTEM_LIBEDIT picks it up.
 #
 # `mariadbSpec` is sources.mariadb — kept as a separate arg so flake.nix
 # can pin alternate MariaDB versions in the future without duplicating
 # this derivation.
 { mkDep, pkgs, mariadbSpec
-, zlib, openssl, ncurses, pcre2
+, zlib, openssl, ncurses, libedit, pcre2
 , libxcrypt ? null  # Linux-only; Darwin's libc provides crypt(3) natively.
 }:
 let
@@ -40,7 +39,7 @@ mkDep {
   buildScript = ./build-mariadb.sh;
   version = mariadbSpec.version;
   src = pkgs.fetchurl { inherit (mariadbSpec) url sha256; };
-  deps = [ zlib openssl ncurses pcre2 ]
+  deps = [ zlib openssl ncurses libedit pcre2 ]
        ++ pkgs.lib.optionals (libxcrypt != null) [ libxcrypt ];
   extraEnv = {
     PBS_SRC_LIBFMT = libfmtSrc;

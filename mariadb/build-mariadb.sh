@@ -27,6 +27,7 @@ set -euo pipefail
 : "${PBS_DEP_ZLIB:?}"
 : "${PBS_DEP_OPENSSL:?}"
 : "${PBS_DEP_NCURSES:?}"
+: "${PBS_DEP_LIBEDIT:?}"
 : "${PBS_DEP_PCRE2:?}"
 : "${PBS_SRC_LIBFMT:?}"
 
@@ -43,13 +44,15 @@ tar -xf "$PBS_SRC_MARIADB" -C "$PBS_SOURCES"
 cd "$src_dir"
 
 # client/mysql.cc has a hard `#ifdef __APPLE__ #include <editline/readline.h>`
-# branch that bypasses cmake/readline.cmake's selection logic — it assumes the
-# macOS SDK's editline headers are on the default include path. In the Nix
-# sandbox they aren't, so the compile fails with `'editline/readline.h' file
-# not found`. Drop the Apple-only branch so Darwin uses the same bundled
-# extra/readline path Linux does (MYSQL_USE_BUNDLED_READLINE is selected by
-# readline.cmake when no system readline/libedit is found, which is our case
-# on both platforms). Idempotent: matches only the Apple branch.
+# shortcut that bypasses cmake/readline.cmake's MY_READLINE_INCLUDE_DIR. We
+# point LIBEDIT_INCLUDE_DIR at $PBS_DEP_LIBEDIT/include/editline (the Debian-
+# style layout MariaDB's libedit probe expects: it test-compiles
+# `#include <readline.h>` against that dir). The __APPLE__ branch would need
+# the parent $PBS_DEP_LIBEDIT/include on the include path instead, which
+# isn't there — so on Darwin it can't find the header and the compile fails.
+# Drop the Apple-only branch and let mysql.cc use the same `#include
+# <readline.h>` path Linux does, which resolves via MY_READLINE_INCLUDE_DIR.
+# Idempotent: matches only the Apple branch.
 if [ -n "${MACOSX_DEPLOYMENT_TARGET:-}" ]; then
   perl -i -0pe 's{# ifdef __APPLE__\n#  include <editline/readline\.h>\n# else\n(#  include <readline\.h>\n#  if !defined\(USE_LIBEDIT_INTERFACE\)\n#   include <history\.h>\n#  endif\n)# endif\n}{$1}' client/mysql.cc
   grep -q 'editline/readline.h' client/mysql.cc && { echo "FATAL: mysql.cc __APPLE__ readline patch did not apply" >&2; exit 1; } || true
@@ -80,22 +83,6 @@ if [ -n "${MACOSX_DEPLOYMENT_TARGET:-}" ]; then
   rpath_origin='@loader_path/../lib'
 else
   rpath_origin='$ORIGIN/../lib'
-fi
-
-# PBS's ncurses is built with --with-termlib so termcap symbols (tgetent,
-# tputs, tgoto, …) live in libtinfow rather than libncursesw. MariaDB's
-# bundled extra/readline/CMakeLists.txt links only ${CURSES_LIBRARY} (i.e.
-# libncursesw), which is fine on Linux because ld traverses libncursesw's
-# DT_NEEDED for libtinfow at link time. macOS ld64 does not resolve
-# undefined references through indirectly-loaded dylibs, so the client/
-# mariadb link fails with `Undefined symbols: _tgetent, _tputs, …`. Append
-# -ltinfow to LDFLAGS on Darwin (mkDep already puts -L$PBS_DEP_NCURSES/lib
-# in LDFLAGS, so cmake picks it up via CMAKE_EXE_LINKER_FLAGS_INIT). Don't
-# pass -DCMAKE_EXE_LINKER_FLAGS directly — that overrides the env-derived
-# value and drops the -L paths mkDep set up for every other dep (pcre2,
-# openssl, …).
-if [ -n "${MACOSX_DEPLOYMENT_TARGET:-}" ]; then
-  export LDFLAGS="${LDFLAGS:-} -ltinfow"
 fi
 
 mkdir -p build
@@ -139,6 +126,8 @@ cmake -G "Unix Makefiles" \
   -DZLIB_ROOT="$PBS_DEP_ZLIB" \
   -DCURSES_NCURSES_LIBRARY="$PBS_DEP_NCURSES/lib/libncursesw.${PBS_LIB_EXT}" \
   -DCURSES_INCLUDE_PATH="$PBS_DEP_NCURSES/include" \
+  -DLIBEDIT_INCLUDE_DIR="$PBS_DEP_LIBEDIT/include/editline" \
+  -DLIBEDIT_LIBRARY="$PBS_DEP_LIBEDIT/lib/libedit.${PBS_LIB_EXT}" \
   -DWITH_PCRE=system \
   -DWITH_JEMALLOC=no \
   -DWITH_NUMA=OFF \

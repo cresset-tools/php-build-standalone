@@ -426,12 +426,12 @@
           # the bundle only when building for Linux. The mariadb derivation
           # below mirrors the conditional so its deps list lines up.
           mariadbBundledDepNames =
-            [ "zlib" "openssl" "ncurses" "pcre2" ]
+            [ "zlib" "openssl" "ncurses" "libedit" "pcre2" ]
             ++ pkgs.lib.optional (!darwin) "libxcrypt";
           mariadbBundledDeps = map (n: deps.${n}) mariadbBundledDepNames;
           mariadb = pkgs.callPackage ./mariadb/mariadb.nix ({
             inherit mkDep mariadbSpec;
-            inherit (deps) zlib openssl ncurses pcre2;
+            inherit (deps) zlib openssl ncurses libedit pcre2;
           } // pkgs.lib.optionalAttrs (!darwin) {
             inherit (deps) libxcrypt;
           });
