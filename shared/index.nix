@@ -7,9 +7,11 @@
 #       targets/<target>/sections/
 #         interpreter/php.json                            # this target's PHP runtimes
 #         extension/<name>.json                           # this target's extension X
+#         service/mariadb.json                            # this target's MariaDB server bundle
 #     targets/<target>/manifests/                         # shared, content-addressed
 #       php/<minor>/<tag>.json                            # interpreter manifest (copied verbatim)
 #       ext/<name>/<extver>/<tag>.json                    # extension manifest (copied verbatim)
+#       service/<name>/<version>/<tag>.json               # service manifest (e.g. mariadb)
 #     blobs/
 #       <sha256[0:2]>/<sha256>                            # all tarballs, content-addressed, no extension
 #
@@ -269,6 +271,56 @@ pkgs.runCommand "pbs-index" {
         artifact_entry="$(yank_entry "$tag" "$artifact_entry")"
 
         add_artifact "$target/extension/$ext_name" "$artifact_entry"
+      done
+
+      # ---- Service manifests (mariadb-*.json and other top-level
+      #      bundles whose kind is "service"). Same blob/manifest plumbing
+      #      as the interpreter loop; the on-disk manifest path uses the
+      #      service/<name>/<version>/ shape so MariaDB and any future
+      #      sibling service share a stable namespace.
+      for f in "$rel_dir"/mariadb-*.json; do
+        [ -f "$f" ] || continue
+        base="$(basename "$f" .json)"
+
+        svc_name="$(jq -r '.name' "$f")"
+        tag="$(jq -r '.tag' "$f")"
+        svc_version="$(jq -r '.version' "$f")"
+        target="$(jq -r '.target' "$f")"
+        flavor="$(jq -r '.flavor' "$f")"
+
+        tarball="$rel_dir/$base.tar.zst"
+        tarball_sha256_actual="$(sha256sum "$tarball" | awk '{print $1}')"
+        tarball_sha256_manifest="$(jq -r '.blob.sha256' "$f")"
+        if [ "$tarball_sha256_actual" != "$tarball_sha256_manifest" ]; then
+          echo "FATAL: service $tag — manifest blob.sha256 ($tarball_sha256_manifest) does not match tarball ($tarball_sha256_actual)" >&2
+          exit 1
+        fi
+        add_blob "$tarball_sha256_actual" "$tarball"
+
+        manifest_path="/targets/$target/manifests/service/$svc_name/$svc_version/$tag.json"
+        manifest_dest_key="$target/manifests/service/$svc_name/$svc_version/$tag.json"
+
+        staged_manifest="$(stage_manifest "$f")"
+        manifest_srcs["$manifest_dest_key"]="$staged_manifest"
+        manifest_sha256="$(sha256sum "$staged_manifest" | awk '{print $1}')"
+
+        artifact_entry="$(jq -n -S \
+          --arg tag "$tag" \
+          --arg version "$svc_version" \
+          --arg flavor "$flavor" \
+          --arg manifest_path "$manifest_path" \
+          --arg manifest_sha256 "$manifest_sha256" \
+          '{
+            tag: $tag,
+            version: $version,
+            flavor: $flavor,
+            manifest: { path: $manifest_path, sha256: $manifest_sha256 },
+            yanked: false,
+            frozen: false
+          }')"
+        artifact_entry="$(yank_entry "$tag" "$artifact_entry")"
+
+        add_artifact "$target/service/$svc_name" "$artifact_entry"
       done
 
       # ---- Store-path tarballs → blobs ----

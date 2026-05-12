@@ -480,4 +480,27 @@
   # The key into phpVersions that `default` and the unqualified CLI output
   # should resolve to. Bump this when a new stable PHP is promoted.
   latestPhp = "8.5";
+
+  # libxcrypt — the libcrypt.so.1 ABI was spun out of glibc in 2.39; this
+  # is the reference implementation distros now ship as a separate package.
+  # We bundle it (rather than rely on the consumer's libxcrypt being
+  # installed) for the same reason we bundle openssl: avoid runtime
+  # surprises on minimal containers and distros that strip libxcrypt.
+  # MariaDB's auth plugins use crypt() for password hashing.
+  libxcrypt = {
+    url = "https://github.com/besser82/libxcrypt/releases/download/v4.4.36/libxcrypt-4.4.36.tar.xz";
+    sha256 = "e5e1f4caee0a01de2aee26e3138807d6d3ca2b8e67287966d1fefd65e1fd8943";
+    version = "4.4.36";
+  };
+
+  # MariaDB server. 11.4 is the current LTS line (supported through May 2029).
+  # Built dynamically against bundled openssl / zlib / ncurses / pcre2 with
+  # $ORIGIN-relative RPATHs so the install tree is relocatable. The same
+  # bundled-dep set the PHP build uses is reused — no new shared/<dep>.nix
+  # files are needed for MariaDB itself.
+  mariadb = {
+    url = "https://archive.mariadb.org/mariadb-11.4.4/source/mariadb-11.4.4.tar.gz";
+    sha256 = "96fbd2e6e93fb7e8b373eea75d85b6fea57c0e111a02090cbbefed52599dc77b";
+    version = "11.4.4";
+  };
 }

@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-# Per-package update orchestrator. Walks php-unix/update/ for *.sh
+# Per-package update orchestrator. Walks shared/update/ for *.sh
 # scripts, runs them with the current (version, url, sha256) in env,
-# parses their JSON output, and rewrites php-unix/sources.nix.
+# parses their JSON output, and rewrites shared/sources.nix.
 #
 # Per-script discovery: filename is the attr path. Top-level scripts
-# (php-unix/update/zlib.sh) update sources.<name>; nested directories
-# (php-unix/update/phpVersions/8.5.sh) update sources.<dir>."<key>".
+# (shared/update/zlib.sh) update sources.<name>; nested directories
+# (shared/update/phpVersions/8.5.sh) update sources.<dir>."<key>".
 #
 # Per-script contract:
 #   env IN:  PBS_PNAME           — leaf name (e.g. "zlib", "8.5")
@@ -43,8 +43,8 @@ from dataclasses import dataclass
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
-SOURCES_NIX = REPO / "php-unix" / "sources.nix"
-UPDATE_DIR = REPO / "php-unix" / "update"
+SOURCES_NIX = REPO / "shared" / "sources.nix"
+UPDATE_DIR = REPO / "shared" / "update"
 
 
 @dataclass

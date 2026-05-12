@@ -183,7 +183,7 @@ the path of least resistance; it does not forbid alternatives.
 Inputs to the derivation hash, in priority of stability:
 
 1. **Source identity** — upstream tarball URL + SHA256, recorded in
-   `php-unix/sources.nix`.
+   `shared/sources.nix`.
 2. **Patch set** — every patch applied, by file content.
 3. **Toolchain** — clang version, lld version, sysroot identity (the
    CentOS 7 RPM set on Linux; nixpkgs clang + macOS SDK on Darwin).
@@ -354,7 +354,7 @@ cache, FIPS init). Position:
 The transition is a sequence of independently shippable steps:
 
 1. **Switch the build to all-extensions-shared.** In
-   `php-unix/build-php.sh`, change every `--with-X="$DEP"` to
+   `php/build-php.sh`, change every `--with-X="$DEP"` to
    `--with-X="$DEP,shared"` (and `--enable-X` to `--enable-X=shared`).
    Build produces `.so` files in `lib/extensions/<api>/` for
    everything except the forced-static core (ext/standard, ext/Core,
@@ -382,7 +382,7 @@ The transition is a sequence of independently shippable steps:
 ## V1 carryforward
 
 Unchanged in V2:
-- `pbs_relocate.h` and the source patches under `php-unix/patches/`.
+- `pbs_relocate.h` and the source patches under `php/patches/`.
 - `finalize.sh`'s strip / patchelf / audit gates.
 - Clang + CentOS 7 sysroot toolchain for Linux; nixpkgs clang +
   macOS SDK for Darwin.

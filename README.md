@@ -219,7 +219,7 @@ plain `.tar.zst` that doesn't need Nix to consume.
 
 On Linux, the compiler is a wrapped `llvmPackages_18.clang-unwrapped`
 driving against a CentOS 7 sysroot (glibc 2.17, devtoolset-11
-libstdc++/libgcc), assembled from RPMs in `php-unix/sysroot.nix`. This is
+libstdc++/libgcc), assembled from RPMs in `shared/sysroot.nix`. This is
 the PBS trick: modern compiler, old C runtime — so the resulting binaries
 link against modern bundled deps but only require GLIBC_2.17 from the host.
 On macOS, the toolchain is a thin shell wrapper around nixpkgs's `clang`
@@ -293,7 +293,7 @@ and the autotools deps with bespoke configure shapes (`bzip2`, `ncurses`,
 ### Relocation — auto-dispatched source patches
 
 PHP's source bakes the build-time install prefix into many runtime path
-lookups. Unified-diff patches in [`php-unix/patches/`](php-unix/patches/)
+lookups. Unified-diff patches in [`php/patches/`](php/patches/)
 rewrite each callsite to resolve the install root from `/proc/self/exe`
 at runtime, with a header-only helper `main/pbs_relocate.h`. Build-time
 macros (`PHP_PREFIX`, `PHP_EXTENSION_DIR`, etc.) remain as fallbacks if
@@ -324,7 +324,7 @@ Current patch set:
 
 ### Audit gates
 
-`php-unix/finalize-linux.sh` and `finalize-darwin.sh` both source
+`shared/finalize-linux.sh` and `finalize-darwin.sh` both source
 `finalize-common.sh` for shared phases (`.la` / `.pc` detoxify, text-file
 `/nix/store` scrub, phpize/php-config sentinel rewrite). The tarball can't
 ship until every gate passes.
@@ -376,11 +376,16 @@ flake.nix                      fans out one variant per phpVersions entry
 flake.lock                     pinned nixpkgs revision
 DESIGN.md                      content-addressed store + extension
                                distribution model
-php-unix/                      single source tree; platform branching is
-                               on the Nix side (mkDep.nix, php.nix)
+shared/                        component-agnostic build infra: toolchain,
+                               sysroot, mkDep, finalize, generic tarball
+                               + bundled C-library sources reused across
+                               components.
   sources.nix                    per-dep {url, sha256, version} +
                                  phpVersions / <ext>Versions
-                                 (xdebug/imagick/redis/vips) / latestPhp
+                                 (xdebug/imagick/redis/vips) / latestPhp.
+                                 PHP-specific keys live here today; will
+                                 be split out when a second component
+                                 (e.g. mariadb) lands its own sources.
   sysroot.nix                    CentOS 7 RPM-based glibc-2.17 sysroot (Linux)
   clang-toolchain.nix            wrapped clang-18 + lld targeting sysroot
   toolchain-darwin.nix           thin nixpkgs-clang wrapper (Darwin)
@@ -392,7 +397,10 @@ php-unix/                      single source tree; platform branching is
                                  platform branches; carries a built-in
                                  autotools template (extract → configure
                                  → make install → cleanup → audit) driven
-                                 by declarative knobs in <dep>.nix
+                                 by declarative knobs in <dep>.nix. Callers
+                                 outside shared/ pass `buildScript = …`
+                                 explicitly so mkDep finds their per-dep
+                                 script (php/ extensions do this).
   build-<dep>.sh                 per-dep configure/make/install for deps
                                  that don't fit the autotools template:
                                  cmake (libjpeg-turbo, libzip, libheif,
@@ -406,6 +414,18 @@ php-unix/                      single source tree; platform branching is
                                  postInstallCleanup / auditLibs, or
                                  with deps list dispatching to a
                                  per-dep build-<dep>.sh
+  tree.nix                       merges per-dep $outs, runs finalize driver
+  finalize-common.sh             shared .la/.pc/text detoxify + phpize rewrite
+  finalize-linux.sh              strip → patchelf → audits A–E
+  finalize-darwin.sh             install_name + LC_RPATH walks + codesign
+  closure.nix                    walks finalized tree, emits closures.json
+  tarball-store-path.nix         per-store-path .tar.zst + .sha256
+                                 (component-agnostic)
+  update/                        per-package version-bump scripts driven
+                                 by scripts/update.py
+
+php/                           PHP interpreter, PECL extensions, and
+                               PHP-specific distribution shape.
   patches/                       range-suffixed PHP source patches
                                  (NNNN-name@LO-HI.patch — auto-dispatched)
   prepare-php.sh                 dispatches patches + drops main/pbs_relocate.h
@@ -420,18 +440,30 @@ php-unix/                      single source tree; platform branching is
   redis.nix + build-redis.sh     calls mkDep with deps=[php (+ delegate
   vips.nix + build-vips.sh       libs)]; doubles as a phpize relocation
                                  cross-check.
-  tree.nix                       merges per-dep $outs, runs finalize driver
-  finalize-common.sh             shared .la/.pc/text detoxify + phpize rewrite
-  finalize-linux.sh              strip → patchelf → audits A–E
-  finalize-darwin.sh             install_name + LC_RPATH walks + codesign
-  closure.nix                    walks finalized tree, emits closures.json
+  apcu/pcov/igbinary/msgpack     additional shared-mem / coverage /
+    .nix + build-*.sh            serializer extensions built via phpize.
   tarball.nix                    interpreter .tar.zst + JSON metadata
                                  (prunes optional .so + store/<dep>/ to
                                  the Debian-aligned core set at staging)
   tarball-extension.nix          per-extension .tar.zst + manifest
-  tarball-store-path.nix         per-store-path .tar.zst + .sha256
   index.nix                      cross-variant index.json (interpreters +
                                  extensions + store_paths)
+
+mariadb/                       MariaDB server bundle (relocatable mariadbd
+                               + libmariadb + client tools), consumed by
+                               `bougie services`. Reuses shared/zlib,
+                               shared/openssl, shared/ncurses for the
+                               bundled C-lib stack.
+  mariadb.nix                    calls mkDep with the cmake-based build
+                                 script + the three bundled deps.
+  build-mariadb.sh               cmake + INSTALL_LAYOUT=STANDALONE +
+                                 relocatable RPATH + a curated plugin
+                                 deny-list (RocksDB, Mroonga, Spider,
+                                 ColumnStore, S3, OQGraph, Connect, …).
+  tarball.nix                    interpreter-shaped tarball + manifest;
+                                 manifest kind="service" routes into
+                                 shared/index.nix's service/<name>
+                                 section.
 tests/
   distros.txt                    expected pass/fail per distro image
   run-matrix.sh                  extract once, mount RO into each container

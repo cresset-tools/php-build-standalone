@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Shared body for the per-minor scripts under php-unix/update/phpVersions/.
+# Shared body for the per-minor scripts under shared/update/phpVersions/.
 # Each minor script (8.1.sh, …, 8.5.sh) sources this; the minor is read
 # from PBS_PNAME (which is the leaf attr name, e.g. "8.5").
 #

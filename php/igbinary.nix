@@ -8,6 +8,7 @@
 { mkDep, pkgs, php, igbinarySpec }:
 mkDep {
   name = "igbinary";
+  buildScript = ./build-igbinary.sh;
   version = igbinarySpec.version;
   src = pkgs.fetchurl { inherit (igbinarySpec) url sha256; };
   deps = [ php ];
