@@ -97,6 +97,10 @@ let
     blob = {
       url = "{BLOB_BASE}/blobs/@TARBALL_SHA256_PFX@/@TARBALL_SHA256@";
       sha256 = "@TARBALL_SHA256@";
+      # Byte length of the .tar.zst — quoted sentinel that the sed
+      # pipeline below rewrites into a bare JSON number so the CLI
+      # can pre-compute aggregate download progress.
+      size = "@TARBALL_SIZE@";
     };
     extension = {
       path = "@EXT_PATH@";
@@ -164,19 +168,24 @@ pkgs.stdenvNoCC.mkDerivation {
       # CLI computes after fetching the blob at its content-addressed URL.
       # Anything else (e.g. a tree-content hash) would never match what the
       # CLI sees on the wire and would fail every closure-entry verification.
-      sp_sha256_file="$(grep "^$storeName " ${pkgs.writeText "store-tarball-manifest" (
+      sp_drv_out="$(grep "^$storeName " ${pkgs.writeText "store-tarball-manifest" (
         (builtins.concatStringsSep "\n" (map (spt: "${spt.passthru.storeName} ${spt}") storePathTarballs)) + "\n"
-      )} | awk '{print $2}')/$storeName.sha256"
+      )} | awk '{print $2}')"
+      sp_sha256_file="$sp_drv_out/$storeName.sha256"
       if [ -f "$sp_sha256_file" ]; then
         sp_sha256="$(cat "$sp_sha256_file")"
       else
         echo "FATAL: sha256 sidecar missing for $storeName at $sp_sha256_file" >&2
         exit 1
       fi
+      # Byte length of the per-store-path tarball — let the consumer's
+      # aggregate progress bar know how much to expect without a HEAD
+      # round-trip per closure entry.
+      sp_size="$(stat -c %s "$sp_drv_out/$storeName.tar.zst")"
 
       # Content-addressed blob URL: {BLOB_BASE} is substituted at publish time.
       sp_sha256_prefix="''${sp_sha256:0:2}"
-      entry="{\"name\":\"$store_name\",\"version\":\"$store_ver\",\"hash\":\"$store_hash\",\"sha256\":\"$sp_sha256\",\"url\":\"{BLOB_BASE}/blobs/$sp_sha256_prefix/$sp_sha256\"}"
+      entry="{\"name\":\"$store_name\",\"version\":\"$store_ver\",\"hash\":\"$store_hash\",\"sha256\":\"$sp_sha256\",\"size\":$sp_size,\"url\":\"{BLOB_BASE}/blobs/$sp_sha256_prefix/$sp_sha256\"}"
 
       if [ $first -eq 1 ]; then
         closure_json_array="$closure_json_array$entry"
@@ -218,6 +227,7 @@ pkgs.stdenvNoCC.mkDerivation {
     # after fetching from {BLOB_BASE}/blobs/<prefix>/<sha256>.
     tarball_sha256="$(sha256sum "$out/$base.tar.zst" | awk '{print $1}')"
     tarball_sha256_pfx="''${tarball_sha256:0:2}"
+    tarball_size="$(stat -c %s "$out/$base.tar.zst")"
 
     # ---- Read Zend Extension API number (in addition to module API) ----
     zend_extension_api="$(grep -E '^#define ZEND_EXTENSION_API_NO' \
@@ -233,6 +243,7 @@ pkgs.stdenvNoCC.mkDerivation {
       -e "s|\"@EXT_SHA256@\"|\"$ext_sha256\"|g" \
       -e "s|@TARBALL_SHA256@|$tarball_sha256|g" \
       -e "s|@TARBALL_SHA256_PFX@|$tarball_sha256_pfx|g" \
+      -e "s|\"@TARBALL_SIZE@\"|$tarball_size|g" \
       ${manifestTemplate} \
       | jq --argjson cl "$closure_json_array" '. + {closure: $cl}' \
       > "$out/$base.json"

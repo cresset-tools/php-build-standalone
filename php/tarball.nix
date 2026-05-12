@@ -81,6 +81,10 @@ let
       # {BLOB_BASE} is substituted by index.nix at index-generation time.
       url = "{BLOB_BASE}/blobs/@TARBALL_SHA256_PFX@/@TARBALL_SHA256@";
       sha256 = "@TARBALL_SHA256@";
+      # Byte length of the .tar.zst — quoted sentinel that the sed
+      # pipeline below rewrites into a bare JSON number so the CLI
+      # can pre-compute aggregate download progress.
+      size = "@TARBALL_SIZE@";
     };
     # Interpreter is a monolithic bundle today (V1 layout for the interpreter;
     # V2 dedup applies to extensions). Closure is empty; future work splits
@@ -237,6 +241,7 @@ pkgs.stdenvNoCC.mkDerivation {
     # after fetching from $BLOB_BASE/blobs/<prefix>/<sha256>.
     tarball_sha256=$(sha256sum "$out/$base.tar.zst" | awk '{print $1}')
     tarball_sha256_pfx="''${tarball_sha256:0:2}"
+    tarball_size=$(stat -c %s "$out/$base.tar.zst")
 
     # Pull Zend ABI numbers out of the installed headers. These identify
     # which extension binaries are loadable into this PHP and are the
@@ -254,6 +259,7 @@ pkgs.stdenvNoCC.mkDerivation {
     sed -e "s/@TREE_HASH@/$tree_hash/" \
         -e "s/@TARBALL_SHA256@/$tarball_sha256/g" \
         -e "s/@TARBALL_SHA256_PFX@/$tarball_sha256_pfx/g" \
+        -e "s|\"@TARBALL_SIZE@\"|$tarball_size|g" \
         -e "s/@ZEND_MODULE_API_NO@/$zend_module_api/" \
         -e "s/@ZEND_EXTENSION_API_NO@/$zend_extension_api/" \
         "''${libc_sed[@]}" \
