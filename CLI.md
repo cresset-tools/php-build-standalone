@@ -304,9 +304,12 @@ Flags (mirroring `uv python list`):
   entirely, so works offline. Bundled extensions render as
   `installed` in this view because we don't fetch the index to
   distinguish `shipped`.
-- `--only-available` — show only rows in the `available` state
-  (in the index, not on disk). Mutually exclusive with
-  `--only-installed`.
+- `--only-available` — show only rows the index advertises for the
+  host target. Each row keeps its disk-state markers (`installed`,
+  `required`) intact so coverage is visible at a glance, mirroring
+  uv's behavior. Excludes `shipped` (bundled, never indexed) and
+  `local-only` (indexed but no artifact for the resolved
+  php_minor + flavor). Mutually exclusive with `--only-installed`.
 - `--all-versions` — include every published version, not just the
   latest per `(name, php_minor, flavor)`. Default shows one row
   per extension.
@@ -342,13 +345,42 @@ Steps, in order:
    `.bougie/state/resolved` for the shim's use.
 3. **Ensure interpreter** is installed; if not, fetch via the same
    path as §3.5.1 (`bougie php install`).
-4. **Resolve extensions**: for every `ext-*` in `composer.json`, look up
-   the section index for that extension under the host target,
-   filter by `(php-minor, flavor)`, pick the highest non-yanked version
-   that satisfies any `bougie.toml` constraint (default: latest).
-   The "always-shipped" set (see `DESIGN.md` §Interpreter tarball) is
-   already present in the install — those extensions are enabled by
-   simply emitting a conf.d fragment, no fetch required.
+4. **Resolve extensions**: the enabled set for the project is the
+   union of (a) the core set shipped inside the interpreter tarball
+   (see `DESIGN.md` §Interpreter tarball), (b) the baseline set
+   (§3.5.1.1), and (c) every `ext-*` in `composer.json`. For (c),
+   look up the section index for the extension under the host target,
+   filter by `(php-minor, flavor)`, and pick the highest non-yanked
+   version that satisfies any `bougie.toml` constraint (default:
+   latest). Core and baseline extensions are already present in the
+   install — they're enabled by emitting a conf.d fragment, no fetch
+   required. For case (c), bougie installs the `.so` into the
+   content-addressed store (same path `bougie ext add` uses) and
+   writes `<project>/.bougie/conf.d/20-<name>.ini` to enable it. A
+   resolution failure here is fatal — composer.json declaring an
+   extension is a hard project requirement, and a "missing
+   ext-redis" sync would just produce a project that breaks on
+   `composer install`.
+
+   Names that name a statically-compiled-in extension (`ext-pcre`,
+   `ext-spl`, `ext-json`, `ext-libxml`, `ext-hash`, `ext-random`,
+   `ext-reflection`, `ext-standard`, `ext-date`, `ext-core`) are
+   recognized as already-satisfied and skipped before any index
+   lookup. `composer.json` projects commonly list these for
+   platform-validation reasons, not as something bougie can fetch.
+
+   A project can opt out of an individual baseline extension by
+   listing it under `[extensions]` (or `extra.bougie.extensions`)
+   with the value `false` (e.g. `mysqli = false`). This is the same
+   table that pins versions for case (c); the `false` sentinel is
+   reserved for "do not auto-enable from baseline." Opting out a
+   core extension is not supported — those are compiled into the
+   shipped interpreter's auto-loading set and the consumer doesn't
+   get to take them back. If `composer.json` *also* requires a
+   baseline extension that was opted out, the `composer.json`
+   requirement wins — bougie installs and enables it via case (c),
+   on the grounds that an explicit project requirement is a
+   stronger signal than a baseline opt-out hint.
 5. **Fetch missing artifacts**:
    - Manifests (cached by sha256).
    - For each closure entry, check `$BOUGIE_HOME/store/<name>-<v>-<hash>/`.
@@ -487,11 +519,75 @@ invocation.
 - The interpreter tarball's closure store paths are extracted into the
   shared `$BOUGIE_HOME/store/`, not the install dir. `installs/.../store`
   is created as a symlink.
+- After the interpreter is extracted, the **baseline extension set**
+  (§3.5.1.1) is resolved against the index and installed into the same
+  install root, with auto-loading conf.d fragments emitted alongside
+  the core ones. `--no-baseline` skips this step; `--baseline-only=<ext,…>`
+  narrows it to a subset. Failures here are downgraded to warnings —
+  the interpreter install is still considered successful, and
+  `bougie sync` will retry the missing baseline extensions on next run.
 - Path-shaped requests (executable-path, install-dir) error out here
   — `install` only takes index-shaped requests.
 
 Outputs (on `--format json-v1`):
-`{ "schema_version": 1, "installed": [{ "version": "...", "flavor": "...", "path": "...", "already_present": false }, …] }`.
+`{ "schema_version": 1, "installed": [{ "version": "...", "flavor": "...", "path": "...", "already_present": false, "baseline": ["mbstring", "curl", …], "baseline_failed": [] }, …] }`.
+
+#### 3.5.1.1 Baseline extension set
+
+The baseline is the set of extensions bougie installs **and enables**
+on every interpreter without the user having to ask. It sits on top of
+the Debian-aligned core that already ships inside the interpreter
+tarball (see `DESIGN.md` §Interpreter tarball) and is chosen so that a
+freshly installed bougie can run the typical Composer-managed PHP
+project — Laravel, Symfony, framework-less apps with a MySQL or SQLite
+backend — without any further `bougie ext add` or `composer.json`
+edits. Project-level opt-out per extension is via the `[extensions]`
+table's `false` sentinel (§3.3 step 4).
+
+Baseline members:
+
+| Extension     | Why it's in the baseline                                              |
+|---------------|-----------------------------------------------------------------------|
+| `mbstring`    | Hard dep of Laravel, Symfony, WordPress, every i18n-aware library.   |
+| `curl`        | Universal HTTP client; assumed by Guzzle, Composer's mirror fallback. |
+| `intl`        | Hard dep of Symfony; used by every locale/number/date formatting lib. |
+| `zip`         | Composer uses it to unpack dist zips; PHPUnit/PHAR tooling expects it.|
+| `bcmath`      | Laravel hard dep (`Illuminate\Support\Number`, money handling).       |
+| `sqlite3`     | Zero-config dev/test DB; Laravel and Symfony test suites default here.|
+| `pdo_sqlite`  | PDO driver paired with `sqlite3`.                                    |
+| `pdo_mysql`   | The default Laravel/Symfony production driver; most common server DB. |
+| `mysqli`      | Legacy alternative to `pdo_mysql`; same `mysqlnd` backbone, cheap.    |
+
+Explicitly **not** in the baseline:
+
+- `xdebug`, `pcov` — debugger / coverage tools. xdebug in particular
+  changes engine behavior at load time (opcode dispatch overhead even
+  when disabled per-request) and many users prefer it as an opt-in
+  per-project knob. Bougie will grow a dedicated developer-tools
+  affordance for these later; until then they are reachable via
+  `bougie ext add xdebug` or `bougie run --with ext-xdebug=…`.
+- `pdo_pgsql` / `pgsql` — Postgres driver. Project-specific; pulls
+  libpq into the closure. Resolved on demand from `composer.json`'s
+  `ext-pgsql` / `ext-pdo_pgsql`.
+- `gd`, `imagick`, `vips` — image processing. Mutually substitutable;
+  fattens the closure with image-codec libraries; not used by every
+  project.
+- `redis`, `apcu`, `igbinary`, `msgpack` — caching / serialization
+  stacks. Almost always opt-in via composer.json.
+- `bz2`, `gmp`, `gettext`, `soap`, `exif`, `ftp`, `pcntl`, `shmop`,
+  `sysv*`, `calendar` — niche or single-use-case.
+
+Baseline membership is part of the bougie binary, not the index. A
+bougie release is what changes the baseline; an index publication
+cannot. This keeps `bougie php install` deterministic for a given
+bougie version even if the index later grows new extensions.
+
+`bougie php install --no-baseline` produces a "core only" install
+matching `php8.x-cli` on Debian Bookworm — useful for CI images
+that want to install only what `composer.json` lists. `bougie php
+install --baseline-only=mbstring,curl` is an escape hatch for users
+who want a narrower default; both flags affect only the current
+invocation and are not persisted.
 
 #### 3.5.2 `bougie php uninstall <request>… [--flavor <flavor>]`
 
@@ -533,8 +629,10 @@ Flags (mirroring `uv python list`):
 
 - `--only-installed` — hide `available` rows. Skips the index fetch
   entirely, so works offline.
-- `--only-available` — hide `installed` rows (index-only view).
-  Mutually exclusive with `--only-installed`.
+- `--only-available` — show only rows the index advertises. Each row
+  keeps its `installed` marker so coverage is visible without
+  cross-referencing `--only-installed`. Mutually exclusive with
+  `--only-installed`.
 - `--all-versions` — include every published patch version, not
   just the latest per minor.
 - `--all-platforms` — include downloads for every target triple,

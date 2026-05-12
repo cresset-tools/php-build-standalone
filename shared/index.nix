@@ -8,10 +8,12 @@
 #         interpreter/php.json                            # this target's PHP runtimes
 #         extension/<name>.json                           # this target's extension X
 #         service/mariadb.json                            # this target's MariaDB server bundle
-#     targets/<target>/manifests/                         # shared, content-addressed
-#       php/<minor>/<tag>.json                            # interpreter manifest (copied verbatim)
-#       ext/<name>/<extver>/<tag>.json                    # extension manifest (copied verbatim)
-#       service/<name>/<version>/<tag>.json               # service manifest (e.g. mariadb)
+#       targets/<target>/manifests/                       # manifests live alongside their sections,
+#         php/<minor>/<tag>.json                          # so a re-publish of the same tag with
+#         ext/<name>/<extver>/<tag>.json                  # different content lands at a fresh URL
+#         service/<name>/<version>/<tag>.json             # and never overwrites a prior publish's
+#                                                         # section→manifest pin (DISTRIBUTION.md
+#                                                         # §Snapshot-consistency).
 #     blobs/
 #       <sha256[0:2]>/<sha256>                            # all tarballs, content-addressed, no extension
 #
@@ -20,9 +22,16 @@
 #   minor. See tarball.nix and tarball-extension.nix for file naming.
 #
 # URL policy (DISTRIBUTION.md §Manifests-and-blobs):
-#   - Section rows reference manifests via absolute server paths
-#     (no hostname, e.g. /targets/<target>/manifests/ext/xdebug/3.5.1/<tag>.json).
+#   - Section rows reference manifests via absolute server paths under
+#     the same /versions/<publishVersion>/ snapshot the section itself
+#     lives in (e.g.
+#     /versions/<publishVersion>/targets/<target>/manifests/ext/xdebug/3.5.1/<tag>.json).
 #     Clients prepend the index hostname; mirrors prepend their own.
+#     Putting manifests under the versioned snapshot — rather than the
+#     pre-2026-05 shared /targets/ tree — keeps a republish of the same
+#     tag with different bytes from overwriting the prior publish's
+#     manifest file, which used to break clients still holding the prior
+#     root (section.manifest.sha256 referred to the old bytes).
 #   - Manifests reference blobs via fully-qualified URLs. Both interpreter
 #     and extension manifests carry blob.url and closure[].url with the
 #     {BLOB_BASE} placeholder (emitted by tarball*.nix, substituted here).
@@ -187,9 +196,10 @@ pkgs.runCommand "pbs-index" {
 
         # Absolute server path to the manifest (no hostname; clients prepend
         # the index host). DISTRIBUTION.md §Manifests-and-blobs explains why
-        # this is absolute rather than relative.
-        manifest_path="/targets/$target/manifests/php/$minor/$tag.json"
-        manifest_dest_key="$target/manifests/php/$minor/$tag.json"
+        # this is absolute rather than relative, and why it lives under
+        # /versions/<publishVersion>/ (immutable URL per publish).
+        manifest_path="/versions/$publishVersion/targets/$target/manifests/php/$minor/$tag.json"
+        manifest_dest_key="versions/$publishVersion/targets/$target/manifests/php/$minor/$tag.json"
 
         # Stage the manifest with {BLOB_BASE} substituted, then hash the
         # staged content so section.manifest.sha256 matches the served bytes.
@@ -242,8 +252,8 @@ pkgs.runCommand "pbs-index" {
         add_blob "$tarball_sha256_actual" "$tarball"
 
         # Absolute server path; see interpreter loop above for why.
-        manifest_path="/targets/$target/manifests/ext/$ext_name/$ext_version/$tag.json"
-        manifest_dest_key="$target/manifests/ext/$ext_name/$ext_version/$tag.json"
+        manifest_path="/versions/$publishVersion/targets/$target/manifests/ext/$ext_name/$ext_version/$tag.json"
+        manifest_dest_key="versions/$publishVersion/targets/$target/manifests/ext/$ext_name/$ext_version/$tag.json"
 
         # Stage with {BLOB_BASE} substituted (manifests carry {BLOB_BASE}
         # URLs in blob.url and closure[].url) and hash the staged content
@@ -297,8 +307,8 @@ pkgs.runCommand "pbs-index" {
         fi
         add_blob "$tarball_sha256_actual" "$tarball"
 
-        manifest_path="/targets/$target/manifests/service/$svc_name/$svc_version/$tag.json"
-        manifest_dest_key="$target/manifests/service/$svc_name/$svc_version/$tag.json"
+        manifest_path="/versions/$publishVersion/targets/$target/manifests/service/$svc_name/$svc_version/$tag.json"
+        manifest_dest_key="versions/$publishVersion/targets/$target/manifests/service/$svc_name/$svc_version/$tag.json"
 
         staged_manifest="$(stage_manifest "$f")"
         manifest_srcs["$manifest_dest_key"]="$staged_manifest"
@@ -377,10 +387,30 @@ pkgs.runCommand "pbs-index" {
         fmanifest_body="$(echo "$fentry" | jq -S '.manifest')"
 
         # On-disk manifest destination is derived from the section_entry's
-        # absolute manifest.path (DISTRIBUTION.md §Manifests-and-blobs).
-        # The path always starts with /targets/<target>/ — strip the leading
-        # / and rebase under $out.
-        fmanifest_path="$(echo "$fsection_entry" | jq -r '.manifest.path')"
+        # absolute manifest.path. Per DISTRIBUTION.md §Manifests-and-blobs,
+        # manifests live under the current publish's
+        # /versions/<publishVersion>/ — so a frozen entry's recorded path
+        # (which embeds whichever publishVersion was current when the
+        # entry was frozen) gets re-versioned here to the current
+        # publish. This keeps every manifest URL inside one publish
+        # under the same versioned snapshot and means the on-disk path
+        # rsync uploads is the same one the section now claims.
+        fmanifest_path_raw="$(echo "$fsection_entry" | jq -r '.manifest.path')"
+        case "$fmanifest_path_raw" in
+          /versions/*/targets/*/manifests/*)
+            # Strip `/versions/<oldV>/` and re-prefix with current.
+            fmanifest_rel="''${fmanifest_path_raw#/versions/*/}"
+            fmanifest_path="/versions/$publishVersion/$fmanifest_rel"
+            ;;
+          /targets/*/manifests/*)
+            # Legacy pre-versioned shape; promote into versioned tree.
+            fmanifest_path="/versions/$publishVersion''${fmanifest_path_raw}"
+            ;;
+          *)
+            echo "FATAL: frozen entry '$ftag' has unrecognized manifest.path shape: $fmanifest_path_raw" >&2
+            exit 1
+            ;;
+        esac
         fmanifest_dest_rel="''${fmanifest_path#/}"
 
         # Overlap check: tag must not appear in both live and frozen
@@ -425,10 +455,12 @@ pkgs.runCommand "pbs-index" {
         echo "$substituted_body" > "$manifest_dest"
 
         # Augment section_entry: refresh manifest.sha256 to match the
-        # substituted body and add frozen:true.
+        # substituted body, rewrite manifest.path to the current
+        # publish's /versions/<V>/ tree (see case-statement above),
+        # and add frozen:true.
         augmented_entry="$(echo "$fsection_entry" \
-          | jq -S --arg sha "$substituted_sha256" \
-              '. + {frozen: true, manifest: (.manifest + {sha256: $sha})}')"
+          | jq -S --arg sha "$substituted_sha256" --arg path "$fmanifest_path" \
+              '. + {frozen: true, manifest: (.manifest + {sha256: $sha, path: $path})}')"
         # Apply yanks lookup to the frozen entry too
         augmented_entry="$(yank_entry "$ftag" "$augmented_entry")"
 
@@ -448,7 +480,11 @@ pkgs.runCommand "pbs-index" {
     # ---- Copy manifests ----
     for dest_key in "''${!manifest_srcs[@]}"; do
       src="''${manifest_srcs[$dest_key]}"
-      dest="$out/targets/$dest_key"
+      # dest_key is the full path under $out (e.g.
+      # `versions/<V>/targets/<t>/manifests/...`). Each loop above
+      # builds the full path so the publishVersion can be embedded
+      # without a hardcoded prefix here.
+      dest="$out/$dest_key"
       mkdir -p "$(dirname "$dest")"
       cp "$src" "$dest"
     done

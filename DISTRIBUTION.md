@@ -96,13 +96,13 @@ The tree is split across two hostnames served by the same origin
 https://index.example.com/                                     # CDN-fronted, JSON only
   index.json                                                   # mutable root: version pointer + per-target section dispatch
   index.json.sig                                               # signature over index.json bytes
-  versions/<V>/                                                # immutable per-publish snapshot of section files
+  versions/<V>/                                                # immutable per-publish snapshot
     targets/<target>/sections/
       interpreter/php.json                                     # this target's PHP runtimes
       extension/<name>.json                                    # this target's extension X
-  targets/<target>/manifests/                                  # shared, immutable manifest tree
-    php/<minor>/<tag>.json                                     # interpreter manifest
-    ext/<name>/<extver>/<tag>.json                             # extension manifest
+    targets/<target>/manifests/                                # manifests live inside the same snapshot
+      php/<minor>/<tag>.json                                   # interpreter manifest
+      ext/<name>/<extver>/<tag>.json                           # extension manifest
 
 https://blobs.example.com/                                     # direct origin, no CDN
   blobs/
@@ -115,11 +115,16 @@ Three URL classes, three lifetimes:
   This is the only URL replaced in place per publish. Small (~tens
   of KB), revalidated cheaply via ETag.
 - **Immutable, additive:** `versions/<V>/...sections/...`,
-  `targets/<target>/manifests/...`, `blobs/...`. Each URL is
+  `versions/<V>/...manifests/...`, `blobs/...`. Each URL is
   written once and never changes. New publishes add new URLs
   alongside the old ones; old URLs stay reachable so a client that
   fetched the old root can still complete its sync from the
-  matching version snapshot.
+  matching version snapshot. Manifests live under the same
+  `versions/<V>/` tree as their sections — putting them there
+  (rather than in a shared `targets/<t>/manifests/` tree that prior
+  designs used) means a republish of the same tag with different
+  bytes lands at a fresh URL and never overwrites the prior
+  publish's section→manifest pin.
 
 Manifests reference blobs by absolute URL on `blobs.example.com`;
 the index generator emits these at publish time. Clients never need
@@ -146,8 +151,9 @@ Five properties this layout enforces:
   two targets happen to produce a bit-identical blob, the dedup
   applies).
 - **Manifests are addressable but enumerated through sections.** The
-  manifest JSON files at `targets/<target>/manifests/.../<tag>.json`
-  are reachable by URL but the source of truth for "what manifests
+  manifest JSON files at
+  `versions/<V>/targets/<target>/manifests/.../<tag>.json` are
+  reachable by URL but the source of truth for "what manifests
   exist" is the per-target section index. Clients never list
   directories.
 - **Index/blob domain separation.** Indexes are small, frequent, and
@@ -262,7 +268,7 @@ Example
       "flavor": "nts",
       "php_minor": "8.3",
       "manifest": {
-        "path": "/targets/x86_64-unknown-linux-gnu/manifests/ext/xdebug/3.5.1/xdebug-3.5.1+php83-x86_64-unknown-linux-gnu-nts.json",
+        "path": "/versions/<V>/targets/x86_64-unknown-linux-gnu/manifests/ext/xdebug/3.5.1/xdebug-3.5.1+php83-x86_64-unknown-linux-gnu-nts.json",
         "sha256": "…"
       },
       "yanked": false,
@@ -282,7 +288,7 @@ Interpreter section rows have the same shape but omit `php_minor`
   "version": "8.3.12",
   "flavor": "nts",
   "manifest": {
-    "path": "/targets/x86_64-unknown-linux-gnu/manifests/php/8.3/php-8.3.12-x86_64-unknown-linux-gnu-nts.json",
+    "path": "/versions/<V>/targets/x86_64-unknown-linux-gnu/manifests/php/8.3/php-8.3.12-x86_64-unknown-linux-gnu-nts.json",
     "sha256": "…"
   },
   "yanked": false,
@@ -305,8 +311,10 @@ Field semantics:
   separately for each PHP minor; carrying this in the row lets a
   resolver filter without reading every manifest.
 - **`manifest.path`** — absolute server path (no hostname) to the
-  manifest JSON. Always begins with `/targets/<target>/manifests/`.
-  Clients prepend the index hostname; mirrors prepend their own.
+  manifest JSON. Always begins with
+  `/versions/<V>/targets/<target>/manifests/`, where `<V>` matches
+  the publish version the section itself lives under. Clients
+  prepend the index hostname; mirrors prepend their own.
 - **`manifest.sha256`** — sha256 of the manifest body. The trust
   chain anchors here: the signed root covers section sha256s,
   section sha256s cover manifest sha256s, manifest sha256s cover
@@ -425,7 +433,7 @@ manifest is the immutable contract.
 
 ### Interpreter manifest
 
-Example (`/targets/x86_64-unknown-linux-gnu/manifests/php/8.3/php-8.3.12-x86_64-unknown-linux-gnu-nts.json`):
+Example (`/versions/<V>/targets/x86_64-unknown-linux-gnu/manifests/php/8.3/php-8.3.12-x86_64-unknown-linux-gnu-nts.json`):
 
 ```json
 {
@@ -461,7 +469,7 @@ Example (`/targets/x86_64-unknown-linux-gnu/manifests/php/8.3/php-8.3.12-x86_64-
 
 ### Extension manifest
 
-Example (`/targets/x86_64-unknown-linux-gnu/manifests/ext/xdebug/3.5.1/xdebug-3.5.1+php83-x86_64-unknown-linux-gnu-nts.json`):
+Example (`/versions/<V>/targets/x86_64-unknown-linux-gnu/manifests/ext/xdebug/3.5.1/xdebug-3.5.1+php83-x86_64-unknown-linux-gnu-nts.json`):
 
 ```json
 {
@@ -563,13 +571,15 @@ closure-coherence model exposed at the wire layer.
 
 ### Why absolute manifest paths (no hostname)
 
-Manifests live under `targets/<target>/manifests/...` but are
-referenced from sections under `targets/<target>/sections/...`. A
-relative `../../manifests/...` URL silently breaks when section
-names contain `/` (e.g. `interpreter/php` is two path segments
-deep, not one), because relative resolution then eats a segment of
-the target prefix. Absolute paths (`/targets/<target>/manifests/...`)
-sidestep the entire class of bug.
+Manifests live under `versions/<V>/targets/<target>/manifests/...`
+but are referenced from sections under
+`versions/<V>/targets/<target>/sections/...`. A relative
+`../manifests/...` URL silently breaks when section names contain
+`/` (e.g. `interpreter/php` is two path segments deep, not one),
+because relative resolution then eats a segment of the target
+prefix. Absolute paths
+(`/versions/<V>/targets/<target>/manifests/...`) sidestep the
+entire class of bug.
 
 The path is **server-absolute, hostname-relative**: clients
 prepend whatever hostname they're configured to fetch from, so the
@@ -600,18 +610,16 @@ Day-one shape:
 - nginx with two vhosts — one for the index tree, one for the blob
   tree. Static files, no application layer.
 - TLS via Let's Encrypt, auto-renewed (one cert per hostname).
-- CI publish step: a three-phase rsync drives the snapshot model
+- CI publish step: a two-phase rsync drives the snapshot model
   ("Root manifest" above):
-  1. Push blobs to `/srv/blobs/<prefix>/<sha>` and any new
-     manifests to `/srv/targets/<target>/manifests/...`. Both
-     trees are content-addressed at the URL level and additive —
-     existing files are bit-identical no-ops, new files land but
-     nothing references them yet because the root hasn't been
-     replaced.
-  2. Push the new versioned section tree to
-     `/srv/versions/<V>/targets/<target>/sections/...`. A fresh
-     directory at a fresh path; nothing references it yet either.
-  3. Replace `/srv/index.json` and `/srv/index.json.sig`
+  1. Push blobs to `/srv/blobs/<prefix>/<sha>`, and the new
+     versioned snapshot (sections AND manifests) to
+     `/srv/versions/<V>/targets/<target>/{sections,manifests}/...`.
+     Blobs are content-addressed and additive (bit-identical
+     re-uploads are no-ops); the `versions/<V>/` subtree is a
+     fresh directory at a fresh path nobody serves yet because
+     the live root still names the previous `<V-1>`.
+  2. Replace `/srv/index.json` and `/srv/index.json.sig`
      atomically (write to `.new`, then `mv -T`). This is the only
      mutation visible to clients; from this point onward, new
      fetches see the new root, which references the new section
@@ -850,10 +858,11 @@ generations of the index is a meaningful diff, not a noise diff.
     unchanged). The root references sections by sha256, so a stale
     section served against a fresh root surfaces as a hash mismatch
     — the CLI refuses to use it (see `BougieError::ManifestHashMismatch`).
-  - **Manifests** (`/targets/<target>/manifests/...`) and **blobs**
-    (`/blobs/<prefix>/<sha256>`) are *truly immutable* — their URL
-    is content-addressed (manifest path embeds the tag, blob path
-    embeds the sha256). They set
+  - **Manifests** (`/versions/<V>/targets/<target>/manifests/...`)
+    and **blobs** (`/blobs/<prefix>/<sha256>`) are *truly
+    immutable* — their URL is content-addressed (manifest path
+    embeds the publish version + tag, blob path embeds the sha256).
+    They set
     `Cache-Control: public, max-age=31536000, immutable`. Cache
     lifetime can be effectively infinite without correctness risk.
 
