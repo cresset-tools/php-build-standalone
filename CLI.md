@@ -304,9 +304,12 @@ Flags (mirroring `uv python list`):
   entirely, so works offline. Bundled extensions render as
   `installed` in this view because we don't fetch the index to
   distinguish `shipped`.
-- `--only-available` — show only rows in the `available` state
-  (in the index, not on disk). Mutually exclusive with
-  `--only-installed`.
+- `--only-available` — show only rows the index advertises for the
+  host target. Each row keeps its disk-state markers (`installed`,
+  `required`) intact so coverage is visible at a glance, mirroring
+  uv's behavior. Excludes `shipped` (bundled, never indexed) and
+  `local-only` (indexed but no artifact for the resolved
+  php_minor + flavor). Mutually exclusive with `--only-installed`.
 - `--all-versions` — include every published version, not just the
   latest per `(name, php_minor, flavor)`. Default shows one row
   per extension.
@@ -533,8 +536,10 @@ Flags (mirroring `uv python list`):
 
 - `--only-installed` — hide `available` rows. Skips the index fetch
   entirely, so works offline.
-- `--only-available` — hide `installed` rows (index-only view).
-  Mutually exclusive with `--only-installed`.
+- `--only-available` — show only rows the index advertises. Each row
+  keeps its `installed` marker so coverage is visible without
+  cross-referencing `--only-installed`. Mutually exclusive with
+  `--only-installed`.
 - `--all-versions` — include every published patch version, not
   just the latest per minor.
 - `--all-platforms` — include downloads for every target triple,
