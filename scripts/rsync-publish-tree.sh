@@ -1,29 +1,37 @@
-# Push a prepared publish tree to the origin box, in a three-phase
+# Push a prepared publish tree to the origin box, in a two-phase
 # sequence that keeps the snapshot model intact (DISTRIBUTION.md
 # §Snapshot-consistency).
 #
 # Sequence:
 #   1. Push immutable, additive content first:
-#        - blobs   → /srv/blobs/        (content-addressed by sha)
-#        - manifests → /srv/index/targets/<target>/manifests/...  (paths
-#                      embed the tag, additive across publishes)
-#        - the new versioned section tree
+#        - blobs   → /srv/blobs/                                   (content-addressed by sha)
+#        - the new versioned snapshot
 #                  → /srv/index/versions/<V>/targets/<target>/sections/...
+#                  → /srv/index/versions/<V>/targets/<target>/manifests/...
+#      Both sections and manifests live under the per-publish
+#      /versions/<V>/ tree (this used to be split, with manifests in a
+#      shared /srv/index/targets/ tree — until a republish of the same
+#      tag overwrote a manifest file the prior root's signed section
+#      was still pinned to, breaking clients holding the prior root).
 #      Nothing in this phase is observable to clients yet because the
 #      live root.json hasn't been replaced — it still points at the
-#      previous version's section URLs.
+#      previous version's URLs.
 #   2. Replace /srv/index/index.json and .sig atomically (write to .new,
 #      then mv -T). This is the only mutation visible to clients; from
 #      this point new fetches see the new root, which references the
 #      section/manifest/blob URLs that landed in phase 1.
 #   3. (Implicit) Old /srv/index/versions/<V-1>/... directories stay
-#      in place so clients with a cached old root finish their sync from
-#      the matching snapshot. GC of versions older than the root's
-#      must-revalidate TTL is a separate cron concern.
+#      in place so clients with a cached old root finish their sync
+#      from the matching snapshot. Old manifests under the legacy
+#      /srv/index/targets/<t>/manifests/ tree (from before this script
+#      moved them under /versions/) also stay in place for cached old
+#      roots that referenced the unversioned paths. GC of versions
+#      older than the root's must-revalidate TTL is a separate cron
+#      concern.
 #
 # Args:
-#   $1 — index tree dir (must contain index.json[, .sig], versions/,
-#        targets/ — i.e. the layout index.nix produces minus blobs/)
+#   $1 — index tree dir (must contain index.json[, .sig] and versions/
+#        — i.e. the layout index.nix produces minus blobs/)
 #   $2 — blobs dir (the blobs/ subtree, content-addressed files)
 #   $3 — SSH destination (a hostname that resolves directly to the box,
 #        e.g. origin.bougie.tools — NOT the public index/blob hostnames,
@@ -78,27 +86,14 @@ rsync -az --chmod=D755,F644 \
   "${BLOBS_DIR}/" \
   "${DEST}:${BLOB_REMOTE}"
 
-# ---- Phase 1b: shared manifest tree (paths embed the tag, additive) ----
-# The on-disk index tree contains targets/<target>/manifests/... — a
-# shared, content-addressed-by-tag namespace that survives across
-# publishes. Sync only this subtree; do NOT include the section tree
-# (sections live under versions/<V>/, handled in phase 1c) and do NOT
-# include the root yet (handled in phase 2).
-if [ -d "${INDEX_TREE}/targets" ]; then
-  echo "==> [1b] rsync manifests → ${DEST}:${INDEX_ROOT}/targets/"
-  $SSH_CMD "${DEST}" "mkdir -p ${INDEX_ROOT}/targets"
-  rsync -az --chmod=D755,F644 \
-    -e "$SSH_CMD" \
-    "${INDEX_TREE}/targets/" \
-    "${DEST}:${INDEX_ROOT}/targets/"
-fi
-
-# ---- Phase 1c: versioned section tree (immutable URL per publish) ----
+# ---- Phase 1b: versioned snapshot (sections + manifests) ----
 # versions/<V>/ is a fresh path nobody serves yet because the live
 # root still names the previous <V-1>. Landing it before the root flip
-# means the new root never references missing sections.
+# means the new root never references missing sections or manifests.
+# Both kinds of files live under the same /versions/<V>/ tree (see
+# header comment for why); this single rsync push covers them both.
 if [ -d "${INDEX_TREE}/versions" ]; then
-  echo "==> [1c] rsync versions → ${DEST}:${INDEX_ROOT}/versions/"
+  echo "==> [1b] rsync versions → ${DEST}:${INDEX_ROOT}/versions/"
   $SSH_CMD "${DEST}" "mkdir -p ${INDEX_ROOT}/versions"
   rsync -az --chmod=D755,F644 \
     -e "$SSH_CMD" \

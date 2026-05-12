@@ -64,9 +64,10 @@ fetch_json() {
 }
 
 resolve_manifest_path() {
-  # Given an absolute server path (e.g. /targets/.../manifests/.../tag.json)
-  # return the absolute file-path or URL to fetch. The path is always
-  # absolute and hostname-free per DISTRIBUTION.md §Manifests-and-blobs.
+  # Given an absolute server path (e.g.
+  # /versions/<V>/targets/.../manifests/.../tag.json) return the
+  # absolute file-path or URL to fetch. The path is always absolute
+  # and hostname-free per DISTRIBUTION.md §Manifests-and-blobs.
   local path="$1"
   if [[ -n "$LOCAL_DIR" ]]; then
     echo "$LOCAL_DIR${path}"

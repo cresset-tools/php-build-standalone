@@ -38,20 +38,17 @@ if [ "$linux_version" != "$darwin_version" ]; then
 fi
 
 # Copy Linux tree first (authoritative base). Brings index.json,
-# targets/<linux-target>/manifests/, versions/<V>/targets/<linux-target>/,
-# and blobs/ along.
+# versions/<V>/targets/<linux-target>/ (sections + manifests), and
+# blobs/ along.
 cp -r "$LINUX_DIR/." "$OUTPUT_DIR/merged/"
-
-# Merge Darwin targets/ (shared manifest tree) — triples are disjoint,
-# no overwrites expected.
-if [ -d "$DARWIN_DIR/targets" ]; then
-  cp -rn "$DARWIN_DIR/targets/." "$OUTPUT_DIR/merged/targets/"
-fi
 
 # Merge Darwin versions/<V>/ — same V across legs (asserted above), so
 # the only thing under versions/<V>/ that differs is which target dirs
-# each leg populated. cp -rn is the merge: matching subpaths from
-# Darwin land alongside Linux's, no overwrites.
+# (and the manifests beneath them) each leg populated. cp -rn is the
+# merge: matching subpaths from Darwin land alongside Linux's, no
+# overwrites. Manifests used to live in a separate top-level
+# `targets/` tree that was merged in its own pass; consolidating them
+# under versions/<V>/ collapses that into this single cp.
 if [ -d "$DARWIN_DIR/versions" ]; then
   mkdir -p "$OUTPUT_DIR/merged/versions"
   cp -rn "$DARWIN_DIR/versions/." "$OUTPUT_DIR/merged/versions/"
