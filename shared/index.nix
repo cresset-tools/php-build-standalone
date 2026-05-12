@@ -198,8 +198,8 @@ pkgs.runCommand "pbs-index" {
         # the index host). DISTRIBUTION.md §Manifests-and-blobs explains why
         # this is absolute rather than relative, and why it lives under
         # /versions/<publishVersion>/ (immutable URL per publish).
-        manifest_path="/versions/$publishVersion/targets/$target/manifests/php/$minor/$tag.json"
-        manifest_dest_key="versions/$publishVersion/targets/$target/manifests/php/$minor/$tag.json"
+        manifest_path="/versions/${publishVersion}/targets/$target/manifests/php/$minor/$tag.json"
+        manifest_dest_key="versions/${publishVersion}/targets/$target/manifests/php/$minor/$tag.json"
 
         # Stage the manifest with {BLOB_BASE} substituted, then hash the
         # staged content so section.manifest.sha256 matches the served bytes.
@@ -252,8 +252,8 @@ pkgs.runCommand "pbs-index" {
         add_blob "$tarball_sha256_actual" "$tarball"
 
         # Absolute server path; see interpreter loop above for why.
-        manifest_path="/versions/$publishVersion/targets/$target/manifests/ext/$ext_name/$ext_version/$tag.json"
-        manifest_dest_key="versions/$publishVersion/targets/$target/manifests/ext/$ext_name/$ext_version/$tag.json"
+        manifest_path="/versions/${publishVersion}/targets/$target/manifests/ext/$ext_name/$ext_version/$tag.json"
+        manifest_dest_key="versions/${publishVersion}/targets/$target/manifests/ext/$ext_name/$ext_version/$tag.json"
 
         # Stage with {BLOB_BASE} substituted (manifests carry {BLOB_BASE}
         # URLs in blob.url and closure[].url) and hash the staged content
@@ -307,8 +307,8 @@ pkgs.runCommand "pbs-index" {
         fi
         add_blob "$tarball_sha256_actual" "$tarball"
 
-        manifest_path="/versions/$publishVersion/targets/$target/manifests/service/$svc_name/$svc_version/$tag.json"
-        manifest_dest_key="versions/$publishVersion/targets/$target/manifests/service/$svc_name/$svc_version/$tag.json"
+        manifest_path="/versions/${publishVersion}/targets/$target/manifests/service/$svc_name/$svc_version/$tag.json"
+        manifest_dest_key="versions/${publishVersion}/targets/$target/manifests/service/$svc_name/$svc_version/$tag.json"
 
         staged_manifest="$(stage_manifest "$f")"
         manifest_srcs["$manifest_dest_key"]="$staged_manifest"
@@ -400,11 +400,11 @@ pkgs.runCommand "pbs-index" {
           /versions/*/targets/*/manifests/*)
             # Strip `/versions/<oldV>/` and re-prefix with current.
             fmanifest_rel="''${fmanifest_path_raw#/versions/*/}"
-            fmanifest_path="/versions/$publishVersion/$fmanifest_rel"
+            fmanifest_path="/versions/${publishVersion}/$fmanifest_rel"
             ;;
           /targets/*/manifests/*)
             # Legacy pre-versioned shape; promote into versioned tree.
-            fmanifest_path="/versions/$publishVersion''${fmanifest_path_raw}"
+            fmanifest_path="/versions/${publishVersion}''${fmanifest_path_raw}"
             ;;
           *)
             echo "FATAL: frozen entry '$ftag' has unrecognized manifest.path shape: $fmanifest_path_raw" >&2
