@@ -354,7 +354,20 @@ Steps, in order:
    version that satisfies any `bougie.toml` constraint (default:
    latest). Core and baseline extensions are already present in the
    install — they're enabled by emitting a conf.d fragment, no fetch
-   required.
+   required. For case (c), bougie installs the `.so` into the
+   content-addressed store (same path `bougie ext add` uses) and
+   writes `<project>/.bougie/conf.d/20-<name>.ini` to enable it. A
+   resolution failure here is fatal — composer.json declaring an
+   extension is a hard project requirement, and a "missing
+   ext-redis" sync would just produce a project that breaks on
+   `composer install`.
+
+   Names that name a statically-compiled-in extension (`ext-pcre`,
+   `ext-spl`, `ext-json`, `ext-libxml`, `ext-hash`, `ext-random`,
+   `ext-reflection`, `ext-standard`, `ext-date`, `ext-core`) are
+   recognized as already-satisfied and skipped before any index
+   lookup. `composer.json` projects commonly list these for
+   platform-validation reasons, not as something bougie can fetch.
 
    A project can opt out of an individual baseline extension by
    listing it under `[extensions]` (or `extra.bougie.extensions`)
@@ -363,7 +376,11 @@ Steps, in order:
    reserved for "do not auto-enable from baseline." Opting out a
    core extension is not supported — those are compiled into the
    shipped interpreter's auto-loading set and the consumer doesn't
-   get to take them back.
+   get to take them back. If `composer.json` *also* requires a
+   baseline extension that was opted out, the `composer.json`
+   requirement wins — bougie installs and enables it via case (c),
+   on the grounds that an explicit project requirement is a
+   stronger signal than a baseline opt-out hint.
 5. **Fetch missing artifacts**:
    - Manifests (cached by sha256).
    - For each closure entry, check `$BOUGIE_HOME/store/<name>-<v>-<hash>/`.
