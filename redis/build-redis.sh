@@ -99,6 +99,28 @@ fi
 # mkDep.
 export OPENSSL_PREFIX="$PBS_DEP_OPENSSL"
 
+# Darwin: hiredis builds with -Werror (deps/hiredis/Makefile:47
+# `WARNINGS=… -Werror …`). Our Darwin clang wrapper unconditionally injects
+# `-Wl,-headerpad_max_install_names` (toolchain-darwin.nix:49) into every
+# invocation, including `-c` compile steps, which makes clang emit
+# `warning: -Wl,…: 'linker' input unused [-Wunused-command-line-argument]`.
+# -Werror promotes that to a fatal error, so hiredis's first .c.o rule
+# (deps/hiredis/Makefile:275) fails.
+#
+# src/Makefile builds deps via `persist-settings: distclean` ending in
+# `-(cd ../deps && $(MAKE) $(DEPENDENCY_TARGETS))` — the leading `-`
+# swallows the failure, so make happily proceeds to compile src/*.o and
+# then dies at LINK redis-server with "no such file: libhiredis.a".
+#
+# Fix: append `-Wno-error=unused-command-line-argument` so the spurious
+# warning stays a warning. deps/Makefile passes our CFLAGS through to
+# hiredis as HIREDIS_CFLAGS, which hiredis appends *after* its -Werror
+# WARNINGS line (deps/hiredis/Makefile:49 `REAL_CFLAGS=… $(WARNINGS) …
+# $(HIREDIS_CFLAGS)`), so the suppression takes effect.
+if [ -n "${MACOSX_DEPLOYMENT_TARGET:-}" ]; then
+  export CFLAGS="$CFLAGS -Wno-error=unused-command-line-argument"
+fi
+
 # Top-level Makefile recurses into src/ and deps/; .DEFAULT rule passes
 # the target through. `all` builds everything (server, cli, benchmark,
 # sentinel symlink, check-rdb/aof symlinks) AND the redismodule test
@@ -118,6 +140,16 @@ export OPENSSL_PREFIX="$PBS_DEP_OPENSSL"
 # `-Wl,--disable-new-dtags -Wl,-z,origin`. ld.lld rejects those as
 # "unknown argument"; clang invoked as the linker driver forwards
 # `-Wl,...` to the underlying linker correctly.
+#
+# Darwin's tests/modules doesn't hardcode LD=gcc (that's the Linux branch
+# at tests/modules/Makefile:30), but it also doesn't set LD at all, so make
+# falls back to the implicit default of `ld`. The Nix sandbox exposes only
+# our clang wrapper at $PBS_TOOLCHAIN/bin/cc — there's no `ld` on PATH.
+# Tests/modules' link rule on Darwin is
+#   $(LD) -bundle -undefined dynamic_lookup -o foo.so foo.xo …
+# which clang-as-driver handles correctly, but raw ld64 wouldn't (no -bundle
+# semantics that match clang's driver behavior here). So LD=$CC is needed
+# on both platforms.
 make -j"$NIX_BUILD_CORES" BUILD_TLS=yes USE_SYSTEMD=no \
   CC="$CC" LD="$CC" \
   PREFIX="$PBS_DEPS" all
