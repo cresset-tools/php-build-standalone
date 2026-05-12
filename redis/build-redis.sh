@@ -1,0 +1,158 @@
+#!/usr/bin/env bash
+# Build Redis (redis-server + redis-cli + redis-benchmark + redis-sentinel
+# + redis-check-{rdb,aof}) into ${PBS_DEPS}.
+#
+# Redis ships its own hand-rolled Makefile (no autotools / cmake). The
+# build system pinned at the top level just recurses into src/, where
+# the real Makefile lives. We invoke that directly with:
+#   - PREFIX                  install root (== $PBS_DEPS)
+#   - BUILD_TLS=yes           link against bundled OpenSSL for rediss://
+#   - MALLOC=jemalloc         upstream default; vendored under deps/jemalloc
+#                             and configured with --disable-cxx, so it does
+#                             not pull in libstdc++.
+#   - USE_SYSTEMD=no          unit-file integration not relevant to a
+#                             relocatable user-mode install. Without this,
+#                             the Makefile pkg-config probes for libsystemd
+#                             which would either silently link the host's
+#                             /usr/lib/x86_64-linux-gnu/libsystemd.so (a
+#                             /nix/store leak via the Nix sandbox's
+#                             toolchain) or fail outright.
+#
+# RPATH wiring: setup-env-linux.sh emits -Wl,--disable-new-dtags -Wl,-z,origin
+# in LDFLAGS, and finalize-linux.sh rewrites every ELF's RPATH to
+# $ORIGIN/../store/<openssl-storeName>/lib at tarball assembly time. We
+# don't pass -rpath here ourselves — the encoded value is irrelevant
+# until finalize re-asserts it.
+#
+# C++ runtime: deps/fast_float compiles fast_float_strtod.cpp into
+# libfast_float_strtod.a, which is then linked into redis-server. That
+# pulls in the C++ standard library at link time even though jemalloc
+# itself is built --disable-cxx. On Linux we statically link libstdc++
+# via libstdc++.a (the same trick build-php.sh uses) so the resulting
+# redis-server has no DT_NEEDED libstdc++.so.6 — keeps the binary
+# self-contained on minimal containers. On Darwin we redirect the
+# Makefile's -lstdc++ to -lc++ since Apple's clang ships only the
+# libc++ runtime and recent macOS releases no longer carry a system
+# libstdc++.6.dylib.
+
+set -euo pipefail
+
+: "${PBS_SRC_REDIS:?}"
+: "${PBS_VER_REDIS:?}"
+: "${PBS_SOURCES:?}"
+: "${PBS_DEPS:?}"
+: "${PBS_DEP_OPENSSL:?}"
+
+src_dir="$PBS_SOURCES/redis-${PBS_VER_REDIS}"
+rm -rf "$src_dir"
+mkdir -p "$PBS_SOURCES"
+tar -xf "$PBS_SRC_REDIS" -C "$PBS_SOURCES"
+cd "$src_dir"
+
+# Platform branch: pick the right C++ runtime spelling for the link line.
+# src/Makefile hardcodes `FINAL_LIBS=-lm -lstdc++` (line ~152 on 8.6.x);
+# we sed it rather than overriding FINAL_LIBS from the command line
+# because the Makefile composes FINAL_LIBS *internally* with platform-
+# specific append rules (-ldl, -pthread, -lrt on Linux) and overriding
+# would clobber those.
+if [ -n "${MACOSX_DEPLOYMENT_TARGET:-}" ]; then
+  # Darwin: swap -lstdc++ for -lc++. Idempotent — only matches the exact
+  # `FINAL_LIBS=-lm -lstdc++` line, leaves other appends alone.
+  perl -i -pe 's/^FINAL_LIBS=-lm -lstdc\+\+$/FINAL_LIBS=-lm -lc++/' src/Makefile
+  grep -q '^FINAL_LIBS=-lm -lc++$' src/Makefile || { echo "FATAL: src/Makefile -lstdc++ → -lc++ patch did not apply" >&2; exit 1; }
+else
+  # Linux: drop -lstdc++ entirely; we'll resolve C++ symbols via the
+  # positional libstdc++.a injected in LDFLAGS below. Without the drop,
+  # --as-needed still considers `-lstdc++` a request for the dynamic
+  # libstdc++.so.6 and emits a DT_NEEDED, defeating the static-link
+  # trick.
+  perl -i -pe 's/^FINAL_LIBS=-lm -lstdc\+\+$/FINAL_LIBS=-lm/' src/Makefile
+  grep -q '^FINAL_LIBS=-lm$' src/Makefile || { echo "FATAL: src/Makefile -lstdc++ removal patch did not apply" >&2; exit 1; }
+fi
+
+# Linux: positional libstdc++.a + override --no-as-needed → --as-needed.
+# Same pattern as build-php-pre-configure-linux.sh; statically pulls the
+# C++ runtime symbols fast_float_strtod.cpp needs so the resulting binary
+# has no libstdc++.so.6 DT_NEEDED. The clang-toolchain stages
+# libstdc++.a from devtoolset-11's sysroot at $PBS_TOOLCHAIN/lib/.
+if [ -z "${MACOSX_DEPLOYMENT_TARGET:-}" ]; then
+  libstdcxx_a="${PBS_TOOLCHAIN}/lib/libstdc++.a"
+  if [ ! -e "$libstdcxx_a" ]; then
+    echo "FATAL: $libstdcxx_a not present in toolchain" >&2
+    exit 1
+  fi
+  # CC override: setup-env-linux.sh sets --no-as-needed so libtool-style
+  # ordering doesn't drop a deliberate -lX. Redis's link runs cleanly
+  # with --as-needed because the positional libstdc++.a comes BEFORE
+  # any (vanished) -lstdc++, so the linker sees C++ symbols resolved
+  # by the time it would consider a dynamic libstdc++.so.6.
+  export CC="${PBS_TOOLCHAIN}/bin/cc -Wl,--as-needed"
+  export LDFLAGS="$LDFLAGS ${libstdcxx_a}"
+fi
+
+# Hand the openssl prefix to the Makefile. With BUILD_TLS=yes and
+# OPENSSL_PREFIX set, src/Makefile emits
+#   -I$(OPENSSL_PREFIX)/include in CFLAGS and
+#   -L$(OPENSSL_PREFIX)/lib     in LDFLAGS
+# which is what we want — bundled OpenSSL headers + lib path, no system
+# fallback. PBS_DEP_OPENSSL is the openssl /nix/store output exported by
+# mkDep.
+export OPENSSL_PREFIX="$PBS_DEP_OPENSSL"
+
+# Top-level Makefile recurses into src/ and deps/; .DEFAULT rule passes
+# the target through. `all` builds everything (server, cli, benchmark,
+# sentinel symlink, check-rdb/aof symlinks) AND the redismodule test
+# .so files under tests/modules/ — `all: ... module_tests`.
+#
+# tests/modules/Makefile hardcodes `CC = gcc` and `LD = gcc` on Linux
+# (unconditional `=` assignments inside `ifeq ($(uname_S),Linux)`).
+# The Nix sandbox has no `gcc`, only our clang-wrapper at
+# $PBS_TOOLCHAIN/bin/cc. GNU make gives command-line variables higher
+# precedence than in-Makefile `=` assignments, so passing CC=… LD=…
+# here overrides those values and propagates through to the recursive
+# $(MAKE) -C ../tests/modules invocation via MAKEFLAGS.
+#
+# LD must also point at the cc wrapper, not at the raw linker:
+# tests/modules' link rule is `$(LD) -o foo.so foo.xo -shared $(LDFLAGS)
+# …`, and LDFLAGS (inherited from setup-env-linux.sh) contains
+# `-Wl,--disable-new-dtags -Wl,-z,origin`. ld.lld rejects those as
+# "unknown argument"; clang invoked as the linker driver forwards
+# `-Wl,...` to the underlying linker correctly.
+make -j"$NIX_BUILD_CORES" BUILD_TLS=yes USE_SYSTEMD=no \
+  CC="$CC" LD="$CC" \
+  PREFIX="$PBS_DEPS" all
+
+# `install` copies the binaries into $(PREFIX)/bin/ and sets up the
+# redis-sentinel / redis-check-rdb / redis-check-aof symlinks. `install:
+# all` so we re-pass CC/LD here even though the targets are already
+# built — make would otherwise re-evaluate prerequisites with the
+# default values and re-run module_tests with `gcc`.
+make BUILD_TLS=yes USE_SYSTEMD=no \
+  CC="$CC" LD="$CC" \
+  PREFIX="$PBS_DEPS" install
+
+# Stage redis.conf + sentinel.conf as templates under share/redis/. Redis's
+# upstream install target only drops binaries; the conf files have to be
+# placed by the packager (every distro does this). share/redis/ keeps
+# them addressable from a relocatable consumer without colliding with
+# /etc on the host — bougie can copy + edit-in-place from here.
+mkdir -p "$PBS_DEPS/share/redis"
+cp redis.conf "$PBS_DEPS/share/redis/redis.conf"
+cp sentinel.conf "$PBS_DEPS/share/redis/sentinel.conf"
+
+redis_server="$PBS_DEPS/bin/redis-server"
+[ -x "$redis_server" ] || { echo "FATAL: $redis_server not produced" >&2; exit 1; }
+
+# Sanity: assert no DT_NEEDED leak for libstdc++ on Linux. (pbs_audit_lib
+# from setup-env-linux.sh greps for /nix/store; we additionally want to
+# catch the libstdc++.so.6 case here since the static-link trick is the
+# whole point of the FINAL_LIBS patch above.)
+if [ -z "${MACOSX_DEPLOYMENT_TARGET:-}" ]; then
+  pbs_audit_lib "$redis_server" redis-server
+  if readelf -d "$redis_server" 2>/dev/null | grep -q 'libstdc++.so'; then
+    echo "FATAL: redis-server has DT_NEEDED libstdc++.so.6 — static-link of libstdc++.a did not take effect" >&2
+    exit 1
+  fi
+fi
+
+echo "redis OK"

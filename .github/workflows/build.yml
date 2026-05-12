@@ -252,6 +252,59 @@ jobs:
           path: result-mariadb-release/
           if-no-files-found: error
 
+  build-redis:
+    name: build Redis (${{ matrix.target }})
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+      id-token: write
+    strategy:
+      # Redis ships as a single version per build (sources.redis is flat,
+      # same shape as sources.mariadb). One row per supported OS. A
+      # version-fan-out tier would slot in here the day sources.redis
+      # becomes a per-version map.
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-latest, system: "x86_64-linux",   target: "x86_64-unknown-linux-gnu" }
+          - { os: macos-26,      system: "aarch64-darwin", target: "aarch64-apple-darwin" }
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Nix
+        uses: DeterminateSystems/determinate-nix-action@v3
+
+      - name: Set up FlakeHub Cache
+        uses: DeterminateSystems/flakehub-cache-action@v3.19.1
+
+      - name: Build redis tarball
+        # redis-tarball is the redistributable artifact; redis-release is
+        # the flat-dir aggregate the index assembly stage consumes. Build
+        # both with separate -o symlinks so the upload steps can address
+        # each independently without re-resolving the derivations.
+        run: nix build .#packages.${{ matrix.system }}.redis-tarball -o result-redis-tarball --print-build-logs
+
+      - name: Build redis release
+        run: nix build .#packages.${{ matrix.system }}.redis-release -o result-redis-release --print-build-logs
+
+      - name: Upload tarball as workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: redis-tarball-${{ matrix.target }}
+          path: |
+            result-redis-tarball/redis-*.tar.zst
+            result-redis-tarball/redis-*.json
+          if-no-files-found: error
+
+      - name: Upload release tree as workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          # Mirrors the MariaDB release-<target> shape so the assemble
+          # job's release-bundle can pick up the Redis tree by name.
+          name: redis-release-${{ matrix.target }}
+          path: result-redis-release/
+          if-no-files-found: error
+
   distro-matrix:
     name: distro matrix PHP ${{ matrix.php }}
     runs-on: ubuntu-latest
@@ -280,10 +333,11 @@ jobs:
   assemble:
     name: assemble release-bundle (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
-    # release-bundle's allReleases now includes mariadbRelease, so the
-    # mariadb tree has to be cache-warm before this job runs (otherwise
-    # the assemble leg pays for the full MariaDB compile inline).
-    needs: [build-tarball, build-mariadb]
+    # release-bundle's allReleases now includes mariadbRelease and
+    # redisServerRelease, so both service trees have to be cache-warm
+    # before this job runs (otherwise the assemble leg pays for those
+    # full builds inline).
+    needs: [build-tarball, build-mariadb, build-redis]
     permissions:
       contents: read
       id-token: write
@@ -325,7 +379,7 @@ jobs:
   verify-reproducible-index:
     name: reproducibility audit
     runs-on: ubuntu-latest
-    needs: [build-tarball, build-mariadb]
+    needs: [build-tarball, build-mariadb, build-redis]
     permissions:
       contents: read
       id-token: write
@@ -367,7 +421,7 @@ jobs:
   publish:
     name: prepare publish tree
     runs-on: ubuntu-latest
-    needs: [build-tarball, build-mariadb, distro-matrix, assemble]
+    needs: [build-tarball, build-mariadb, build-redis, distro-matrix, assemble]
     if: startsWith(github.ref, 'refs/tags/v')
     permissions:
       contents: read   # no Pages/Releases push

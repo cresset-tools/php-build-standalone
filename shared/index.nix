@@ -283,12 +283,18 @@ pkgs.runCommand "pbs-index" {
         add_artifact "$target/extension/$ext_name" "$artifact_entry"
       done
 
-      # ---- Service manifests (mariadb-*.json and other top-level
-      #      bundles whose kind is "service"). Same blob/manifest plumbing
-      #      as the interpreter loop; the on-disk manifest path uses the
-      #      service/<name>/<version>/ shape so MariaDB and any future
-      #      sibling service share a stable namespace.
-      for f in "$rel_dir"/mariadb-*.json; do
+      # ---- Service manifests (mariadb-*.json, redis-*.json, and any
+      #      future top-level bundle whose kind is "service"). Same
+      #      blob/manifest plumbing as the interpreter loop; the on-disk
+      #      manifest path uses the service/<name>/<version>/ shape so
+      #      every service shares one stable namespace.
+      #
+      #      We could `find . -maxdepth 1 -name '*.json' | jq -e .kind` but
+      #      keeping an explicit glob list mirrors the interpreter /
+      #      extension loops above and makes the dispatch readable — to
+      #      add a new service, drop one more glob in here and stand up
+      #      the matching pipeline in flake.nix.
+      for f in "$rel_dir"/mariadb-*.json "$rel_dir"/redis-*.json; do
         [ -f "$f" ] || continue
         base="$(basename "$f" .json)"
 

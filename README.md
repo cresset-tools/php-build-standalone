@@ -464,6 +464,29 @@ mariadb/                       MariaDB server bundle (relocatable mariadbd
                                  manifest kind="service" routes into
                                  shared/index.nix's service/<name>
                                  section.
+
+redis/                         Redis server bundle (relocatable
+                               redis-server / redis-cli / redis-benchmark
+                               + the sentinel/check-rdb/check-aof
+                               symlinks), consumed by `bougie services`.
+                               Only external C library is bundled
+                               OpenSSL; jemalloc, hiredis, linenoise,
+                               lua, hdr_histogram, fast_float, xxhash
+                               are vendored under deps/ and statically
+                               linked by Redis's own Makefile.
+  redis.nix                      calls mkDep with the Makefile-based
+                                 build script + openssl as the sole dep.
+  build-redis.sh                 invokes Redis's hand-rolled Makefile
+                                 (BUILD_TLS=yes USE_SYSTEMD=no
+                                 MALLOC=jemalloc PREFIX=…), patches
+                                 FINAL_LIBS for libc++/libstdc++ choice,
+                                 and statically links libstdc++ on Linux
+                                 so the binary has no DT_NEEDED
+                                 libstdc++.so.6.
+  tarball.nix                    same kind="service" manifest shape as
+                                 mariadb/tarball.nix; shared/index.nix
+                                 picks both up via the explicit-glob
+                                 service loop.
 tests/
   distros.txt                    expected pass/fail per distro image
   run-matrix.sh                  extract once, mount RO into each container

@@ -464,13 +464,57 @@
             '';
           };
 
+          # ---- Redis server bundle ----
+          # Parallel to the mariadb stanza above. Redis only needs OpenSSL
+          # as a directly-linked external C library (everything else under
+          # deps/ is vendored and static-linked by the Makefile); we also
+          # bundle zlib because our openssl is built with --with-zlib and
+          # carries a DT_NEEDED libz.so.1.
+          #
+          # `redisServerSpec` is sources.redis (flat attrset). Distinct
+          # from `redisSpec` inside mkPhpVariant, which is the phpredis
+          # PECL extension's version pin from sources.redisVersions.
+          redisServerSpec = sources.redis;
+          redisServerBundledDepNames = [ "zlib" "openssl" ];
+          redisServerBundledDeps = map (n: deps.${n}) redisServerBundledDepNames;
+          redisServer = pkgs.callPackage ./redis/redis.nix {
+            inherit mkDep;
+            redisSpec = redisServerSpec;
+            inherit (deps) openssl;
+          };
+          redisServerTree = pkgs.callPackage ./shared/tree.nix {
+            bundledDeps = redisServerBundledDeps;
+            interpreterDeps = [ redisServer ];
+            inherit toolchain;
+            phpVersion = redisServerSpec.version;
+          };
+          redisServerTarball = pkgs.callPackage ./redis/tarball.nix {
+            tree = redisServerTree;
+            inherit sources nixpkgsRev;
+            redisVersion = redisServerSpec.version;
+            bundledDepNames = redisServerBundledDepNames;
+          };
+          redisServerRelease = pkgs.stdenvNoCC.mkDerivation {
+            pname = "pbs-release-redis";
+            version = redisServerSpec.version;
+            dontUnpack = true;
+            dontConfigure = true;
+            dontBuild = true;
+            dontFixup = true;
+            nativeBuildInputs = [ pkgs.coreutils ];
+            installPhase = ''
+              mkdir -p "$out"
+              cp -a ${redisServerTarball}/. "$out/" && chmod -R u+w "$out"
+            '';
+          };
+
           # Cross-variant index. Walks every release, parses per-extension
           # + interpreter manifests, reads .sha256 sidecars, and emits a
           # single index.json. Deduplication of store-path entries across
           # variants is enforced inside index.nix (collision = build error).
           allReleases =
             (map (v: v.release) (builtins.attrValues variants))
-            ++ [ mariadbRelease ];
+            ++ [ mariadbRelease redisServerRelease ];
           frozenFiles =
             let allFiles = pkgs.lib.filesystem.listFilesRecursive ./frozen;
             in builtins.filter
@@ -491,7 +535,8 @@
           latestVariant = variants.${minorKey pkgs sources.latestPhp};
         in {
           inherit pkgs sources darwin sysroot toolchain deps variants index latestVariant
-                  mariadb mariadbTree mariadbTarball mariadbRelease;
+                  mariadb mariadbTree mariadbTarball mariadbRelease
+                  redisServer redisServerTree redisServerTarball redisServerRelease;
         };
 
       ctx = forEach contextFor;
@@ -605,6 +650,13 @@
           mariadb-tree    = c.mariadbTree;
           mariadb-tarball = c.mariadbTarball;
           mariadb-release = c.mariadbRelease;
+          # Redis outputs at the top level. Same shape as the MariaDB
+          # quartet — bare derivation, finalized tree, redistributable
+          # tarball, release-flat-dir aggregate.
+          redis           = c.redisServer;
+          redis-tree      = c.redisServerTree;
+          redis-tarball   = c.redisServerTarball;
+          redis-release   = c.redisServerRelease;
         });
 
       phpVariants  = forEach (system: ctx.${system}.variants);
