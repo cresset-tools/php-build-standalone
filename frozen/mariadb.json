@@ -1,0 +1,117 @@
+{
+  "entries": [
+    {
+      "frozen_at": "2026-05-13T17:06:13Z",
+      "kind": "tool",
+      "manifest": {
+        "binaries": [
+          "mariadbd",
+          "mariadb",
+          "mariadb-dump",
+          "mariadb-admin",
+          "mariadb-install-db"
+        ],
+        "blob": {
+          "sha256": "98d449051d2e1e155c037e1c03c0aaa34693c5927c0601156eae64e7ead0f1f0",
+          "url": "{BLOB_BASE}/blobs/98/98d449051d2e1e155c037e1c03c0aaa34693c5927c0601156eae64e7ead0f1f0"
+        },
+        "build_info": {
+          "nixpkgs_rev": "549bd84d6279f9852cae6225e372cc67fb91a4c1",
+          "output_tree_sha256": "6490281a527a7abb16adef5562b766abb21d04b741e240bc545742a4d99ee5a6"
+        },
+        "bundled_libraries": {
+          "libedit": "20251016-3.1",
+          "mariadb": "11.4.4",
+          "ncurses": "6.6",
+          "openssl": "3.5.6",
+          "pcre2": "10.45",
+          "zlib": "1.3.2"
+        },
+        "closure": [],
+        "flavor": "default",
+        "kind": "tool",
+        "libc": {
+          "family": "darwin",
+          "min": "11.0"
+        },
+        "name": "mariadb",
+        "schema": 1,
+        "tag": "mariadb-11.4.4-aarch64-apple-darwin-default",
+        "target": "aarch64-apple-darwin",
+        "version": "11.4.4"
+      },
+      "name": "mariadb",
+      "reason": "superseded by 11.4.10",
+      "section_entry": {
+        "flavor": "default",
+        "manifest": {
+          "path": "/versions/r25813121006/targets/aarch64-apple-darwin/manifests/tool/mariadb/11.4.4/mariadb-11.4.4-aarch64-apple-darwin-default.json",
+          "sha256": "0ff6ac642726b04bf1c0c4f6bc208566751337f562c20af1ab930906b0687864"
+        },
+        "tag": "mariadb-11.4.4-aarch64-apple-darwin-default",
+        "version": "11.4.4",
+        "yanked": false
+      },
+      "tag": "mariadb-11.4.4-aarch64-apple-darwin-default",
+      "target": "aarch64-apple-darwin"
+    },
+    {
+      "frozen_at": "2026-05-13T17:06:13Z",
+      "kind": "tool",
+      "manifest": {
+        "binaries": [
+          "mariadbd",
+          "mariadb",
+          "mariadb-dump",
+          "mariadb-admin",
+          "mariadb-install-db"
+        ],
+        "blob": {
+          "sha256": "0b46049fea5e057fc23d639225623fb36a6a7d52969d351823d883f409e4bb1f",
+          "url": "{BLOB_BASE}/blobs/0b/0b46049fea5e057fc23d639225623fb36a6a7d52969d351823d883f409e4bb1f"
+        },
+        "build_info": {
+          "nixpkgs_rev": "549bd84d6279f9852cae6225e372cc67fb91a4c1",
+          "output_tree_sha256": "3d12a233ef3cf8bb4d952adbfa1c17b8888d6f756a73ed0e5eb1ec52ee74f3f2"
+        },
+        "bundled_libraries": {
+          "libedit": "20251016-3.1",
+          "libxcrypt": "4.4.36",
+          "mariadb": "11.4.4",
+          "ncurses": "6.6",
+          "openssl": "3.5.6",
+          "pcre2": "10.45",
+          "zlib": "1.3.2"
+        },
+        "closure": [],
+        "flavor": "default",
+        "kind": "tool",
+        "libc": {
+          "family": "gnu",
+          "min": "2.17"
+        },
+        "name": "mariadb",
+        "schema": 1,
+        "tag": "mariadb-11.4.4-x86_64-unknown-linux-gnu-default",
+        "target": "x86_64-unknown-linux-gnu",
+        "version": "11.4.4"
+      },
+      "name": "mariadb",
+      "reason": "superseded by 11.4.10",
+      "section_entry": {
+        "flavor": "default",
+        "manifest": {
+          "path": "/versions/r25813121006/targets/x86_64-unknown-linux-gnu/manifests/tool/mariadb/11.4.4/mariadb-11.4.4-x86_64-unknown-linux-gnu-default.json",
+          "sha256": "9c782c5f1b39e3138966e2dd6ad320989f4bf5510943d093bb2db5482cd36c09"
+        },
+        "tag": "mariadb-11.4.4-x86_64-unknown-linux-gnu-default",
+        "version": "11.4.4",
+        "yanked": false
+      },
+      "tag": "mariadb-11.4.4-x86_64-unknown-linux-gnu-default",
+      "target": "x86_64-unknown-linux-gnu"
+    }
+  ],
+  "name": "mariadb",
+  "schema": 1
+}
