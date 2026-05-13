@@ -17,7 +17,14 @@ mkDep {
   ];
   # NSPR's `make install` deposits a `nspr-config` script and headers
   # under `include/nspr/`. NSS's configure expects that layout, so we
-  # don't strip anything here. The compiled libraries live at the
-  # standard `lib/lib{nspr4,plc4,plds4}.${PBS_LIB_EXT}`.
+  # don't strip anything from there. We DO trim the `.a` static
+  # archives that NSPR's build always emits regardless of
+  # `--disable-static` — they're useless dead weight in the
+  # downstream tarball.
+  postInstallCleanup = [
+    "lib/libnspr4.a"
+    "lib/libplc4.a"
+    "lib/libplds4.a"
+  ];
   auditLibs = [ "libnspr4" "libplc4" "libplds4" ];
 }
