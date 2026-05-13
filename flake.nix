@@ -324,7 +324,7 @@
               #     MINIT to honor ZEND_MOD_REQUIRED("pdo") regardless
               #     of conf.d order.
               extensions = ({
-                xdebug      = mkExt { extDrv = xdebug;   extName = "xdebug";   extVersion = xdebugSpec.version;   confFragment = null; };
+                xdebug      = mkExt { extDrv = xdebug;   extName = "xdebug";   extVersion = xdebugSpec.version;   confFragment = null; zendExtension = true; };
                 imagick     = mkExt { extDrv = imagick;  extName = "imagick";  extVersion = imagickSpec.version;  confFragment = "extension=imagick"; };
                 redis       = mkExt { extDrv = redis;    extName = "redis";    extVersion = redisSpec.version;    confFragment = "extension=redis"; };
                 vips        = mkExt { extDrv = vips;     extName = "vips";     extVersion = vipsSpec.version;     confFragment = "extension=vips"; };
@@ -340,7 +340,7 @@
                 # pcov ships without an auto-loader conf.d fragment (confFragment=null,
                 # mirroring xdebug): coverage is a per-run opt-in, not always-on
                 # instrumentation, so the user enables it via -dextension=pcov in CI.
-                pcov        = mkExt { extDrv = pcov;     extName = "pcov";     extVersion = pcovSpec.version;     confFragment = null; };
+                pcov        = mkExt { extDrv = pcov;     extName = "pcov";     extVersion = pcovSpec.version;     confFragment = null; zendExtension = true; };
                 mbstring    = mkBuiltinExt "mbstring";
                 intl        = mkBuiltinExt "intl";
                 curl        = mkBuiltinExt "curl";

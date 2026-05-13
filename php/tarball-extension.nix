@@ -54,6 +54,14 @@
                        # at dlopen time and so must be loaded after it (e.g.
                        # msgpack uses session symbols → 40-msgpack.ini loads
                        # after 20-session.ini).
+, zendExtension ? false  # true → manifest declares load=zend-extension so
+                         # the CLI emits `zend_extension=…` in the project's
+                         # conf.d fragment. Required for xdebug, pcov, and any
+                         # other extension that hooks the opcode dispatch via
+                         # Zend's extension API. Without this, `dlopen` still
+                         # succeeds but Zend's MINIT hooks never run, so
+                         # phpinfo() doesn't list the extension and runtime
+                         # APIs like `xdebug_break()` aren't registered.
 }:
 let
   inherit (pkgs) stdenv lib;
@@ -81,7 +89,7 @@ let
   #   @ZEND_MODULE_API_NO@ / @ZEND_EXTENSION_API_NO@
   #   @EXT_PATH@ / @EXT_SHA256@
   #   @TARBALL_SHA256@ / @TARBALL_SHA256_PFX@
-  manifestTemplate = pkgs.writeText "ext-manifest.json.in" (builtins.toJSON {
+  manifestTemplate = pkgs.writeText "ext-manifest.json.in" (builtins.toJSON ({
     schema = 1;
     kind = "extension";
     name = extName;
@@ -108,7 +116,11 @@ let
     };
     # closure is injected by the build script from closures.json.
     closure = "@CLOSURE_PLACEHOLDER@";
-  });
+  } // lib.optionalAttrs zendExtension {
+    # Wire-format kebab-case; the CLI rewrites this to the underscore
+    # `zend_extension` directive when emitting the project's INI.
+    load = "zend-extension";
+  }));
 
   # Sanitize extName for use in the Nix derivation name.
   safeName = lib.replaceStrings [ "_" ] [ "-" ] extName;
