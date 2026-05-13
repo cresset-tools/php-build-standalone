@@ -340,7 +340,11 @@
                 # pcov ships without an auto-loader conf.d fragment (confFragment=null,
                 # mirroring xdebug): coverage is a per-run opt-in, not always-on
                 # instrumentation, so the user enables it via -dextension=pcov in CI.
-                pcov        = mkExt { extDrv = pcov;     extName = "pcov";     extVersion = pcovSpec.version;     confFragment = null; zendExtension = true; };
+                # pcov exports a regular module surface — it's NOT a
+                # zend_extension despite hooking opcodes for coverage. PHP
+                # rejects `zend_extension=pcov.so` with "doesn't appear to
+                # be a valid Zend extension", so don't tag it like xdebug.
+                pcov        = mkExt { extDrv = pcov;     extName = "pcov";     extVersion = pcovSpec.version;     confFragment = null; };
                 mbstring    = mkBuiltinExt "mbstring";
                 intl        = mkBuiltinExt "intl";
                 curl        = mkBuiltinExt "curl";
