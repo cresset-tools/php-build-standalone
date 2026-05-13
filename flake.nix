@@ -481,6 +481,47 @@
           # to mariadb but reuses pkgs.buildGoModule for the mkcert binary
           # itself and shares the NSPR/NSS bundled deps.
           mkcert = pkgs.callPackage ./mkcert/mkcert.nix { inherit sources; };
+          mkcertSpec = sources.mkcert;
+          # NSS itself drags in sqlite (cert9.db backend) and zlib (used
+          # by signtool's JAR-signing path); they're already built for
+          # PHP so we bundle the same store paths under store/<name>/
+          # rather than duplicating.
+          mkcertBundledDepNames = [ "nspr" "nss" "sqlite" "zlib" ];
+          mkcertBundledDeps = map (n: deps.${n}) mkcertBundledDepNames;
+          # NSS's binaries land at install/bin/ via a thin wrapper that
+          # exposes ONLY $out/bin/ — passing NSS itself as an
+          # interpreterDep would also drop its lib/ into install/lib/,
+          # duplicating what bundledDeps put under store/<nss-name>/.
+          nssBinaries = pkgs.callPackage ./mkcert/nss-binaries.nix {
+            inherit (deps) nss;
+          };
+          mkcertTree = pkgs.callPackage ./shared/tree.nix {
+            bundledDeps = mkcertBundledDeps;
+            interpreterDeps = [ mkcert nssBinaries ];
+            inherit toolchain;
+            phpVersion = mkcertSpec.version;
+          };
+          mkcertTarball = pkgs.callPackage ./mkcert/tarball.nix {
+            tree = mkcertTree;
+            inherit sources nixpkgsRev;
+            mkcertVersion = mkcertSpec.version;
+            bundledDepNames = mkcertBundledDepNames;
+          };
+          # Release flat-dir aggregate — same shape mariadb uses so
+          # shared/index.nix walks both kinds with the same loop.
+          mkcertRelease = pkgs.stdenvNoCC.mkDerivation {
+            pname = "pbs-release-mkcert";
+            version = mkcertSpec.version;
+            dontUnpack = true;
+            dontConfigure = true;
+            dontBuild = true;
+            dontFixup = true;
+            nativeBuildInputs = [ pkgs.coreutils ];
+            installPhase = ''
+              mkdir -p "$out"
+              cp -a ${mkcertTarball}/. "$out/" && chmod -R u+w "$out"
+            '';
+          };
 
           # Cross-variant index. Walks every release, parses per-extension
           # + interpreter manifests, reads .sha256 sidecars, and emits a
@@ -488,7 +529,7 @@
           # variants is enforced inside index.nix (collision = build error).
           allReleases =
             (map (v: v.release) (builtins.attrValues variants))
-            ++ [ mariadbRelease ];
+            ++ [ mariadbRelease mkcertRelease ];
           frozenFiles =
             let allFiles = pkgs.lib.filesystem.listFilesRecursive ./frozen;
             in builtins.filter
@@ -509,7 +550,8 @@
           latestVariant = variants.${minorKey pkgs sources.latestPhp};
         in {
           inherit pkgs sources darwin sysroot toolchain deps variants index latestVariant
-                  mariadb mariadbTree mariadbTarball mariadbRelease mkcert;
+                  mariadb mariadbTree mariadbTarball mariadbRelease
+                  mkcert mkcertTree mkcertTarball mkcertRelease;
         };
 
       ctx = forEach contextFor;
@@ -623,9 +665,12 @@
           mariadb-tree    = c.mariadbTree;
           mariadb-tarball = c.mariadbTarball;
           mariadb-release = c.mariadbRelease;
-          # mkcert binary itself; full bundle (with bundled NSS) lands
-          # under mkcert-tarball once that wiring lands.
+          # mkcert + the full distribution bundle (mkcert binary,
+          # certutil, signtool, with NSPR/NSS bundled under store/).
           mkcert          = c.mkcert;
+          mkcert-tree     = c.mkcertTree;
+          mkcert-tarball  = c.mkcertTarball;
+          mkcert-release  = c.mkcertRelease;
         });
 
       phpVariants  = forEach (system: ctx.${system}.variants);

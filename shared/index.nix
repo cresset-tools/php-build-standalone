@@ -283,13 +283,16 @@ pkgs.runCommand "pbs-index" {
         add_artifact "$target/extension/$ext_name" "$artifact_entry"
       done
 
-      # ---- Tool manifests (mariadb-*.json and other top-level bundles
-      #      whose kind is "tool"). Same blob/manifest plumbing as the
-      #      interpreter loop; the on-disk manifest path uses the
-      #      tool/<name>/<version>/ shape so MariaDB and any future
-      #      sibling tool share a stable namespace.
-      for f in "$rel_dir"/mariadb-*.json; do
+      # ---- Tool manifests (any *.json declaring `kind: tool`).
+      #      Same blob/manifest plumbing as the interpreter loop; the
+      #      on-disk manifest path uses the tool/<name>/<version>/
+      #      shape so MariaDB, mkcert, and any future sibling tool
+      #      share a stable namespace. The glob is everything at the
+      #      release-dir top, with a jq filter for `.kind == "tool"`
+      #      to keep us from picking up per-PHP-minor JSON.
+      for f in "$rel_dir"/*.json; do
         [ -f "$f" ] || continue
+        [ "$(jq -r '.kind' "$f")" = "tool" ] || continue
         base="$(basename "$f" .json)"
 
         tool_name="$(jq -r '.name' "$f")"
