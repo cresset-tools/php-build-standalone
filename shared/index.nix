@@ -7,11 +7,11 @@
 #       targets/<target>/sections/
 #         interpreter/php.json                            # this target's PHP runtimes
 #         extension/<name>.json                           # this target's extension X
-#         service/mariadb.json                            # this target's MariaDB server bundle
+#         tool/mariadb.json                               # this target's MariaDB server bundle
 #       targets/<target>/manifests/                       # manifests live alongside their sections,
 #         php/<minor>/<tag>.json                          # so a re-publish of the same tag with
 #         ext/<name>/<extver>/<tag>.json                  # different content lands at a fresh URL
-#         service/<name>/<version>/<tag>.json             # and never overwrites a prior publish's
+#         tool/<name>/<version>/<tag>.json                # and never overwrites a prior publish's
 #                                                         # section→manifest pin (DISTRIBUTION.md
 #                                                         # §Snapshot-consistency).
 #     blobs/
@@ -283,18 +283,18 @@ pkgs.runCommand "pbs-index" {
         add_artifact "$target/extension/$ext_name" "$artifact_entry"
       done
 
-      # ---- Service manifests (mariadb-*.json and other top-level
-      #      bundles whose kind is "service"). Same blob/manifest plumbing
-      #      as the interpreter loop; the on-disk manifest path uses the
-      #      service/<name>/<version>/ shape so MariaDB and any future
-      #      sibling service share a stable namespace.
+      # ---- Tool manifests (mariadb-*.json and other top-level bundles
+      #      whose kind is "tool"). Same blob/manifest plumbing as the
+      #      interpreter loop; the on-disk manifest path uses the
+      #      tool/<name>/<version>/ shape so MariaDB and any future
+      #      sibling tool share a stable namespace.
       for f in "$rel_dir"/mariadb-*.json; do
         [ -f "$f" ] || continue
         base="$(basename "$f" .json)"
 
-        svc_name="$(jq -r '.name' "$f")"
+        tool_name="$(jq -r '.name' "$f")"
         tag="$(jq -r '.tag' "$f")"
-        svc_version="$(jq -r '.version' "$f")"
+        tool_version="$(jq -r '.version' "$f")"
         target="$(jq -r '.target' "$f")"
         flavor="$(jq -r '.flavor' "$f")"
 
@@ -302,13 +302,13 @@ pkgs.runCommand "pbs-index" {
         tarball_sha256_actual="$(sha256sum "$tarball" | awk '{print $1}')"
         tarball_sha256_manifest="$(jq -r '.blob.sha256' "$f")"
         if [ "$tarball_sha256_actual" != "$tarball_sha256_manifest" ]; then
-          echo "FATAL: service $tag — manifest blob.sha256 ($tarball_sha256_manifest) does not match tarball ($tarball_sha256_actual)" >&2
+          echo "FATAL: tool $tag — manifest blob.sha256 ($tarball_sha256_manifest) does not match tarball ($tarball_sha256_actual)" >&2
           exit 1
         fi
         add_blob "$tarball_sha256_actual" "$tarball"
 
-        manifest_path="/versions/${publishVersion}/targets/$target/manifests/service/$svc_name/$svc_version/$tag.json"
-        manifest_dest_key="versions/${publishVersion}/targets/$target/manifests/service/$svc_name/$svc_version/$tag.json"
+        manifest_path="/versions/${publishVersion}/targets/$target/manifests/tool/$tool_name/$tool_version/$tag.json"
+        manifest_dest_key="versions/${publishVersion}/targets/$target/manifests/tool/$tool_name/$tool_version/$tag.json"
 
         staged_manifest="$(stage_manifest "$f")"
         manifest_srcs["$manifest_dest_key"]="$staged_manifest"
@@ -316,7 +316,7 @@ pkgs.runCommand "pbs-index" {
 
         artifact_entry="$(jq -n -S \
           --arg tag "$tag" \
-          --arg version "$svc_version" \
+          --arg version "$tool_version" \
           --arg flavor "$flavor" \
           --arg manifest_path "$manifest_path" \
           --arg manifest_sha256 "$manifest_sha256" \
@@ -330,7 +330,7 @@ pkgs.runCommand "pbs-index" {
           }')"
         artifact_entry="$(yank_entry "$tag" "$artifact_entry")"
 
-        add_artifact "$target/service/$svc_name" "$artifact_entry"
+        add_artifact "$target/tool/$tool_name" "$artifact_entry"
       done
 
       # ---- Store-path tarballs → blobs ----

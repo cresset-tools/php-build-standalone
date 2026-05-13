@@ -451,7 +451,7 @@ php/                           PHP interpreter, PECL extensions, and
 
 mariadb/                       MariaDB server bundle (relocatable mariadbd
                                + libmariadb + client tools), consumed by
-                               `bougie services`. Reuses shared/zlib,
+                               `bougie tools`. Reuses shared/zlib,
                                shared/openssl, shared/ncurses for the
                                bundled C-lib stack.
   mariadb.nix                    calls mkDep with the cmake-based build
@@ -461,8 +461,8 @@ mariadb/                       MariaDB server bundle (relocatable mariadbd
                                  deny-list (RocksDB, Mroonga, Spider,
                                  ColumnStore, S3, OQGraph, Connect, …).
   tarball.nix                    interpreter-shaped tarball + manifest;
-                                 manifest kind="service" routes into
-                                 shared/index.nix's service/<name>
+                                 manifest kind="tool" routes into
+                                 shared/index.nix's tool/<name>
                                  section.
 tests/
   distros.txt                    expected pass/fail per distro image
