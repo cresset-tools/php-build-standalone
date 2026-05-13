@@ -50,7 +50,7 @@ if [[ ${#GLOBS[@]} -eq 0 ]]; then
 fi
 
 # ---- Index source ----
-INDEX_BASE="${PUBLISH_INDEX_BASE:-https://index.example.com}"
+INDEX_BASE="${PUBLISH_INDEX_BASE:-https://index.bougie.tools}"
 
 fetch_json() {
   local url_or_path="$1"
@@ -84,6 +84,15 @@ fi
 
 root_json="$(fetch_json "$INDEX_ROOT")"
 
+# Section URLs are versioned: /versions/<V>/targets/<t>/sections/<k>.json
+# (see DISTRIBUTION.md §Section-index). Manifests carry their own absolute
+# .manifest.path that already includes the version segment.
+ROOT_VERSION="$(echo "$root_json" | jq -r '.version')"
+if [[ -z "$ROOT_VERSION" || "$ROOT_VERSION" == "null" ]]; then
+  echo "FAIL: root index has no .version field" >&2
+  exit 1
+fi
+
 # ---- Glob matching helper ----
 tag_matches_any() {
   local tag="$1"
@@ -97,18 +106,22 @@ tag_matches_any() {
   return 1
 }
 
-# ---- Minor extraction ----
-minor_from_tag() {
-  local tag="$1"
-  # Interpreter tag: php-8.1.31-<target>-<flavor>  → minor = 8.1
+# ---- Routing: tag → frozen file basename ----
+# Interpreters and PHP-bound extensions go to frozen/php-<minor>.json;
+# tools (kind=tool, e.g. mariadb) go to frozen/<name>.json — see
+# lint-frozen-coverage.sh which encodes the same split.
+frozen_basename_for() {
+  local tag="$1" kind="$2" name="$3"
   if [[ "$tag" =~ ^php-([0-9]+\.[0-9]+)\.[0-9]+ ]]; then
-    echo "${BASH_REMATCH[1]}"
+    echo "php-${BASH_REMATCH[1]}"
     return
   fi
-  # Extension tag: <ext>-<ver>+php<minor_no_dot>-<target>-<flavor>
-  # e.g. xdebug-3.5.1+php81-... → php minor = 8.1
   if [[ "$tag" =~ \+php([0-9])([0-9]+)- ]]; then
-    echo "${BASH_REMATCH[1]}.${BASH_REMATCH[2]}"
+    echo "php-${BASH_REMATCH[1]}.${BASH_REMATCH[2]}"
+    return
+  fi
+  if [[ "$kind" == "tool" ]]; then
+    echo "$name"
     return
   fi
   echo "" # unknown
@@ -121,17 +134,18 @@ mkdir -p "$FROZEN_DIR"
 # ---- Walk index ----
 NOW="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
 
-declare -A minor_updated  # tracks which frozen files were touched
+declare -A files_updated=()  # tracks which frozen files were touched (keyed by basename)
 
 # Walk every target → every section
 while IFS= read -r target; do
   # Enumerate sections for this target
   while IFS= read -r section_key; do
     # section_key like "interpreter/php" or "extension/xdebug"
+    section_rel="/versions/$ROOT_VERSION/targets/$target/sections/$section_key.json"
     if [[ -n "$LOCAL_DIR" ]]; then
-      section_path="$LOCAL_DIR/targets/$target/sections/$section_key.json"
+      section_path="$LOCAL_DIR$section_rel"
     else
-      section_path="$INDEX_BASE/targets/$target/sections/$section_key.json"
+      section_path="$INDEX_BASE$section_rel"
     fi
 
     section_json="$(fetch_json "$section_path")"
@@ -146,14 +160,14 @@ while IFS= read -r target; do
 
       tag_matches_any "$tag" || continue
 
-      # Determine PHP minor for this tag
-      minor="$(minor_from_tag "$tag")"
-      if [[ -z "$minor" ]]; then
-        echo "WARN: cannot determine PHP minor for tag '$tag', skipping" >&2
+      # Determine destination frozen file for this tag
+      basename="$(frozen_basename_for "$tag" "$kind" "$name")"
+      if [[ -z "$basename" ]]; then
+        echo "WARN: cannot determine frozen file for tag '$tag' (kind=$kind name=$name), skipping" >&2
         continue
       fi
 
-      frozen_file="$FROZEN_DIR/php-$minor.json"
+      frozen_file="$FROZEN_DIR/$basename.json"
 
       # Fetch manifest for this artifact. Section rows now carry an absolute
       # server path under .manifest.path (DISTRIBUTION.md §Section-index).
@@ -161,25 +175,46 @@ while IFS= read -r target; do
       manifest_abs="$(resolve_manifest_path "$manifest_path")"
 
       manifest_body="$(fetch_json "$manifest_abs")"
-      # Canonicalize manifest body (sorted keys, for stable sha256)
-      manifest_canonical="$(echo "$manifest_body" | jq -S '.')"
 
-      # Compute sha256 of the canonical manifest bytes
-      manifest_sha256_computed="$(echo "$manifest_canonical" | sha256sum | awk '{print $1}')"
+      # Verify the served manifest bytes against the section's recorded
+      # sha256. The publisher (shared/index.nix `stage_manifest`) hashes
+      # the substituted file as-is — no canonicalization — so we hash the
+      # raw served bytes the same way.
+      served_sha256_computed="$(printf '%s' "$manifest_body" | sha256sum | awk '{print $1}')"
       manifest_sha256_section="$(echo "$artifact" | jq -r '.manifest.sha256')"
 
-      if [[ "$manifest_sha256_computed" != "$manifest_sha256_section" ]]; then
+      if [[ "$served_sha256_computed" != "$manifest_sha256_section" ]]; then
         echo "FAIL: manifest sha256 mismatch for tag '$tag'" >&2
         echo "  section entry says: $manifest_sha256_section" >&2
-        echo "  computed (jq -S):   $manifest_sha256_computed" >&2
+        echo "  computed (jq -S):   $served_sha256_computed" >&2
         exit 1
       fi
+
+      # Reverse-substitute the live blob host back to the {BLOB_BASE}
+      # placeholder so the frozen bytes are host-agnostic. The placeholder
+      # form is what shared/index.nix's splice step re-substitutes at the
+      # next publish. Blob URLs have shape <BLOB_BASE>/blobs/<aa>/<sha>,
+      # so we recover the prefix from the manifest's own blob.url.
+      blob_url="$(echo "$manifest_body" | jq -r '.blob.url // empty')"
+      if [[ -z "$blob_url" || "$blob_url" != */blobs/* ]]; then
+        echo "FAIL: manifest for '$tag' has no recognizable blob.url to derive BLOB_BASE from" >&2
+        exit 1
+      fi
+      blob_base="${blob_url%%/blobs/*}"
+      manifest_placeholder="${manifest_body//${blob_base}/\{BLOB_BASE\}}"
+      manifest_canonical="$(echo "$manifest_placeholder" | jq -S '.')"
+      manifest_sha256_computed="$(echo "$manifest_canonical" | sha256sum | awk '{print $1}')"
 
       # Build section_entry: the artifact entry MINUS the `frozen` field
       # (the generator adds frozen:true at splice time). The on-disk
       # manifest path is derived from section_entry.manifest.path at
-      # splice time, so we no longer record it separately.
-      section_entry="$(echo "$artifact" | jq -S 'del(.frozen)')"
+      # splice time, so we no longer record it separately. The recorded
+      # manifest.sha256 is rewritten to the placeholder-body sha so the
+      # consumer's integrity check (sha of jq -S .manifest in the frozen
+      # entry) matches — see shared/index.nix §splice frozen entries.
+      section_entry="$(echo "$artifact" | jq -S \
+        --arg sha "$manifest_sha256_computed" \
+        'del(.frozen) | .manifest.sha256 = $sha')"
 
       # Build the frozen entry struct
       new_entry="$(jq -n -S \
@@ -202,11 +237,16 @@ while IFS= read -r target; do
           manifest: $manifest
         }')"
 
-      # Read or initialize the frozen file
+      # Read or initialize the frozen file. PHP files carry .minor; tool
+      # files (single pinned version, not split by PHP minor) carry .name
+      # instead. The consumer (shared/index.nix) reads only .entries.
       if [[ -f "$frozen_file" ]]; then
         existing="$(cat "$frozen_file")"
-      else
+      elif [[ "$basename" == php-* ]]; then
+        minor="${basename#php-}"
         existing="$(jq -n --arg minor "$minor" '{schema: 1, minor: $minor, entries: []}')"
+      else
+        existing="$(jq -n --arg name "$basename" '{schema: 1, name: $name, entries: []}')"
       fi
 
       # Check for existing entry with this tag
@@ -239,7 +279,7 @@ while IFS= read -r target; do
         '.entries = (.entries + [$e]) | .entries |= sort_by(.tag + .target)')"
 
       echo "$updated" > "$frozen_file"
-      minor_updated["$minor"]="1"
+      files_updated["$basename"]="1"
       echo "  frozen: $tag (target $target) → $frozen_file"
 
     done
@@ -247,11 +287,11 @@ while IFS= read -r target; do
 
 done < <(echo "$root_json" | jq -r '.targets | keys[]')
 
-if [[ ${#minor_updated[@]} -eq 0 ]]; then
+if [[ ${#files_updated[@]} -eq 0 ]]; then
   echo "No new entries frozen (all matched tags were already present or no tags matched)."
 else
   echo "Updated frozen files:"
-  for m in "${!minor_updated[@]}"; do
-    echo "  $FROZEN_DIR/php-$m.json"
+  for b in "${!files_updated[@]}"; do
+    echo "  $FROZEN_DIR/$b.json"
   done
 fi
