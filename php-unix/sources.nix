@@ -175,9 +175,9 @@
   # is compiled and installed — see build-libpq.sh. Wired against our bundled
   # OpenSSL so libpq supports TLS connections (sslmode=require et al).
   libpq = {
-    url = "https://ftp.postgresql.org/pub/source/v17.2/postgresql-17.2.tar.bz2";
-    sha256 = "82ef27c0af3751695d7f64e2d963583005fbb6a0c3df63d0e4b42211d7021164";
-    version = "17.2";
+    url = "https://ftp.postgresql.org/pub/source/v18.3/postgresql-18.3.tar.bz2";
+    sha256 = "d95663fbbf3a80f81a9d98d895266bdcb74ba274bcc04ef6d76630a72dee016f";
+    version = "18.3";
   };
 
   # libtiff — TIFF reader/writer, an ImageMagick delegate. Depends on zlib
@@ -314,9 +314,9 @@
   # a PHP binary linked against it would impose GPL terms on the combined
   # work. Distros (Debian, Homebrew) make the same call.
   libedit = {
-    url = "https://thrysoee.dk/editline/libedit-20251016-3.1.tar.gz";
-    sha256 = "21362b00653bbfc1c71f71a7578da66b5b5203559d43134d2dd7719e313ce041";
-    version = "20251016-3.1";
+    url = "https://thrysoee.dk/editline/libedit-20260512-3.1.tar.gz";
+    sha256 = "432d5e7ea8b0116dd39f2eca7bc11d0eed77faa6b77ea526ace89907c23ea4a0";
+    version = "20260512-3.1";
   };
 
   # PHP version matrix. Each entry is a PHP major.minor pinned to a specific
