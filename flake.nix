@@ -110,6 +110,12 @@
                       libtiff lcms2 openjpeg libheif libde265;
             };
             libgmp        = pkgs.callPackage ./shared/libgmp.nix        { inherit mkDep; };
+            # NSPR + NSS underpin mkcert's certutil shipment; not linked
+            # by anything in the PHP build itself. Kept in the common
+            # `rec` block so both Linux and Darwin can pick them up
+            # (mkcert's bundle ships on both).
+            nspr          = pkgs.callPackage ./shared/nspr.nix          { inherit mkDep; };
+            nss           = pkgs.callPackage ./shared/nss.nix           { inherit mkDep nspr sqlite zlib; };
           } // pkgs.lib.optionalAttrs (!darwin) {
             # libxcrypt (provides libcrypt.so.1). Linux-only: macOS's libc
             # has its own crypt() implementation and consumers there use
@@ -468,6 +474,14 @@
             '';
           };
 
+          # ---- mkcert tool bundle ----
+          # mkcert binary + the NSS toolchain (certutil + libnss/libnspr)
+          # bundled together so `mkcert -install` can manipulate Firefox's
+          # cert9.db without an external NSS install. Parallel structure
+          # to mariadb but reuses pkgs.buildGoModule for the mkcert binary
+          # itself and shares the NSPR/NSS bundled deps.
+          mkcert = pkgs.callPackage ./mkcert/mkcert.nix { inherit sources; };
+
           # Cross-variant index. Walks every release, parses per-extension
           # + interpreter manifests, reads .sha256 sidecars, and emits a
           # single index.json. Deduplication of store-path entries across
@@ -495,7 +509,7 @@
           latestVariant = variants.${minorKey pkgs sources.latestPhp};
         in {
           inherit pkgs sources darwin sysroot toolchain deps variants index latestVariant
-                  mariadb mariadbTree mariadbTarball mariadbRelease;
+                  mariadb mariadbTree mariadbTarball mariadbRelease mkcert;
         };
 
       ctx = forEach contextFor;
@@ -609,6 +623,9 @@
           mariadb-tree    = c.mariadbTree;
           mariadb-tarball = c.mariadbTarball;
           mariadb-release = c.mariadbRelease;
+          # mkcert binary itself; full bundle (with bundled NSS) lands
+          # under mkcert-tarball once that wiring lands.
+          mkcert          = c.mkcert;
         });
 
       phpVariants  = forEach (system: ctx.${system}.variants);

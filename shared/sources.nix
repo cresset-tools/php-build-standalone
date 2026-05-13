@@ -503,4 +503,37 @@
     sha256 = "96fbd2e6e93fb7e8b373eea75d85b6fea57c0e111a02090cbbefed52599dc77b";
     version = "11.4.4";
   };
+
+  # NSPR — Netscape Portable Runtime. Standalone build (it's a foundation
+  # library for NSS, exposing threads/IO/memory primitives). Autoconf
+  # build, behaves; only present here because NSS needs it. v4.36 is
+  # the most recent stable as of early 2026; bumps should track NSS's
+  # `coreconf/coreconf.dep` floor.
+  nspr = {
+    url = "https://archive.mozilla.org/pub/nspr/releases/v4.36/src/nspr-4.36.tar.gz";
+    sha256 = "55dec317f1401cd2e5dba844d340b930ab7547f818179a4002bce62e6f1c6895";
+    version = "4.36";
+  };
+
+  # NSS — Network Security Services. Mozilla's TLS/crypto/cert-DB
+  # library. PBS ships it solely so the mkcert bundle can call
+  # `certutil` (NSS's CLI tool) to install the local-dev CA into
+  # Firefox's per-profile cert9.db without manual import. Custom
+  # gmake-based build; depends on NSPR. NSS releases track Firefox;
+  # any modern tag works for certutil's purposes.
+  nss = {
+    url = "https://archive.mozilla.org/pub/security/nss/releases/NSS_3_123_RTM/src/nss-3.123.tar.gz";
+    sha256 = "2145113398a269779a7390515a1638800836b130248e33f93243268c026d4e49";
+    version = "3.123";
+  };
+
+  # mkcert — FiloSottile's local-CA generator. Pure-Go static binary;
+  # at runtime invokes `certutil` (shipped alongside it via the NSS
+  # build above) as a subprocess to manipulate Firefox's NSS cert
+  # store. Not linked against libnss — the dep is a PATH/exec one.
+  mkcert = {
+    url = "https://github.com/FiloSottile/mkcert/archive/refs/tags/v1.4.4.tar.gz";
+    sha256 = "32bd5519581bf0b03f53e5b22721692b99f39ab5b161dc27532c51eafa512ca9";
+    version = "1.4.4";
+  };
 }
