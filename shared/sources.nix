@@ -510,9 +510,9 @@
   # the most recent stable as of early 2026; bumps should track NSS's
   # `coreconf/coreconf.dep` floor.
   nspr = {
-    url = "https://archive.mozilla.org/pub/nspr/releases/v4.36/src/nspr-4.36.tar.gz";
-    sha256 = "55dec317f1401cd2e5dba844d340b930ab7547f818179a4002bce62e6f1c6895";
-    version = "4.36";
+    url = "https://archive.mozilla.org/pub/nspr/releases/v4.39/src/nspr-4.39.tar.gz";
+    sha256 = "bbd02ee87a55676063a63e5bc819e0227de2666b47307b2a0134414cdf42368e";
+    version = "4.39";
   };
 
   # NSS — Network Security Services. Mozilla's TLS/crypto/cert-DB
