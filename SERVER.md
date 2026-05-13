@@ -69,18 +69,54 @@ upgrades the situation without code changes.
 
 ### 3.3 Hosts-file fallback
 
-```
-bougie server hosts add <name>      # construct a managed entry
-bougie server hosts remove <name>
-bougie server hosts apply           # rewrites /etc/hosts; run via sudo
+Opt-in via a single config flag:
+
+```toml
+[server]
+manage_etc_hosts = true              # default: false
 ```
 
-`add`/`remove` mutate bougie's view; `apply` is the privileged step. bougie
-does not auto-elevate — it prints the `sudo bougie server hosts apply`
-command for the user to run. Sentinel-delimited block (`# BEGIN bougie /
-# END bougie`); atomic write via temp file + rename; never touches anything
-outside the block. Local suffix is `*.bougie.test` (RFC 2606 reserved, not
-publicly resolvable) to avoid collision with `*.bougie.run`.
+With the flag on, every `bougie server add` / `bougie server remove`
+spawns `sudo bougie server hosts apply` after the server.toml mutation
+to re-sync the bougie sentinel block in `/etc/hosts`. The sudo prompt
+is interactive (stdin/stdout/stderr inherited) so the password
+challenge lands in the user's terminal. If sudo fails or is
+cancelled, the server.toml change is still committed and bougie
+prints a hint with the manual recovery command.
+
+```
+bougie server hosts apply [--config <path>]   # privileged step; runs via sudo
+```
+
+Source of truth is `server.toml` — there is no separate hosts view.
+The set written to `/etc/hosts` is every `[[host]].hostname` plus every
+`[[host.alias]].hostname`. The block format is one v4 and one v6 entry
+per name:
+
+```
+# BEGIN bougie
+127.0.0.1 myapp.bougie.test
+::1 myapp.bougie.test
+127.0.0.1 blog.bougie.test
+::1 blog.bougie.test
+# END bougie
+```
+
+Atomic write via tempfile + rename in the same directory; original
+mode is preserved; everything outside the sentinel block is kept
+bit-for-bit. Empty hostname list drops the block entirely (and
+removes the sentinel markers).
+
+Local suffix is `*.bougie.test` (RFC 2606 reserved, not publicly
+resolvable) to avoid collision with `*.bougie.run`. Mixing is
+allowed: users can have public-DNS-routed `myapp.bougie.run` and
+hosts-file-routed `internal.bougie.test` coexist in the same
+server.toml.
+
+`BOUGIE_ETC_HOSTS_PATH` (integration-test escape hatch) overrides
+the default `/etc/hosts` target and bypasses the root check + sudo
+spawn — so the unit tests, `tests/server_helpers.rs`, and any
+future smoke run can target a tempfile.
 
 No dnsmasq. No `/etc/resolver/`. No systemd-resolved drop-ins. The
 long-tail support cost is not worth the marginal UX win.
@@ -258,9 +294,7 @@ bougie server add <hostname> <project-path> [--root <subdir>]
 bougie server remove <hostname>
 bougie server list [--format json-v1]
 
-bougie server hosts add <name>
-bougie server hosts remove <name>
-bougie server hosts apply                    # run via sudo
+bougie server hosts apply [--config <path>]  # run via sudo; see §3.3
 
 bougie server tls install                    # v1.x; fetch mkcert, run mkcert -install
 bougie server tls uninstall                  # v1.x; run mkcert -uninstall, drop $BOUGIE_HOME/tls/
