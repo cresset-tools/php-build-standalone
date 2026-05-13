@@ -113,13 +113,16 @@ let
     extension = {
       path = "@EXT_PATH@";
       sha256 = "@EXT_SHA256@";
+    } // lib.optionalAttrs zendExtension {
+      # Wire-format kebab-case; the CLI rewrites this to the underscore
+      # `zend_extension` directive when emitting the project's INI. The
+      # CLI reads this from `extension.load` (inside the extension block),
+      # not from a top-level field — see bougie's
+      # `src/index/wire.rs::ExtensionRef`.
+      load = "zend-extension";
     };
     # closure is injected by the build script from closures.json.
     closure = "@CLOSURE_PLACEHOLDER@";
-  } // lib.optionalAttrs zendExtension {
-    # Wire-format kebab-case; the CLI rewrites this to the underscore
-    # `zend_extension` directive when emitting the project's INI.
-    load = "zend-extension";
   }));
 
   # Sanitize extName for use in the Nix derivation name.
