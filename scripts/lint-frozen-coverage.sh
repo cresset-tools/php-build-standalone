@@ -13,12 +13,17 @@
 #      frozen/php-<minor>.json must start with `php-<prior-version>-`.
 #   2. For each PHP minor in baseline but absent in current (EOL'd):
 #      same coverage requirement for the prior version.
-#   3. For each service-style flat pin (sources.mariadb, sources.redis):
-#      if .version changed (forward bump), at least one entry in
-#      frozen/<svc>.json must start with `<svc>-<prior>-`. These services
-#      have a single pinned version (the source attrset is flat, not a
-#      versions map), so one frozen file per service accumulates every
+#   3. For each service-style flat pin (sources.mariadb, sources.redis,
+#      sources.mkcert): if .version changed (forward bump), at least one
+#      entry in frozen/<svc>.json must start with `<svc>-<prior>-`. These
+#      services have a single pinned version (the source attrset is flat,
+#      not a versions map), so one frozen file per service accumulates every
 #      superseded release rather than the per-minor split used for PHP.
+#   4. For each `<ext>Versions.<series>.version` forward bump (excluding
+#      phpVersions, which is rule 1): at least one entry across the
+#      frozen/php-*.json set must start with `<ext>-<prior>+php`. The
+#      tag is filed under whichever PHP minor it was built for, so the
+#      lint accepts a match in any minor file.
 
 set -euo pipefail
 
@@ -232,6 +237,75 @@ check_service_pin() {
 
 check_service_pin mariadb MariaDB
 check_service_pin redis   Redis
+check_service_pin mkcert  mkcert
+
+# ---- Extension version maps (xdebugVersions, redisVersions, …) ----
+# Each is a series→{version,url,sha256} map producing tags shaped
+#   <ext>-<ver>+php<minor_no_dot>-<target>-<flavor>
+# which the freeze script files into frozen/php-<minor>.json. The lint
+# accepts a match in any minor file: an extension series may have built
+# for multiple PHP minors, and the freeze splits the entries across
+# those files. // empty handles new series introduced in the bump.
+
+check_extension_frozen_coverage() {
+  local ext="$1"            # xdebug, redis, imagick, …
+  local series="$2"         # 3.5, 6.3, …
+  local prior_version="$3"
+  local curr_version="$4"
+
+  local prefix="${ext}-${prior_version}+php"
+  local context="${ext} ${series}: $prior_version → $curr_version version bump in sources.nix, but $prior_version is not frozen."
+
+  shopt -s nullglob
+  local files=(frozen/php-*.json)
+  shopt -u nullglob
+
+  if [[ ${#files[@]} -eq 0 ]]; then
+    echo "FAIL: $context" >&2
+    echo "      No frozen/php-*.json files exist." >&2
+    echo "To freeze the prior version:" >&2
+    echo "    nix run .#freeze-publish-entries -- '${ext}-${prior_version}+php*-*' --reason 'superseded by ${curr_version}'" >&2
+    FAIL=1
+    return
+  fi
+
+  local count
+  count="$(jq --arg p "$prefix" -s '[.[].entries[] | select(.tag | startswith($p))] | length' "${files[@]}")"
+  if [[ "$count" -eq 0 ]]; then
+    echo "FAIL: $context" >&2
+    echo "      No entries starting with '$prefix' found in any frozen/php-*.json." >&2
+    echo "To freeze the prior version:" >&2
+    echo "    nix run .#freeze-publish-entries -- '${ext}-${prior_version}+php*-*' --reason 'superseded by ${curr_version}'" >&2
+    FAIL=1
+  fi
+}
+
+# Discover *Versions attrs (excluding phpVersions, handled above).
+ext_attrs="$(nix eval --json --impure --expr \
+  "builtins.filter (n: builtins.match \".*Versions\" n != null && n != \"phpVersions\") (builtins.attrNames (import $curr_file))")"
+
+while IFS= read -r ext_attr; do
+  [[ -z "$ext_attr" ]] && continue
+  ext_name="${ext_attr%Versions}"
+
+  curr_series="$(nix eval --json --impure --expr \
+    "(import $curr_file).${ext_attr} or {}" \
+    | jq '. | with_entries(.value |= .version)')"
+  prev_series="$(nix eval --json --impure --expr \
+    "(import $prev_file).${ext_attr} or {}" \
+    | jq '. | with_entries(.value |= .version)')"
+
+  while IFS= read -r series; do
+    curr_version="$(echo "$curr_series" | jq -r --arg s "$series" '.[$s]')"
+    prev_version="$(echo "$prev_series" | jq -r --arg s "$series" '.[$s] // empty')"
+
+    [[ -z "$prev_version" ]] && continue                # new series
+    [[ "$curr_version" == "$prev_version" ]] && continue
+    version_gt "$curr_version" "$prev_version" || continue
+
+    check_extension_frozen_coverage "$ext_name" "$series" "$prev_version" "$curr_version"
+  done < <(echo "$curr_series" | jq -r 'keys[]')
+done < <(echo "$ext_attrs" | jq -r '.[]')
 
 if [[ $FAIL -eq 0 ]]; then
   echo "OK: frozen coverage lint passed."

@@ -770,6 +770,9 @@
           lint-frozen-coverage = mkApp "lint-frozen-coverage"
             (with pkgs; [ bash coreutils git nix jq ])
             ./scripts/lint-frozen-coverage.sh;
+          auto-freeze-superseded = mkApp "auto-freeze-superseded"
+            (with pkgs; [ bash coreutils git nix jq ])
+            ./scripts/auto-freeze-superseded.sh;
         });
 
       # Hacking shell. Same toolchain as the derivations consume, but
