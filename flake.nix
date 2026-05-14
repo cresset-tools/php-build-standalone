@@ -439,7 +439,7 @@
             [ "zlib" "openssl" "ncurses" "libedit" "pcre2" ]
             ++ pkgs.lib.optional (!darwin) "libxcrypt";
           mariadbBundledDeps = map (n: deps.${n}) mariadbBundledDepNames;
-          mariadb = pkgs.callPackage ./mariadb/mariadb.nix ({
+          mariadb = pkgs.callPackage ./tools/mariadb/mariadb.nix ({
             inherit mkDep mariadbSpec;
             inherit (deps) zlib openssl ncurses libedit pcre2;
           } // pkgs.lib.optionalAttrs (!darwin) {
@@ -451,7 +451,7 @@
             inherit toolchain;
             phpVersion = mariadbSpec.version;
           };
-          mariadbTarball = pkgs.callPackage ./mariadb/tarball.nix {
+          mariadbTarball = pkgs.callPackage ./tools/mariadb/tarball.nix {
             tree = mariadbTree;
             inherit sources nixpkgsRev;
             mariadbVersion = mariadbSpec.version;
@@ -487,7 +487,7 @@
           redisServerSpec = sources.redis;
           redisServerBundledDepNames = [ "zlib" "openssl" ];
           redisServerBundledDeps = map (n: deps.${n}) redisServerBundledDepNames;
-          redisServer = pkgs.callPackage ./redis/redis.nix {
+          redisServer = pkgs.callPackage ./tools/redis/redis.nix {
             inherit mkDep;
             redisSpec = redisServerSpec;
             inherit (deps) openssl;
@@ -498,7 +498,7 @@
             inherit toolchain;
             phpVersion = redisServerSpec.version;
           };
-          redisServerTarball = pkgs.callPackage ./redis/tarball.nix {
+          redisServerTarball = pkgs.callPackage ./tools/redis/tarball.nix {
             tree = redisServerTree;
             inherit sources nixpkgsRev;
             redisVersion = redisServerSpec.version;
@@ -524,7 +524,7 @@
           # cert9.db without an external NSS install. Parallel structure
           # to mariadb but reuses pkgs.buildGoModule for the mkcert binary
           # itself and shares the NSPR/NSS bundled deps.
-          mkcert = pkgs.callPackage ./mkcert/mkcert.nix { inherit sources; };
+          mkcert = pkgs.callPackage ./tools/mkcert/mkcert.nix { inherit sources; };
           mkcertSpec = sources.mkcert;
           # NSS itself drags in sqlite (cert9.db backend) and zlib (used
           # by signtool's JAR-signing path); they're already built for
@@ -536,7 +536,7 @@
           # exposes ONLY $out/bin/ — passing NSS itself as an
           # interpreterDep would also drop its lib/ into install/lib/,
           # duplicating what bundledDeps put under store/<nss-name>/.
-          nssBinaries = pkgs.callPackage ./mkcert/nss-binaries.nix {
+          nssBinaries = pkgs.callPackage ./tools/mkcert/nss-binaries.nix {
             inherit (deps) nss;
           };
           mkcertTree = pkgs.callPackage ./shared/tree.nix {
@@ -545,7 +545,7 @@
             inherit toolchain;
             phpVersion = mkcertSpec.version;
           };
-          mkcertTarball = pkgs.callPackage ./mkcert/tarball.nix {
+          mkcertTarball = pkgs.callPackage ./tools/mkcert/tarball.nix {
             tree = mkcertTree;
             inherit sources nixpkgsRev;
             mkcertVersion = mkcertSpec.version;

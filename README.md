@@ -449,44 +449,71 @@ php/                           PHP interpreter, PECL extensions, and
   index.nix                      cross-variant index.json (interpreters +
                                  extensions + store_paths)
 
-mariadb/                       MariaDB server bundle (relocatable mariadbd
-                               + libmariadb + client tools), consumed by
-                               `bougie tools`. Reuses shared/zlib,
-                               shared/openssl, shared/ncurses for the
-                               bundled C-lib stack.
-  mariadb.nix                    calls mkDep with the cmake-based build
-                                 script + the three bundled deps.
-  build-mariadb.sh               cmake + INSTALL_LAYOUT=STANDALONE +
-                                 relocatable RPATH + a curated plugin
-                                 deny-list (RocksDB, Mroonga, Spider,
-                                 ColumnStore, S3, OQGraph, Connect, …).
-  tarball.nix                    interpreter-shaped tarball + manifest;
-                                 manifest kind="tool" routes into
-                                 shared/index.nix's tool/<name>
-                                 section.
+tools/                         Standalone tool bundles shipped alongside
+                               the PHP interpreters. Each subdir builds
+                               a relocatable .tar.zst that the index
+                               serves under sections/tool/<name>.
+  mariadb/                       MariaDB server bundle (relocatable
+                                 mariadbd + libmariadb + client tools),
+                                 consumed by `bougie tools`. Reuses
+                                 shared/zlib, shared/openssl,
+                                 shared/ncurses for the bundled C-lib
+                                 stack.
+    mariadb.nix                    calls mkDep with the cmake-based
+                                   build script + the three bundled
+                                   deps.
+    build-mariadb.sh               cmake + INSTALL_LAYOUT=STANDALONE +
+                                   relocatable RPATH + a curated plugin
+                                   deny-list (RocksDB, Mroonga, Spider,
+                                   ColumnStore, S3, OQGraph, Connect, …).
+    tarball.nix                    interpreter-shaped tarball + manifest;
+                                   manifest kind="tool" routes into
+                                   shared/index.nix's tool/<name>
+                                   section.
 
-redis/                         Redis server bundle (relocatable
-                               redis-server / redis-cli / redis-benchmark
-                               + the sentinel/check-rdb/check-aof
-                               symlinks), consumed by `bougie services`.
-                               Only external C library is bundled
-                               OpenSSL; jemalloc, hiredis, linenoise,
-                               lua, hdr_histogram, fast_float, xxhash
-                               are vendored under deps/ and statically
-                               linked by Redis's own Makefile.
-  redis.nix                      calls mkDep with the Makefile-based
-                                 build script + openssl as the sole dep.
-  build-redis.sh                 invokes Redis's hand-rolled Makefile
-                                 (BUILD_TLS=yes USE_SYSTEMD=no
-                                 MALLOC=jemalloc PREFIX=…), patches
-                                 FINAL_LIBS for libc++/libstdc++ choice,
-                                 and statically links libstdc++ on Linux
-                                 so the binary has no DT_NEEDED
-                                 libstdc++.so.6.
-  tarball.nix                    same kind="service" manifest shape as
-                                 mariadb/tarball.nix; shared/index.nix
-                                 picks both up via the explicit-glob
-                                 service loop.
+  redis/                         Redis server bundle (relocatable
+                                 redis-server / redis-cli /
+                                 redis-benchmark + the
+                                 sentinel/check-rdb/check-aof symlinks),
+                                 consumed by `bougie services`. Only
+                                 external C library is bundled OpenSSL;
+                                 jemalloc, hiredis, linenoise, lua,
+                                 hdr_histogram, fast_float, xxhash are
+                                 vendored under deps/ and statically
+                                 linked by Redis's own Makefile.
+    redis.nix                      calls mkDep with the Makefile-based
+                                   build script + openssl as the sole
+                                   dep.
+    build-redis.sh                 invokes Redis's hand-rolled Makefile
+                                   (BUILD_TLS=yes USE_SYSTEMD=no
+                                   MALLOC=jemalloc PREFIX=…), patches
+                                   FINAL_LIBS for libc++/libstdc++
+                                   choice, and statically links
+                                   libstdc++ on Linux so the binary has
+                                   no DT_NEEDED libstdc++.so.6.
+    tarball.nix                    same kind="service" manifest shape as
+                                   tools/mariadb/tarball.nix;
+                                   shared/index.nix picks both up via
+                                   the explicit-glob service loop.
+
+  mkcert/                        mkcert binary + NSS toolchain (certutil
+                                 + libnss/libnspr) bundled together so
+                                 `mkcert -install` can manipulate
+                                 Firefox's cert9.db without a system NSS
+                                 install. Reuses shared/sqlite +
+                                 shared/zlib + shared/nspr + shared/nss
+                                 as bundled C-lib deps.
+    mkcert.nix                     pkgs.buildGoModule for the mkcert
+                                   binary itself; vendors against the
+                                   sources.mkcert pin.
+    nss-binaries.nix               thin wrapper that exposes only the
+                                   NSS bin/ tools (certutil et al.)
+                                   without also dropping NSS's lib/
+                                   into install/lib/ (bundledDeps
+                                   already carries that under
+                                   store/<nss-name>/).
+    tarball.nix                    same kind="tool" manifest shape as
+                                   tools/mariadb/tarball.nix.
 tests/
   distros.txt                    expected pass/fail per distro image
   run-matrix.sh                  extract once, mount RO into each container

@@ -1,4 +1,4 @@
-# Redis tarball derivation. Mirrors mariadb/tarball.nix and produces a
+# Redis tarball derivation. Mirrors tools/mariadb/tarball.nix and produces a
 # `kind=tool` manifest: one self-contained tarball carrying redis-server,
 # redis-cli, redis-benchmark, redis-sentinel/check-rdb/check-aof symlinks,
 # and the bundled OpenSSL under store/<storeName>/.
