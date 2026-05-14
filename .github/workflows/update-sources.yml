@@ -13,10 +13,12 @@
 # load-bearing (e.g. libxml2 breaks PHP 8.4), drop the offending file
 # from the PR or open a follow-up that reverts that one entry.
 #
-# Authentication: the per-package update scripts use GITHUB_TOKEN for
-# api.github.com calls (raises the unauth'd 60/hr rate limit to 1000/hr).
-# peter-evans/create-pull-request needs the same token to push the
-# branch. Both default to the workflow's automatic GITHUB_TOKEN.
+# Authentication: an installation token minted from a GitHub App
+# (secrets BOT_APP_ID + BOT_APP_PRIVATE_KEY) is used for both the
+# per-package update scripts' api.github.com calls and the PR push.
+# Unlike the default GITHUB_TOKEN, pushes authenticated as the app
+# trigger downstream pull_request events, so build.yml runs on the
+# automated PR.
 
 name: update-sources
 
@@ -50,12 +52,24 @@ jobs:
       # eventually replace.
       INDEX_HOST: ${{ vars.INDEX_HOST || 'index.bougie.tools' }}
     steps:
+      # Mint an installation token for the bot GitHub App. Used in
+      # place of the workflow's GITHUB_TOKEN so that pushes to the PR
+      # branch trigger build.yml (the default GITHUB_TOKEN is barred
+      # from firing downstream workflows on its own pushes).
+      - name: Mint app token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.BOT_APP_ID }}
+          private-key: ${{ secrets.BOT_APP_PRIVATE_KEY }}
+
       # auto-freeze-superseded diffs shared/sources.nix against
       # origin/main, so we need that ref locally. fetch-depth: 0 keeps
       # things simple (full history) — the repo is small.
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          token: ${{ steps.app-token.outputs.token }}
 
       # nix is needed by scripts/update.py: it shells out to
       # `nix eval --json --file sources.nix` to read current values, and
@@ -68,7 +82,7 @@ jobs:
         env:
           # Lifts the GitHub API rate limit for the per-package scripts
           # that hit api.github.com (zlib, openssl, libsodium, …).
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
           PACKAGES: ${{ github.event.inputs.packages }}
         run: |
           set -euo pipefail
@@ -102,12 +116,12 @@ jobs:
       - name: Open / refresh pull request
         uses: peter-evans/create-pull-request@v6
         with:
-          # Default GITHUB_TOKEN is barred from triggering downstream
-          # workflows on its own pushes (anti-recursion safeguard), which
-          # would silently skip build.yml on the PR. BOT_PAT is a fine-
-          # grained PAT scoped to this repo (contents:write + PRs:write);
-          # branches it pushes trigger pull_request events normally.
-          token: ${{ secrets.BOT_PAT }}
+          # App-installation token (see "Mint app token" step). Required
+          # so that the push to automated/update-sources triggers
+          # pull_request events — the default GITHUB_TOKEN is barred
+          # from firing downstream workflows on its own pushes, which
+          # would silently skip build.yml on the PR.
+          token: ${{ steps.app-token.outputs.token }}
           # Stable branch name: the action force-updates this branch on
           # subsequent runs, so a long-lived PR keeps moving forward
           # rather than the workflow opening a fresh PR every Monday.
