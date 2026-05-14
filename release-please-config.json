@@ -1,0 +1,29 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "release-type": "simple",
+  "include-component-in-tag": false,
+  "bump-minor-pre-major": true,
+  "bump-patch-for-minor-pre-major": true,
+  "draft": false,
+  "prerelease": false,
+  "changelog-sections": [
+    { "type": "feat",     "section": "Features" },
+    { "type": "fix",      "section": "Bug Fixes" },
+    { "type": "perf",     "section": "Performance" },
+    { "type": "deps",     "section": "Dependencies" },
+    { "type": "revert",   "section": "Reverts" },
+    { "type": "build",    "section": "Build" },
+    { "type": "ci",       "section": "CI" },
+    { "type": "refactor", "section": "Refactoring", "hidden": true },
+    { "type": "docs",     "section": "Documentation", "hidden": true },
+    { "type": "test",     "section": "Tests", "hidden": true },
+    { "type": "chore",    "section": "Chores", "hidden": true },
+    { "type": "style",    "section": "Styles", "hidden": true }
+  ],
+  "packages": {
+    ".": {
+      "package-name": "php-build-standalone",
+      "bootstrap-sha": "90982619e219b27e01df28cc26ab62bf55611b89"
+    }
+  }
+}
