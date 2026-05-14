@@ -173,19 +173,26 @@ read_only_paths    = [ $BOUGIE_HOME/store           # tarball binaries
 private_network    = false                          # services bind sockets / loopback ports
 no_new_privileges  = true
 limit_nofile       = 4096
-limit_nproc        = 256
 limit_core         = 0
 ```
+
+`limit_nproc` is **not set** in v1. On Linux, `RLIMIT_NPROC` counts
+the calling user's *total* live processes, not just this service's
+descendants — capping it below the user's current process count
+breaks anything that uses `timer_create()` or pthread workers
+(InnoDB, Erlang's scheduler, opensearch). If we ever need a real
+per-service process budget, the right knob is a cgroup `pids.max`,
+not setrlimit. See [feedback-bougie-rlimit-nproc].
 
 Per-entry overrides (in the catalog, not in user config):
 
 | Service | Override |
 |---|---|
 | `opensearch` | `limit_nofile = 65536` (Lucene mmap caps); JVM tmpdir needs an explicit `read_write_paths` entry. |
-| `rabbitmq` | `limit_nproc = 8192` (Erlang scheduler threads + dirty IO pool). |
+| `mariadb` | `limit_nofile = 65536` (InnoDB derives `open_files_limit` from `max_connections + table_open_cache*2` which lands above 32k with stock settings); `--tmpdir=<datadir>/tmp` so InnoDB's startup temporaries land under the existing RW area. |
 | `erlang` | n/a — only invoked as rabbitmq's runtime. |
 | `jdk` | n/a — only invoked as opensearch's runtime. |
-| `mariadb` | `limit_nofile = 16384`. |
+| `rabbitmq` | (No nproc override in v1 — see note above.) |
 | `redis` | No override. |
 | `server` | `read_write_paths` extended to include the project's `.bougie/` (bougie server needs to render conf.d variants). |
 
