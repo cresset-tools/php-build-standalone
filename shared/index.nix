@@ -286,9 +286,9 @@ pkgs.runCommand "pbs-index" {
       # ---- Tool manifests (any *.json declaring `kind: tool`).
       #      Same blob/manifest plumbing as the interpreter loop; the
       #      on-disk manifest path uses the tool/<name>/<version>/
-      #      shape so MariaDB, mkcert, and any future sibling tool
-      #      share a stable namespace. The glob is everything at the
-      #      release-dir top, with a jq filter for `.kind == "tool"`
+      #      shape so MariaDB, redis, mkcert, and any future sibling
+      #      tool share a stable namespace. The glob is everything at
+      #      the release-dir top, with a jq filter for `.kind == "tool"`
       #      to keep us from picking up per-PHP-minor JSON.
       for f in "$rel_dir"/*.json; do
         [ -f "$f" ] || continue

@@ -13,11 +13,12 @@
 #      frozen/php-<minor>.json must start with `php-<prior-version>-`.
 #   2. For each PHP minor in baseline but absent in current (EOL'd):
 #      same coverage requirement for the prior version.
-#   3. If sources.mariadb.version changed (forward bump), at least one
-#      entry in frozen/mariadb.json must start with `mariadb-<prior>-`.
-#      MariaDB is a single pinned version (sources.mariadb is flat, not
-#      a versions map), so one frozen file accumulates every superseded
-#      release rather than the per-minor split used for PHP.
+#   3. For each service-style flat pin (sources.mariadb, sources.redis):
+#      if .version changed (forward bump), at least one entry in
+#      frozen/<svc>.json must start with `<svc>-<prior>-`. These services
+#      have a single pinned version (the source attrset is flat, not a
+#      versions map), so one frozen file per service accumulates every
+#      superseded release rather than the per-minor split used for PHP.
 
 set -euo pipefail
 
@@ -172,33 +173,27 @@ while IFS= read -r minor; do
   check_frozen_coverage "$minor" "$prev_version" "$prev_version" "$context"
 done < <(echo "$prev_versions" | jq -r 'keys[]')
 
-# ---- MariaDB ----
-# Same invariant as PHP, with a flatter shape: sources.mariadb is a single
+# ---- Service-style single-version pins (MariaDB, Redis, …) ----
+# Same invariant as PHP, with a flatter shape: sources.<svc> is a single
 # {url,sha256,version} attrset rather than a versions map, so there's no
-# minor to iterate. One frozen file (frozen/mariadb.json) accumulates every
+# minor to iterate. One frozen file (frozen/<svc>.json) accumulates every
 # superseded release. // empty handles the case where the baseline predates
-# the MariaDB pin (e.g. comparing against an old main branch).
-curr_mariadb="$(nix eval --json --impure --expr \
-  "(import $curr_file).mariadb.version or null" 2>/dev/null \
-  | jq -r '. // empty')"
-prev_mariadb="$(nix eval --json --impure --expr \
-  "(import $prev_file).mariadb.version or null" 2>/dev/null \
-  | jq -r '. // empty')"
+# the relevant pin (e.g. comparing against an old main branch).
+check_service_frozen_coverage() {
+  local svc="$1"
+  local prior_version="$2"
+  local curr_version="$3"
+  local context="$4"
 
-check_mariadb_frozen_coverage() {
-  local prior_version="$1"
-  local curr_version="$2"
-  local context="$3"
-
-  local frozen_file="frozen/mariadb.json"
-  local prefix="mariadb-$prior_version-"
+  local frozen_file="frozen/$svc.json"
+  local prefix="$svc-$prior_version-"
 
   if [[ ! -f "$frozen_file" ]]; then
     echo "FAIL: $context" >&2
     echo "      $frozen_file does not exist." >&2
     echo "To freeze the prior version:" >&2
-    echo "    nix run .#freeze-publish-entries -- 'mariadb-${prior_version}-*' --reason 'superseded by ${curr_version}'" >&2
-    echo "    git add frozen/mariadb.json && git commit" >&2
+    echo "    nix run .#freeze-publish-entries -- '$svc-${prior_version}-*' --reason 'superseded by ${curr_version}'" >&2
+    echo "    git add $frozen_file && git commit" >&2
     FAIL=1
     return
   fi
@@ -209,18 +204,34 @@ check_mariadb_frozen_coverage() {
     echo "FAIL: $context" >&2
     echo "      No entries starting with '$prefix' found in $frozen_file." >&2
     echo "To freeze the prior version:" >&2
-    echo "    nix run .#freeze-publish-entries -- 'mariadb-${prior_version}-*' --reason 'superseded by ${curr_version}'" >&2
-    echo "    git add frozen/mariadb.json && git commit" >&2
+    echo "    nix run .#freeze-publish-entries -- '$svc-${prior_version}-*' --reason 'superseded by ${curr_version}'" >&2
+    echo "    git add $frozen_file && git commit" >&2
     FAIL=1
   fi
 }
 
-if [[ -n "$prev_mariadb" && -n "$curr_mariadb" \
-   && "$curr_mariadb" != "$prev_mariadb" \
-   && $(version_gt "$curr_mariadb" "$prev_mariadb" && echo yes || echo no) == "yes" ]]; then
-  context="MariaDB: $prev_mariadb → $curr_mariadb version bump in sources.nix, but $prev_mariadb is not frozen."
-  check_mariadb_frozen_coverage "$prev_mariadb" "$curr_mariadb" "$context"
-fi
+check_service_pin() {
+  local svc="$1"
+  local label="$2"
+
+  local curr_v prev_v
+  curr_v="$(nix eval --json --impure --expr \
+    "(import $curr_file).$svc.version or null" 2>/dev/null \
+    | jq -r '. // empty')"
+  prev_v="$(nix eval --json --impure --expr \
+    "(import $prev_file).$svc.version or null" 2>/dev/null \
+    | jq -r '. // empty')"
+
+  if [[ -n "$prev_v" && -n "$curr_v" \
+     && "$curr_v" != "$prev_v" \
+     && $(version_gt "$curr_v" "$prev_v" && echo yes || echo no) == "yes" ]]; then
+    local context="$label: $prev_v → $curr_v version bump in sources.nix, but $prev_v is not frozen."
+    check_service_frozen_coverage "$svc" "$prev_v" "$curr_v" "$context"
+  fi
+}
+
+check_service_pin mariadb MariaDB
+check_service_pin redis   Redis
 
 if [[ $FAIL -eq 0 ]]; then
   echo "OK: frozen coverage lint passed."

@@ -474,6 +474,50 @@
             '';
           };
 
+          # ---- Redis server bundle ----
+          # Parallel to the mariadb stanza above. Redis only needs OpenSSL
+          # as a directly-linked external C library (everything else under
+          # deps/ is vendored and static-linked by the Makefile); we also
+          # bundle zlib because our openssl is built with --with-zlib and
+          # carries a DT_NEEDED libz.so.1.
+          #
+          # `redisServerSpec` is sources.redis (flat attrset). Distinct
+          # from `redisSpec` inside mkPhpVariant, which is the phpredis
+          # PECL extension's version pin from sources.redisVersions.
+          redisServerSpec = sources.redis;
+          redisServerBundledDepNames = [ "zlib" "openssl" ];
+          redisServerBundledDeps = map (n: deps.${n}) redisServerBundledDepNames;
+          redisServer = pkgs.callPackage ./redis/redis.nix {
+            inherit mkDep;
+            redisSpec = redisServerSpec;
+            inherit (deps) openssl;
+          };
+          redisServerTree = pkgs.callPackage ./shared/tree.nix {
+            bundledDeps = redisServerBundledDeps;
+            interpreterDeps = [ redisServer ];
+            inherit toolchain;
+            phpVersion = redisServerSpec.version;
+          };
+          redisServerTarball = pkgs.callPackage ./redis/tarball.nix {
+            tree = redisServerTree;
+            inherit sources nixpkgsRev;
+            redisVersion = redisServerSpec.version;
+            bundledDepNames = redisServerBundledDepNames;
+          };
+          redisServerRelease = pkgs.stdenvNoCC.mkDerivation {
+            pname = "pbs-release-redis";
+            version = redisServerSpec.version;
+            dontUnpack = true;
+            dontConfigure = true;
+            dontBuild = true;
+            dontFixup = true;
+            nativeBuildInputs = [ pkgs.coreutils ];
+            installPhase = ''
+              mkdir -p "$out"
+              cp -a ${redisServerTarball}/. "$out/" && chmod -R u+w "$out"
+            '';
+          };
+
           # ---- mkcert tool bundle ----
           # mkcert binary + the NSS toolchain (certutil + libnss/libnspr)
           # bundled together so `mkcert -install` can manipulate Firefox's
@@ -529,7 +573,7 @@
           # variants is enforced inside index.nix (collision = build error).
           allReleases =
             (map (v: v.release) (builtins.attrValues variants))
-            ++ [ mariadbRelease mkcertRelease ];
+            ++ [ mariadbRelease redisServerRelease mkcertRelease ];
           frozenFiles =
             let allFiles = pkgs.lib.filesystem.listFilesRecursive ./frozen;
             in builtins.filter
@@ -551,6 +595,7 @@
         in {
           inherit pkgs sources darwin sysroot toolchain deps variants index latestVariant
                   mariadb mariadbTree mariadbTarball mariadbRelease
+                  redisServer redisServerTree redisServerTarball redisServerRelease
                   mkcert mkcertTree mkcertTarball mkcertRelease;
         };
 
@@ -665,6 +710,13 @@
           mariadb-tree    = c.mariadbTree;
           mariadb-tarball = c.mariadbTarball;
           mariadb-release = c.mariadbRelease;
+          # Redis outputs at the top level. Same shape as the MariaDB
+          # quartet — bare derivation, finalized tree, redistributable
+          # tarball, release-flat-dir aggregate.
+          redis           = c.redisServer;
+          redis-tree      = c.redisServerTree;
+          redis-tarball   = c.redisServerTarball;
+          redis-release   = c.redisServerRelease;
           # mkcert + the full distribution bundle (mkcert binary,
           # certutil, signtool, with NSPR/NSS bundled under store/).
           mkcert          = c.mkcert;

@@ -504,6 +504,25 @@
     version = "11.4.4";
   };
 
+  # Redis server. 8.x is the current stable line and is tri-licensed
+  # (RSALv2 / SSPLv1 / AGPLv3) — bougie's use case is local dev, where the
+  # AGPLv3 leg covers redistribution-as-a-tool cleanly. 7.2 and prior were
+  # BSD-3; we don't pin those because every active release line has known
+  # CVEs and the modules/clients PHP code depends on are 8.x-shaped.
+  #
+  # Built from the upstream Makefile (no autotools/cmake — redis ships its
+  # own build system) with BUILD_TLS=yes against bundled openssl, MALLOC=
+  # jemalloc (the upstream default; vendored under deps/jemalloc), and
+  # USE_SYSTEMD=no. Linenoise + hiredis + lua + jemalloc are all vendored
+  # under deps/; the only external library is OpenSSL. No new
+  # shared/<dep>.nix files needed beyond what the PHP build already pulls
+  # in.
+  redis = {
+    url = "https://github.com/redis/redis/archive/refs/tags/8.6.3.tar.gz";
+    sha256 = "58d0d1eb49a1ea6c2179659707fec171b1e2e2b8d5157ed2ec59d1d66ad5a654";
+    version = "8.6.3";
+  };
+
   # NSPR — Netscape Portable Runtime. Standalone build (it's a foundation
   # library for NSS, exposing threads/IO/memory primitives). Autoconf
   # build, behaves; only present here because NSS needs it. v4.36 is
