@@ -126,10 +126,15 @@ fi
 # it would poison subshells linked against modern glibc (bash, make,
 # awk) and crash them with "GLIBC_2.34 not found" against the
 # sysroot's libc-2.17.
-LD_LIBRARY_PATH="$PBS_DEPS_LDPATH" make -j"$NIX_BUILD_CORES"
+#
+# On Darwin, mkDep does not set PBS_DEPS_LDPATH (dylib install_names
+# resolve via the -L paths baked into LC_LOAD_DYLIB at link time), so
+# we use the `${...:-}` default and pass through $PBS_RPATH_VAR — the
+# same idiom the rest of the tree uses (see build-php.sh, build-libpq.sh).
+env "$PBS_RPATH_VAR=${PBS_DEPS_LDPATH:-}" make -j"$NIX_BUILD_CORES"
 # `make install` runs the install-perl script, which itself shells
-# out to `erl` to generate boot scripts. Same LD_LIBRARY_PATH need.
-LD_LIBRARY_PATH="$PBS_DEPS_LDPATH" make install
+# out to `erl` to generate boot scripts. Same rpath-env need.
+env "$PBS_RPATH_VAR=${PBS_DEPS_LDPATH:-}" make install
 
 # Strip release docs / man pages / example sources. Reduces the OTP tree
 # from ~280MB to ~110MB; CLI/server use cases never touch these.
