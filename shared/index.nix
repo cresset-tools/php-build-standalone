@@ -7,11 +7,11 @@
 #       targets/<target>/sections/
 #         interpreter/php.json                            # this target's PHP runtimes
 #         extension/<name>.json                           # this target's extension X
-#         service/mariadb.json                            # this target's MariaDB server bundle
+#         tool/mariadb.json                               # this target's MariaDB server bundle
 #       targets/<target>/manifests/                       # manifests live alongside their sections,
 #         php/<minor>/<tag>.json                          # so a re-publish of the same tag with
 #         ext/<name>/<extver>/<tag>.json                  # different content lands at a fresh URL
-#         service/<name>/<version>/<tag>.json             # and never overwrites a prior publish's
+#         tool/<name>/<version>/<tag>.json                # and never overwrites a prior publish's
 #                                                         # section→manifest pin (DISTRIBUTION.md
 #                                                         # §Snapshot-consistency).
 #     blobs/
@@ -198,8 +198,8 @@ pkgs.runCommand "pbs-index" {
         # the index host). DISTRIBUTION.md §Manifests-and-blobs explains why
         # this is absolute rather than relative, and why it lives under
         # /versions/<publishVersion>/ (immutable URL per publish).
-        manifest_path="/versions/$publishVersion/targets/$target/manifests/php/$minor/$tag.json"
-        manifest_dest_key="versions/$publishVersion/targets/$target/manifests/php/$minor/$tag.json"
+        manifest_path="/versions/${publishVersion}/targets/$target/manifests/php/$minor/$tag.json"
+        manifest_dest_key="versions/${publishVersion}/targets/$target/manifests/php/$minor/$tag.json"
 
         # Stage the manifest with {BLOB_BASE} substituted, then hash the
         # staged content so section.manifest.sha256 matches the served bytes.
@@ -252,8 +252,8 @@ pkgs.runCommand "pbs-index" {
         add_blob "$tarball_sha256_actual" "$tarball"
 
         # Absolute server path; see interpreter loop above for why.
-        manifest_path="/versions/$publishVersion/targets/$target/manifests/ext/$ext_name/$ext_version/$tag.json"
-        manifest_dest_key="versions/$publishVersion/targets/$target/manifests/ext/$ext_name/$ext_version/$tag.json"
+        manifest_path="/versions/${publishVersion}/targets/$target/manifests/ext/$ext_name/$ext_version/$tag.json"
+        manifest_dest_key="versions/${publishVersion}/targets/$target/manifests/ext/$ext_name/$ext_version/$tag.json"
 
         # Stage with {BLOB_BASE} substituted (manifests carry {BLOB_BASE}
         # URLs in blob.url and closure[].url) and hash the staged content
@@ -283,24 +283,21 @@ pkgs.runCommand "pbs-index" {
         add_artifact "$target/extension/$ext_name" "$artifact_entry"
       done
 
-      # ---- Service manifests (mariadb-*.json, redis-*.json, and any
-      #      future top-level bundle whose kind is "service"). Same
-      #      blob/manifest plumbing as the interpreter loop; the on-disk
-      #      manifest path uses the service/<name>/<version>/ shape so
-      #      every service shares one stable namespace.
-      #
-      #      We could `find . -maxdepth 1 -name '*.json' | jq -e .kind` but
-      #      keeping an explicit glob list mirrors the interpreter /
-      #      extension loops above and makes the dispatch readable — to
-      #      add a new service, drop one more glob in here and stand up
-      #      the matching pipeline in flake.nix.
-      for f in "$rel_dir"/mariadb-*.json "$rel_dir"/redis-*.json; do
+      # ---- Tool manifests (any *.json declaring `kind: tool`).
+      #      Same blob/manifest plumbing as the interpreter loop; the
+      #      on-disk manifest path uses the tool/<name>/<version>/
+      #      shape so MariaDB, redis, mkcert, and any future sibling
+      #      tool share a stable namespace. The glob is everything at
+      #      the release-dir top, with a jq filter for `.kind == "tool"`
+      #      to keep us from picking up per-PHP-minor JSON.
+      for f in "$rel_dir"/*.json; do
         [ -f "$f" ] || continue
+        [ "$(jq -r '.kind' "$f")" = "tool" ] || continue
         base="$(basename "$f" .json)"
 
-        svc_name="$(jq -r '.name' "$f")"
+        tool_name="$(jq -r '.name' "$f")"
         tag="$(jq -r '.tag' "$f")"
-        svc_version="$(jq -r '.version' "$f")"
+        tool_version="$(jq -r '.version' "$f")"
         target="$(jq -r '.target' "$f")"
         flavor="$(jq -r '.flavor' "$f")"
 
@@ -308,13 +305,13 @@ pkgs.runCommand "pbs-index" {
         tarball_sha256_actual="$(sha256sum "$tarball" | awk '{print $1}')"
         tarball_sha256_manifest="$(jq -r '.blob.sha256' "$f")"
         if [ "$tarball_sha256_actual" != "$tarball_sha256_manifest" ]; then
-          echo "FATAL: service $tag — manifest blob.sha256 ($tarball_sha256_manifest) does not match tarball ($tarball_sha256_actual)" >&2
+          echo "FATAL: tool $tag — manifest blob.sha256 ($tarball_sha256_manifest) does not match tarball ($tarball_sha256_actual)" >&2
           exit 1
         fi
         add_blob "$tarball_sha256_actual" "$tarball"
 
-        manifest_path="/versions/$publishVersion/targets/$target/manifests/service/$svc_name/$svc_version/$tag.json"
-        manifest_dest_key="versions/$publishVersion/targets/$target/manifests/service/$svc_name/$svc_version/$tag.json"
+        manifest_path="/versions/${publishVersion}/targets/$target/manifests/tool/$tool_name/$tool_version/$tag.json"
+        manifest_dest_key="versions/${publishVersion}/targets/$target/manifests/tool/$tool_name/$tool_version/$tag.json"
 
         staged_manifest="$(stage_manifest "$f")"
         manifest_srcs["$manifest_dest_key"]="$staged_manifest"
@@ -322,7 +319,7 @@ pkgs.runCommand "pbs-index" {
 
         artifact_entry="$(jq -n -S \
           --arg tag "$tag" \
-          --arg version "$svc_version" \
+          --arg version "$tool_version" \
           --arg flavor "$flavor" \
           --arg manifest_path "$manifest_path" \
           --arg manifest_sha256 "$manifest_sha256" \
@@ -336,7 +333,7 @@ pkgs.runCommand "pbs-index" {
           }')"
         artifact_entry="$(yank_entry "$tag" "$artifact_entry")"
 
-        add_artifact "$target/service/$svc_name" "$artifact_entry"
+        add_artifact "$target/tool/$tool_name" "$artifact_entry"
       done
 
       # ---- Store-path tarballs → blobs ----
@@ -406,11 +403,11 @@ pkgs.runCommand "pbs-index" {
           /versions/*/targets/*/manifests/*)
             # Strip `/versions/<oldV>/` and re-prefix with current.
             fmanifest_rel="''${fmanifest_path_raw#/versions/*/}"
-            fmanifest_path="/versions/$publishVersion/$fmanifest_rel"
+            fmanifest_path="/versions/${publishVersion}/$fmanifest_rel"
             ;;
           /targets/*/manifests/*)
             # Legacy pre-versioned shape; promote into versioned tree.
-            fmanifest_path="/versions/$publishVersion''${fmanifest_path_raw}"
+            fmanifest_path="/versions/${publishVersion}''${fmanifest_path_raw}"
             ;;
           *)
             echo "FATAL: frozen entry '$ftag' has unrecognized manifest.path shape: $fmanifest_path_raw" >&2

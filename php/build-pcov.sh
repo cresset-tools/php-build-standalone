@@ -2,12 +2,15 @@
 # Build pcov.so/.dylib (the PECL code-coverage extension) against our
 # just-built PHP. Pure C, no external library — same shape as build-apcu.sh.
 #
-# pcov collects line-level coverage data via Zend opcode hooks; it's a Zend
-# extension (zend_extension=pcov) when loaded for coverage, though the .so
-# also exposes a regular module surface so test runners can interrogate
-# its presence via extension_loaded('pcov'). Auto-loading is intentionally
-# opt-in in the per-ext tarball (confFragment=null), matching xdebug:
-# coverage is a per-run flag, not always-on instrumentation.
+# pcov collects line-level coverage data via Zend opcode hooks but is
+# loaded as a regular `extension=pcov`, NOT `zend_extension=pcov` — its
+# get_module() entry point exports `STANDARD_MODULE_HEADER` rather than
+# zend_extension's signature, so PHP rejects `zend_extension=pcov.so`
+# with "doesn't appear to be a valid Zend extension". Don't be misled
+# by other coverage tools (xdebug.so is a real zend_extension). Auto-
+# loading is intentionally opt-in in the per-ext tarball
+# (confFragment=null): coverage is a per-run flag, not always-on
+# instrumentation.
 
 set -euo pipefail
 

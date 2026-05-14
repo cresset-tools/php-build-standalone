@@ -110,6 +110,12 @@
                       libtiff lcms2 openjpeg libheif libde265;
             };
             libgmp        = pkgs.callPackage ./shared/libgmp.nix        { inherit mkDep; };
+            # NSPR + NSS underpin mkcert's certutil shipment; not linked
+            # by anything in the PHP build itself. Kept in the common
+            # `rec` block so both Linux and Darwin can pick them up
+            # (mkcert's bundle ships on both).
+            nspr          = pkgs.callPackage ./shared/nspr.nix          { inherit mkDep; };
+            nss           = pkgs.callPackage ./shared/nss.nix           { inherit mkDep nspr sqlite zlib; };
           } // pkgs.lib.optionalAttrs (!darwin) {
             # libxcrypt (provides libcrypt.so.1). Linux-only: macOS's libc
             # has its own crypt() implementation and consumers there use
@@ -324,7 +330,7 @@
               #     MINIT to honor ZEND_MOD_REQUIRED("pdo") regardless
               #     of conf.d order.
               extensions = ({
-                xdebug      = mkExt { extDrv = xdebug;   extName = "xdebug";   extVersion = xdebugSpec.version;   confFragment = null; };
+                xdebug      = mkExt { extDrv = xdebug;   extName = "xdebug";   extVersion = xdebugSpec.version;   confFragment = null; zendExtension = true; };
                 imagick     = mkExt { extDrv = imagick;  extName = "imagick";  extVersion = imagickSpec.version;  confFragment = "extension=imagick"; };
                 redis       = mkExt { extDrv = redis;    extName = "redis";    extVersion = redisSpec.version;    confFragment = "extension=redis"; };
                 vips        = mkExt { extDrv = vips;     extName = "vips";     extVersion = vipsSpec.version;     confFragment = "extension=vips"; };
@@ -340,6 +346,10 @@
                 # pcov ships without an auto-loader conf.d fragment (confFragment=null,
                 # mirroring xdebug): coverage is a per-run opt-in, not always-on
                 # instrumentation, so the user enables it via -dextension=pcov in CI.
+                # pcov exports a regular module surface — it's NOT a
+                # zend_extension despite hooking opcodes for coverage. PHP
+                # rejects `zend_extension=pcov.so` with "doesn't appear to
+                # be a valid Zend extension", so don't tag it like xdebug.
                 pcov        = mkExt { extDrv = pcov;     extName = "pcov";     extVersion = pcovSpec.version;     confFragment = null; };
                 mbstring    = mkBuiltinExt "mbstring";
                 intl        = mkBuiltinExt "intl";
@@ -508,13 +518,62 @@
             '';
           };
 
+          # ---- mkcert tool bundle ----
+          # mkcert binary + the NSS toolchain (certutil + libnss/libnspr)
+          # bundled together so `mkcert -install` can manipulate Firefox's
+          # cert9.db without an external NSS install. Parallel structure
+          # to mariadb but reuses pkgs.buildGoModule for the mkcert binary
+          # itself and shares the NSPR/NSS bundled deps.
+          mkcert = pkgs.callPackage ./mkcert/mkcert.nix { inherit sources; };
+          mkcertSpec = sources.mkcert;
+          # NSS itself drags in sqlite (cert9.db backend) and zlib (used
+          # by signtool's JAR-signing path); they're already built for
+          # PHP so we bundle the same store paths under store/<name>/
+          # rather than duplicating.
+          mkcertBundledDepNames = [ "nspr" "nss" "sqlite" "zlib" ];
+          mkcertBundledDeps = map (n: deps.${n}) mkcertBundledDepNames;
+          # NSS's binaries land at install/bin/ via a thin wrapper that
+          # exposes ONLY $out/bin/ — passing NSS itself as an
+          # interpreterDep would also drop its lib/ into install/lib/,
+          # duplicating what bundledDeps put under store/<nss-name>/.
+          nssBinaries = pkgs.callPackage ./mkcert/nss-binaries.nix {
+            inherit (deps) nss;
+          };
+          mkcertTree = pkgs.callPackage ./shared/tree.nix {
+            bundledDeps = mkcertBundledDeps;
+            interpreterDeps = [ mkcert nssBinaries ];
+            inherit toolchain;
+            phpVersion = mkcertSpec.version;
+          };
+          mkcertTarball = pkgs.callPackage ./mkcert/tarball.nix {
+            tree = mkcertTree;
+            inherit sources nixpkgsRev;
+            mkcertVersion = mkcertSpec.version;
+            bundledDepNames = mkcertBundledDepNames;
+          };
+          # Release flat-dir aggregate — same shape mariadb uses so
+          # shared/index.nix walks both kinds with the same loop.
+          mkcertRelease = pkgs.stdenvNoCC.mkDerivation {
+            pname = "pbs-release-mkcert";
+            version = mkcertSpec.version;
+            dontUnpack = true;
+            dontConfigure = true;
+            dontBuild = true;
+            dontFixup = true;
+            nativeBuildInputs = [ pkgs.coreutils ];
+            installPhase = ''
+              mkdir -p "$out"
+              cp -a ${mkcertTarball}/. "$out/" && chmod -R u+w "$out"
+            '';
+          };
+
           # Cross-variant index. Walks every release, parses per-extension
           # + interpreter manifests, reads .sha256 sidecars, and emits a
           # single index.json. Deduplication of store-path entries across
           # variants is enforced inside index.nix (collision = build error).
           allReleases =
             (map (v: v.release) (builtins.attrValues variants))
-            ++ [ mariadbRelease redisServerRelease ];
+            ++ [ mariadbRelease redisServerRelease mkcertRelease ];
           frozenFiles =
             let allFiles = pkgs.lib.filesystem.listFilesRecursive ./frozen;
             in builtins.filter
@@ -536,7 +595,8 @@
         in {
           inherit pkgs sources darwin sysroot toolchain deps variants index latestVariant
                   mariadb mariadbTree mariadbTarball mariadbRelease
-                  redisServer redisServerTree redisServerTarball redisServerRelease;
+                  redisServer redisServerTree redisServerTarball redisServerRelease
+                  mkcert mkcertTree mkcertTarball mkcertRelease;
         };
 
       ctx = forEach contextFor;
@@ -657,6 +717,12 @@
           redis-tree      = c.redisServerTree;
           redis-tarball   = c.redisServerTarball;
           redis-release   = c.redisServerRelease;
+          # mkcert + the full distribution bundle (mkcert binary,
+          # certutil, signtool, with NSPR/NSS bundled under store/).
+          mkcert          = c.mkcert;
+          mkcert-tree     = c.mkcertTree;
+          mkcert-tarball  = c.mkcertTarball;
+          mkcert-release  = c.mkcertRelease;
         });
 
       phpVariants  = forEach (system: ctx.${system}.variants);

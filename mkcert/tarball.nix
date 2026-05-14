@@ -1,61 +1,58 @@
-# Redis tarball derivation. Mirrors mariadb/tarball.nix and produces a
-# `kind=tool` manifest: one self-contained tarball carrying redis-server,
-# redis-cli, redis-benchmark, redis-sentinel/check-rdb/check-aof symlinks,
-# and the bundled OpenSSL under store/<storeName>/.
+# mkcert tarball derivation. Mirrors mariadb/tarball.nix: emits one
+# self-contained .tar.zst carrying the mkcert binary, NSS's certutil
+# tool (used by mkcert at runtime to manipulate Firefox's cert9.db),
+# and the bundled NSPR + NSS C-libraries under store/<storeName>/.
 #
 # Produces under $out:
-#   redis-<ver>-<triple>.tar.zst   redistributable artifact
-#   redis-<ver>-<triple>.json      fat manifest (DISTRIBUTION.md shape)
+#   mkcert-<ver>-<triple>.tar.zst   redistributable artifact
+#   mkcert-<ver>-<triple>.json      fat manifest (kind=tool)
 #
-# Tarball contents start with a top-level `install/` directory, matching
-# the PHP / MariaDB tarball layout. The tool loop in shared/index.nix
-# routes the manifest into versions/<V>/targets/<T>/sections/tool/redis/.
-{ pkgs, tree, sources
+# The .tar.zst contents start with a top-level `install/` directory,
+# matching the PHP and MariaDB tarball layouts. The index loop in
+# shared/index.nix routes the manifest into
+# versions/<V>/targets/<T>/sections/tool/mkcert/.
+{ pkgs, tree, sources, nixpkgsRev
 , target ? if pkgs.stdenv.isDarwin then "aarch64-apple-darwin" else "x86_64-unknown-linux-gnu"
-, redisVersion ? "0.0.0-unknown"
-, nixpkgsRev
+, mkcertVersion
 , bundledDepNames  # short names of bundled C-libs actually carried under
-                   # store/<storeName>/ inside this tarball. Looked up in
-                   # sources.<name>.version for the manifest record.
+                   # store/<storeName>/ inside this tarball (nspr, nss).
+                   # Looked up in sources.<name>.version for the manifest.
 }:
 let
   inherit (pkgs) stdenv lib;
 
-  # Manifest bundled_libraries reflects what the tarball ACTUALLY carries
-  # under store/, not the full sources.nix surface. Consumers reading
-  # this field treat it as a load-bearing inventory ("which C-lib
-  # versions ship inside this artifact"), so listing libs that aren't
-  # actually bundled would be misleading.
   bundledLibraries =
     lib.listToAttrs (map
       (n: { name = n; value = sources.${n}.version; })
       bundledDepNames)
-    // { redis = redisVersion; };
+    // { mkcert = mkcertVersion; };
 
   libcAttr = if stdenv.isDarwin
     then { family = "darwin"; min = "@MIN_MACOS@"; }
     else { family = "gnu";    min = "@LIBC_MIN@"; };
 
   flavor = "default";
-  tag = "redis-${redisVersion}-${target}-${flavor}";
+  tag = "mkcert-${mkcertVersion}-${target}-${flavor}";
 
   metadata = {
     schema = 1;
     kind = "tool";
-    name = "redis";
+    name = "mkcert";
     inherit tag;
-    version = redisVersion;
+    version = mkcertVersion;
     inherit target flavor;
     libc = libcAttr;
     blob = {
       url = "{BLOB_BASE}/blobs/@TARBALL_SHA256_PFX@/@TARBALL_SHA256@";
       sha256 = "@TARBALL_SHA256@";
     };
-    # Redis ships as a single self-contained tarball (no per-store-path
-    # split like the PHP optional-dep layer). The closure stays empty;
-    # bundled C-libs live inside this tarball under store/<storeName>/.
     closure = [];
-    binaries = [ "redis-server" "redis-cli" "redis-benchmark" "redis-sentinel" "redis-check-rdb" "redis-check-aof" ];
+    # mkcert is the user-facing entry point; certutil ships alongside
+    # so `mkcert -install` can register the local CA in Firefox's
+    # NSS cert9.db via subprocess invocation. signtool is shipped
+    # for parity — JAR-signing utility, not used by mkcert but small
+    # enough to round out the NSS toolchain we're already paying for.
+    binaries = [ "mkcert" "certutil" "signtool" ];
     bundled_libraries = bundledLibraries;
     build_info = {
       nixpkgs_rev = nixpkgsRev;
@@ -63,7 +60,7 @@ let
     };
   };
 
-  metadataFile = pkgs.writeText "redis.json.in" (builtins.toJSON metadata);
+  metadataFile = pkgs.writeText "mkcert.json.in" (builtins.toJSON metadata);
 
   libcProbeAndSub = if stdenv.isDarwin then ''
     min_macos=$( { find ${tree} -type f \( -name '*.dylib' -o -name '*.so' -o -path '*/bin/*' \) -print0 \
@@ -84,7 +81,7 @@ let
   '';
 in
 pkgs.stdenvNoCC.mkDerivation {
-  pname = "pbs-tarball-redis";
+  pname = "pbs-tarball-mkcert";
   inherit (tree) version;
 
   dontUnpack = true;
@@ -99,7 +96,7 @@ pkgs.stdenvNoCC.mkDerivation {
     runHook preInstall
 
     mkdir -p "$out"
-    base="redis-${redisVersion}-${target}"
+    base="mkcert-${mkcertVersion}-${target}"
 
     staging="$NIX_BUILD_TOP/staging"
     mkdir -p "$staging/install"

@@ -9,7 +9,7 @@
 #
 # The .tar.zst contents start with a top-level `install/` directory,
 # matching the PHP tarball layout. The index loop in shared/index.nix
-# routes the manifest into versions/<V>/targets/<T>/sections/service/.
+# routes the manifest into versions/<V>/targets/<T>/sections/tool/.
 { pkgs, tree, sources
 , target ? if pkgs.stdenv.isDarwin then "aarch64-apple-darwin" else "x86_64-unknown-linux-gnu"
 , mariadbVersion ? "0.0.0-unknown"
@@ -41,7 +41,7 @@ let
 
   metadata = {
     schema = 1;
-    kind = "service";
+    kind = "tool";
     name = "mariadb";
     inherit tag;
     version = mariadbVersion;
