@@ -523,6 +523,32 @@
     version = "8.6.3";
   };
 
+  # Erlang/OTP. Built from source — there's no Temurin-equivalent prebuilt
+  # for Erlang that we'd trust to be relocatable across our libc floor, so
+  # we take the source tarball and pass it through mkDep + finalize the
+  # same way the C-library deps (and redis/mariadb) go through.
+  #
+  # 27.3.4.11 is the latest patch on the 27.x line as of 2026-05-14;
+  # 27.x is the current OTP LTS-ish line and satisfies RabbitMQ 4.0.x's
+  # supported-Erlang matrix (which accepts 26.x or 27.x). When bumping
+  # OTP, re-check the RabbitMQ "Which Erlang for which RabbitMQ" matrix
+  # before moving — RabbitMQ pins narrowly.
+  #
+  # External link deps surface through build-erlang.sh's configure flags:
+  #   --with-ssl=$PBS_DEP_OPENSSL     crypto NIF links our bundled OpenSSL
+  #   (zlib is auto-detected; we expose it via PBS_DEP_ZLIB)
+  # All GUI bits (--without-{wx,debugger,observer,et}) and --without-javac
+  # are disabled — we want a CLI/server VM, not the wxWidgets developer
+  # tooling. JIT support, SMP, kernel-poll all stay enabled (defaults).
+  #
+  # Upstream tarball extracts to otp_src_<version>/ rather than
+  # erlang-<version>/; build-erlang.sh handles that.
+  erlang = {
+    url = "https://github.com/erlang/otp/releases/download/OTP-27.3.4.11/otp_src_27.3.4.11.tar.gz";
+    sha256 = "9d63382d3e7707c058dabe338114e09ff8228d54d29df794d907d3c8dddde5f9";
+    version = "27.3.4.11";
+  };
+
   # NSPR — Netscape Portable Runtime. Standalone build (it's a foundation
   # library for NSS, exposing threads/IO/memory primitives). Autoconf
   # build, behaves; only present here because NSS needs it. v4.36 is

@@ -518,6 +518,51 @@
             '';
           };
 
+          # ---- Erlang/OTP tool bundle ----
+          # Standalone Erlang VM, built from source via mkDep + finalize
+          # (the same shape redis and mariadb use). Built dynamically
+          # linked against PBS's bundled openssl + zlib + ncurses; the
+          # crypto NIF carries a DT_NEEDED libcrypto.so resolved through
+          # finalize's $ORIGIN-relative store/<openssl>/lib RPATH.
+          #
+          # Published as a top-level tool tarball AND consumed by
+          # tools/rabbitmq/ (next stanza when RabbitMQ lands) as an
+          # injected install/erlang/ — the JDK-for-OpenSearch analogue.
+          #
+          # `erlangSpec` is sources.erlang.
+          erlangSpec = sources.erlang;
+          erlangBundledDepNames = [ "zlib" "openssl" "ncurses" ];
+          erlangBundledDeps = map (n: deps.${n}) erlangBundledDepNames;
+          erlang = pkgs.callPackage ./tools/erlang/erlang.nix {
+            inherit mkDep erlangSpec;
+            inherit (deps) openssl zlib ncurses;
+          };
+          erlangTree = pkgs.callPackage ./shared/tree.nix {
+            bundledDeps = erlangBundledDeps;
+            interpreterDeps = [ erlang ];
+            inherit toolchain;
+            phpVersion = erlangSpec.version;
+          };
+          erlangTarball = pkgs.callPackage ./tools/erlang/tarball.nix {
+            tree = erlangTree;
+            inherit sources nixpkgsRev;
+            erlangVersion = erlangSpec.version;
+            bundledDepNames = erlangBundledDepNames;
+          };
+          erlangRelease = pkgs.stdenvNoCC.mkDerivation {
+            pname = "pbs-release-erlang";
+            version = erlangSpec.version;
+            dontUnpack = true;
+            dontConfigure = true;
+            dontBuild = true;
+            dontFixup = true;
+            nativeBuildInputs = [ pkgs.coreutils ];
+            installPhase = ''
+              mkdir -p "$out"
+              cp -a ${erlangTarball}/. "$out/" && chmod -R u+w "$out"
+            '';
+          };
+
           # ---- mkcert tool bundle ----
           # mkcert binary + the NSS toolchain (certutil + libnss/libnspr)
           # bundled together so `mkcert -install` can manipulate Firefox's
@@ -649,7 +694,7 @@
           # variants is enforced inside index.nix (collision = build error).
           allReleases =
             (map (v: v.release) (builtins.attrValues variants))
-            ++ [ mariadbRelease redisServerRelease mkcertRelease jdkRelease opensearchRelease ];
+            ++ [ mariadbRelease redisServerRelease erlangRelease mkcertRelease jdkRelease opensearchRelease ];
           frozenFiles =
             let allFiles = pkgs.lib.filesystem.listFilesRecursive ./frozen;
             in builtins.filter
@@ -672,6 +717,7 @@
           inherit pkgs sources darwin sysroot toolchain deps variants index latestVariant
                   mariadb mariadbTree mariadbTarball mariadbRelease
                   redisServer redisServerTree redisServerTarball redisServerRelease
+                  erlang erlangTree erlangTarball erlangRelease
                   mkcert mkcertTree mkcertTarball mkcertRelease
                   jdk jdkTarball jdkRelease
                   opensearch opensearchTarball opensearchRelease;
@@ -795,6 +841,11 @@
           redis-tree      = c.redisServerTree;
           redis-tarball   = c.redisServerTarball;
           redis-release   = c.redisServerRelease;
+          # Erlang/OTP — built from source, same shape as redis/mariadb.
+          erlang          = c.erlang;
+          erlang-tree     = c.erlangTree;
+          erlang-tarball  = c.erlangTarball;
+          erlang-release  = c.erlangRelease;
           # mkcert + the full distribution bundle (mkcert binary,
           # certutil, signtool, with NSPR/NSS bundled under store/).
           mkcert          = c.mkcert;
