@@ -1,4 +1,4 @@
-# mkcert tarball derivation. Mirrors mariadb/tarball.nix: emits one
+# mkcert tarball derivation. Mirrors tools/mariadb/tarball.nix: emits one
 # self-contained .tar.zst carrying the mkcert binary, NSS's certutil
 # tool (used by mkcert at runtime to manipulate Firefox's cert9.db),
 # and the bundled NSPR + NSS C-libraries under store/<storeName>/.
