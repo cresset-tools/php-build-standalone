@@ -41,13 +41,12 @@ let
       sha256 = "@TARBALL_SHA256@";
     };
     closure = [];
-    # Headline CLI surface. The OTP install also ships ct_run / dialyzer
-    # / typer / run_erl / to_erl, but those are dev-tools used inside an
-    # Erlang shell session — not the entrypoints a downstream tool
-    # (RabbitMQ, custom Erlang-app distributions) calls into. Keep the
-    # binaries list to the genuinely user-facing set so the manifest
-    # stays scannable.
-    binaries = [ "erl" "erlc" "escript" "epmd" "dialyzer" ];
+    # Headline CLI surface. OTP also installs run_erl / to_erl for
+    # detached-shell use, but those are operations primitives consumed
+    # by `rabbitmq-server -detached` etc. rather than a user-facing CLI.
+    # We deliberately strip dialyzer / typer / ct_run in build-erlang.sh
+    # (dev tooling, ~5 MB), so those are absent from this list too.
+    binaries = [ "erl" "erlc" "escript" "epmd" ];
     bundled_libraries = bundledLibraries;
     build_info = {
       nixpkgs_rev = nixpkgsRev;
