@@ -204,6 +204,7 @@ for target in $targets; do
       manifest_path="$(jq -r --argjson i "$i" '.artifacts[$i].manifest.path' "$sec_tmp")"
       manifest_sha256_expected="$(jq -r --argjson i "$i" '.artifacts[$i].manifest.sha256' "$sec_tmp")"
       artifact_tag="$(jq -r --argjson i "$i" '.artifacts[$i].tag' "$sec_tmp")"
+      artifact_frozen="$(jq -r --argjson i "$i" '.artifacts[$i].frozen // false' "$sec_tmp")"
 
       if [ -z "$manifest_path" ] || [ "$manifest_path" = "null" ]; then
         fail "section row missing .manifest.path for $artifact_tag"
@@ -232,6 +233,15 @@ for target in $targets; do
         local u="$1"
         echo "$u" | sed -E 's|^https?://[^/]+||'
       }
+
+      # Frozen artifacts carry manifests whose closure blobs live on the
+      # already-published origin, not in this bundle (DISTRIBUTION.md
+      # §Frozen-entries). HEADing them against the local merged tree would
+      # 404 by design — skip the per-bundle blob check.
+      if [ "$artifact_frozen" = "true" ]; then
+        rm -f "$man_tmp"
+        continue
+      fi
 
       blob_count="$(jq '.closure | length' "$man_tmp" 2>/dev/null || echo 0)"
       for j in $(seq 0 $(( blob_count - 1 ))); do
