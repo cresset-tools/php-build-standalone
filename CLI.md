@@ -70,6 +70,15 @@ $BOUGIE_HOME/                              # data: durable, never auto-deleted
     locks/                                 # see §10
     state.json                             # schema-versioned global state
     public-keys/                           # cosigned key history (rotations)
+    bougied.sock                           # `bougied` IPC, mode 0600 (see §3.8 & SERVICES.md)
+    bougied.pid                            # pid of the running daemon, if any
+    services/                              # service supervisor state (see SERVICES.md)
+      <service>/                           # one dir per catalog service
+        data/                              # mariadb datadir, redis dump.rdb, …
+        run/                                # service.sock, service.pid
+        log/<service>.log                  # current log; .1.gz, .2.gz, .3.gz rotated
+        conf/                              # rendered service config (read-only via sandbox)
+        tenants.json                       # JSON Lines ledger of per-project tenants
   bin/
     bougie                                 # this binary, when self-updated
 
@@ -219,6 +228,7 @@ flags are an error.
 | `bougie php …`     | Manage PHP interpreter installations.                          | `uv python …`     |
 | `bougie composer …`| Manage Composer installs.                                       | (none — pip is bundled) |
 | `bougie cache …`   | Manage the local cache and content-addressed store.            | `uv cache …`      |
+| `bougie services …`| Manage project-scoped dev services (mariadb, redis, …).        | (none — uv has no analogue) |
 | `bougie self …`    | Manage the bougie binary itself.                               | `uv self …`       |
 | `bougie help`      | Display documentation for a command.                           | `uv help`         |
 
@@ -844,16 +854,120 @@ whatever getcomposer.org currently advertises. Existing exact-version
 installs are not touched. Project pins (`[composer]version = "2.8.5"`)
 keep resolving to that exact version regardless.
 
-### 3.8 `bougie self …` — manage the bougie binary
+### 3.8 `bougie services …` — service supervisor
+
+Manages stateful dev services (mariadb, redis, opensearch, rabbitmq,
+plus bougie's own server) that PHP projects routinely depend on. Has
+no `uv` analogue — Python's dev workflow doesn't have an equivalent
+stack-of-services-per-project expectation.
+
+Implementation is a per-user background daemon, `bougied`, with the
+CLI as a thin JSON-over-Unix-socket client. The daemon auto-spawns on
+the first `bougie services …` invocation; subsequent commands reuse
+the running daemon. See SERVICES.md for the daemon protocol, sandbox
+policy, and the built-in service catalog.
+
+Services run as **one global instance per service**, multi-tenant
+via per-project DB / vhost / index / DB-number. Two projects both
+using mariadb share one mariadbd process and get separate databases.
+Bindings default to **Unix sockets**; loopback TCP ports only where
+the service can't speak a socket (opensearch, rabbitmq AMQP).
+
+Every service runs sandboxed via `sandbox-run` (Landlock on Linux,
+SBPL on macOS) with read-write access restricted to its own data /
+run / log directories under `$BOUGIE_HOME/state/services/<svc>/`.
+
+#### 3.8.1 `bougie services add <name>[@<version>]…`
+
+Adds a service to the project's config (`composer.json`'s
+`extra.bougie.services` or `bougie.toml [services]`). Does not
+start anything. `<name>` must be a catalog entry — see
+`bougie services catalog` for the list. Unknown names error with a
+listing of valid catalog entries.
+
+`@<version>` accepts the upstream major.minor only (e.g. `mariadb@11.4`).
+Patch-level pins are rejected — the catalog ships one tarball per
+minor.
+
+#### 3.8.2 `bougie services remove <name>… [--purge]`
+
+Removes the service from project config. By default the project's
+tenant data inside the global service is preserved (the DB still
+exists in mariadb, the vhost still exists in rabbitmq) so re-adding
+the service later restores the project's state. `--purge` drops the
+tenant data via the service's destructor (DROP DATABASE, delete_vhost,
+etc.).
+
+If this was the last project using the service, the daemon stops the
+global instance after de-provisioning.
+
+#### 3.8.3 `bougie services list [--all]`
+
+Lists the project's declared services and their current state. With
+`--all`, lists every service the daemon knows about across every
+project that has registered tenants. Supports `--format json-v1`.
+
+#### 3.8.4 `bougie services up [<name>…]`
+
+Ensures the named services (or all the project's services) are
+running, then provisions the project's tenant in each. Auto-downloads
+missing tarballs from the bougie index, streaming progress over the
+daemon IPC channel.
+
+Service start order is computed via Kahn topological sort over
+catalog `requires` / `after` edges. A failed `requires` cascades:
+dependents transition to `Failed` without spawning.
+
+#### 3.8.5 `bougie services down [<name>…] [--purge]`
+
+De-provisions the project's tenant for the named services. Stops the
+global service iff no other project has a tenant left. `--purge`
+behaves as in §3.8.2.
+
+#### 3.8.6 `bougie services restart [<name>…]`
+
+Atomic down + up for the named services in the current project.
+Global service is not necessarily restarted — only the project's
+tenant cycle.
+
+#### 3.8.7 `bougie services status [<name>]`
+
+Prints per-service status for the current project: state, PID,
+uptime, binding (socket path or `127.0.0.1:port`), tenant identifier,
+and the `BOUGIE_SERVICE_*` env vars that `bougie run` will export.
+
+#### 3.8.8 `bougie services logs [-f] [-n N] <name>`
+
+Tails the service's log under `$BOUGIE_HOME/state/services/<svc>/log/`.
+Logs are global (one stream per service across all tenants), not
+per-project. `-f` follows; `-n N` shows the last N lines.
+
+#### 3.8.9 `bougie services catalog`
+
+Prints the built-in catalog (every supported service, default
+version, default binding). Pure read — does not need the daemon to
+be running. Useful for discovery and for CI lints. Supports
+`--format json-v1`.
+
+#### 3.8.10 `bougie services daemon {status,stop,version}`
+
+Inspect and control `bougied`. There is no `start` — the daemon is
+auto-spawned on the first command that needs it. `status` reports
+PID, socket path, uptime, and managed-service count. `stop` is a
+clean shutdown (services drained in reverse order). `version` returns
+the daemon binary version (used by the CLI to detect daemon-binary
+mismatches after `bougie self update`; see SERVICES.md §6.3).
+
+### 3.9 `bougie self …` — manage the bougie binary
 
 Mirrors `uv self …`.
 
-#### 3.8.1 `bougie self update [--check]`
+#### 3.9.1 `bougie self update [--check]`
 
 Self-explanatory. `--check` exits 0 if up to date, 1 if newer
 available, ≥2 on error. Mirrors `uv self update`.
 
-#### 3.8.2 `bougie self version`
+#### 3.9.2 `bougie self version`
 
 Prints `bougie`'s version + build metadata + the pinned
 trust-root fingerprint. Mirrors `uv self version`.
@@ -861,12 +975,12 @@ trust-root fingerprint. Mirrors `uv self version`.
 The trust-root fingerprint and last-good-signature state — the work
 the deprecated `bougie index trust` command did — surface here.
 
-### 3.9 `bougie help [<command>]`
+### 3.10 `bougie help [<command>]`
 
 Mirrors `uv help`. Equivalent to `<command> --help` but discoverable
 as a top-level verb.
 
-### 3.10 Removed / renamed (vs. earlier drafts)
+### 3.11 Removed / renamed (vs. earlier drafts)
 
 - `bougie install` → `bougie php install`
 - `bougie uninstall` → `bougie php uninstall`
@@ -983,6 +1097,19 @@ version = "2.8.5"       # or "stable" | "preview" | "2" | "2.8"
 [extensions]
 xdebug = "3.5.1"
 
+# Optional, declared dev services for this project. See §3.8 and
+# SERVICES.md for the catalog and lifecycle. Each entry is either a
+# bare upstream-major.minor pin (string form) or a table with
+# additional per-service options.
+[services]
+mariadb = "11.4"          # bare version pin from the catalog; "*" for default
+redis = "*"
+
+# Table form, when the project needs per-service overrides:
+[services.mariadb]
+version = "11.4"
+tenant  = "myapp"         # default: composer.json `name` → cwd basename if absent
+
 # Optional, alternate index URL(s). Useful for mirrors and air-gapped
 # enterprise rebuilds. Each entry must be a (host, key-fingerprint)
 # pair. Order is preference; first reachable wins.
@@ -1005,6 +1132,10 @@ fingerprint = "sha256:…"
       "php": { "version": "8.3.12", "flavor": "nts" },
       "composer": { "version": "2.8.5" },
       "extensions": { "xdebug": "3.5.1" },
+      "services": {
+        "mariadb": "11.4",
+        "redis": "*"
+      },
       "index": [
         { "host": "https://index.example.com", "fingerprint": "sha256:…" },
         { "host": "https://mirror.internal.example/bougie", "fingerprint": "sha256:…" }

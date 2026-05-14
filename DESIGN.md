@@ -395,6 +395,28 @@ Unchanged in V2:
 V2 is a layout reshape and a build-flag pivot on top of V1's
 correctness guarantees, not a rewrite.
 
+## Service supervisor (V2 follow-on)
+
+Once V2's content-addressed store is in place, the same dedup
+property generalizes to the stateful dev services PHP projects
+depend on (mariadb, redis, opensearch, rabbitmq, plus bougie's own
+HTTP dev server). These ship as bougie-store tarballs with the same
+RPATH discipline as the interpreter; an extension and a service can
+share `openssl-3.0.13-<hash>` if the hashes agree.
+
+A per-user daemon, `bougied`, manages these as one global instance
+per service, multi-tenant via per-project DB / vhost / index /
+DB-number. Confinement is via `sandbox-run` (Landlock on Linux, SBPL
+on macOS) — every service runs with read-write access restricted to
+its own state subtree. The full design is in `SERVICES.md`; CLI
+surface is in `CLI.md` §3.8.
+
+This is intentionally separated from the interpreter-distribution
+goals above: the content-addressed store is V2's contract, the
+service supervisor is its first non-interpreter consumer. Other
+consumers (e.g. a bougie-managed PHP-FPM-as-a-service for production
+embedders) can land later without changes to the store layout.
+
 ## Open questions to resolve before shipping
 
 - **Reproducibility audit gate.** finalize.sh should rebuild every
