@@ -100,7 +100,7 @@ jobs:
     name: lint frozen coverage
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
       - name: Install Nix
@@ -142,13 +142,13 @@ jobs:
           - { php: "8.4", minor: "8_4", os: macos-26,      system: "aarch64-darwin", target: "aarch64-apple-darwin" }
           - { php: "8.5", minor: "8_5", os: macos-26,      system: "aarch64-darwin", target: "aarch64-apple-darwin" }
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Install Nix
         uses: DeterminateSystems/determinate-nix-action@v3
 
       - name: Set up FlakeHub Cache
-        uses: DeterminateSystems/flakehub-cache-action@v3.19.1
+        uses: DeterminateSystems/flakehub-cache-action@v3.20.0
 
       - name: Build tarball
         # Each nix build uses its own -o symlink so subsequent builds
@@ -178,7 +178,7 @@ jobs:
         run: nix build ".#phpVariants.${{ matrix.system }}.${{ matrix.minor }}.release" -o result-release --print-build-logs
 
       - name: Upload tarball as workflow artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           # Per-(minor × target) name so the matrix legs don't collide.
           name: php-tarball-${{ matrix.php }}-${{ matrix.target }}
@@ -188,7 +188,7 @@ jobs:
           if-no-files-found: error
 
       - name: Upload release tree as workflow artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           # Uploaded separately from the tarball so the assemble job can
           # grab all five minors' release trees without needing the raw
@@ -215,13 +215,13 @@ jobs:
           - { os: ubuntu-latest, system: "x86_64-linux",   target: "x86_64-unknown-linux-gnu" }
           - { os: macos-26,      system: "aarch64-darwin", target: "aarch64-apple-darwin" }
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Install Nix
         uses: DeterminateSystems/determinate-nix-action@v3
 
       - name: Set up FlakeHub Cache
-        uses: DeterminateSystems/flakehub-cache-action@v3.19.1
+        uses: DeterminateSystems/flakehub-cache-action@v3.20.0
 
       - name: Build mariadb tarball
         # mariadb-tarball is the redistributable artifact; mariadb-release is
@@ -234,7 +234,7 @@ jobs:
         run: nix build .#packages.${{ matrix.system }}.mariadb-release -o result-mariadb-release --print-build-logs
 
       - name: Upload tarball as workflow artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: mariadb-tarball-${{ matrix.target }}
           path: |
@@ -243,7 +243,7 @@ jobs:
           if-no-files-found: error
 
       - name: Upload release tree as workflow artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           # Mirrors the PHP release-<minor>-<target> shape so the
           # assemble job's release-bundle can pick up the MariaDB tree
@@ -269,13 +269,13 @@ jobs:
           - { os: ubuntu-latest, system: "x86_64-linux",   target: "x86_64-unknown-linux-gnu" }
           - { os: macos-26,      system: "aarch64-darwin", target: "aarch64-apple-darwin" }
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Install Nix
         uses: DeterminateSystems/determinate-nix-action@v3
 
       - name: Set up FlakeHub Cache
-        uses: DeterminateSystems/flakehub-cache-action@v3.19.1
+        uses: DeterminateSystems/flakehub-cache-action@v3.20.0
 
       - name: Build redis tarball
         # redis-tarball is the redistributable artifact; redis-release is
@@ -288,7 +288,7 @@ jobs:
         run: nix build .#packages.${{ matrix.system }}.redis-release -o result-redis-release --print-build-logs
 
       - name: Upload tarball as workflow artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: redis-tarball-${{ matrix.target }}
           path: |
@@ -297,7 +297,7 @@ jobs:
           if-no-files-found: error
 
       - name: Upload release tree as workflow artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           # Mirrors the MariaDB release-<target> shape so the assemble
           # job's release-bundle can pick up the Redis tree by name.
@@ -317,10 +317,10 @@ jobs:
       matrix:
         php: ["8.1", "8.2", "8.3", "8.4", "8.5"]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Download Linux tarball
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: php-tarball-${{ matrix.php }}-x86_64-unknown-linux-gnu
           path: artifacts/
@@ -348,13 +348,13 @@ jobs:
           - { os: ubuntu-latest, artifact: linux }
           - { os: macos-26,      artifact: darwin }
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Install Nix
         uses: DeterminateSystems/determinate-nix-action@v3
 
       - name: Set up FlakeHub Cache
-        uses: DeterminateSystems/flakehub-cache-action@v3.19.1
+        uses: DeterminateSystems/flakehub-cache-action@v3.20.0
 
       - name: Build release-bundle
         # FlakeHub Cache hits all per-minor inputs already built in
@@ -365,7 +365,7 @@ jobs:
         run: nix build .#release-bundle --impure --print-build-logs
 
       - name: Upload release-bundle artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: release-bundle-${{ matrix.artifact }}
           path: result/
@@ -384,13 +384,13 @@ jobs:
       contents: read
       id-token: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Install Nix
         uses: DeterminateSystems/determinate-nix-action@v3
 
       - name: Set up FlakeHub Cache
-        uses: DeterminateSystems/flakehub-cache-action@v3.19.1
+        uses: DeterminateSystems/flakehub-cache-action@v3.20.0
 
       - name: Build release-bundle (first pass)
         run: nix build .#release-bundle --impure -o result-1 --print-build-logs
@@ -427,19 +427,19 @@ jobs:
       contents: read   # no Pages/Releases push
       id-token: write  # cosign keyless OIDC
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Install Nix
         uses: DeterminateSystems/determinate-nix-action@v3
 
       - name: Download Linux release-bundle
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: release-bundle-linux
           path: bundles/linux/
 
       - name: Download Darwin release-bundle
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: release-bundle-darwin
           path: bundles/darwin/
@@ -474,7 +474,7 @@ jobs:
         # Packages both the signed index tree and the blob tree for inspection
         # and future rsync consumption. The artifact mirrors the on-disk layout
         # that the rsync step (below) would push to the origin.
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: publish-tree
           path: |
