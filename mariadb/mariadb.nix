@@ -27,11 +27,11 @@ let
   # sandbox (no network). We pre-fetch the exact pinned URL the upstream
   # cmake expects and let build-mariadb.sh place it where the download
   # step looks — the URL_HASH check then succeeds without touching the
-  # network. Pinned against MariaDB 11.4.4's cmake/libfmt.cmake; bump
+  # network. Pinned against MariaDB 11.4.10's cmake/libfmt.cmake; bump
   # in lockstep with MariaDB.
   libfmtSrc = pkgs.fetchurl {
-    url = "https://github.com/fmtlib/fmt/releases/download/11.0.2/fmt-11.0.2.zip";
-    sha256 = "40fc58bebcf38c759e11a7bd8fdc163507d2423ef5058bba7f26280c5b9c5465";
+    url = "https://github.com/fmtlib/fmt/releases/download/12.1.0/fmt-12.1.0.zip";
+    sha256 = "695fd197fa5aff8fc67b5f2bbc110490a875cdf7a41686ac8512fb480fa8ada7";
   };
 in
 mkDep {

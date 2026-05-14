@@ -92,12 +92,24 @@ cd build
 # github at make time, which the Nix sandbox blocks. CMake's download step
 # checks <DOWNLOAD_DIR>/<filename> against URL_HASH and skips the network
 # fetch if a matching file is already there. Copy the Nix-fetched zip
-# (PBS_SRC_LIBFMT, identical contents to upstream's pinned 11.0.2 release)
+# (PBS_SRC_LIBFMT, identical contents to upstream's pinned 12.1.0 release)
 # into the location cmake's libfmt ExternalProject_Add expects:
-# <build>/extra/libfmt/src/fmt-11.0.2.zip. The URL_MD5 check in libfmt.cmake
+# <build>/extra/libfmt/src/fmt-12.1.0.zip. The URL_MD5 check in libfmt.cmake
 # verifies the same bytes, so no patching of the cmake module is needed.
 mkdir -p extra/libfmt/src
-cp "$PBS_SRC_LIBFMT" extra/libfmt/src/fmt-11.0.2.zip
+cp "$PBS_SRC_LIBFMT" extra/libfmt/src/fmt-12.1.0.zip
+
+# MariaDB's cmake/maintainer.cmake adds -Werror to the warning set when
+# building from a source tree (any CMAKE_BUILD_TYPE that isn't an installed
+# release). OpenSSL 3.5.6's <openssl/lhash.h> macros instantiate function-
+# pointer casts (DEFINE_LHASH_OF_INTERNAL → `return (OPENSSL_LH_HASHFUNC)hfn`)
+# that clang flags under -Wcast-function-type-strict; promoted to a fatal
+# error by maintainer.cmake's -Werror, the perfschema/innobase TUs that
+# include sql/sql_acl.h → violite.h → openssl/err.h die mid-build.
+# These are warnings from a third-party header MariaDB has no control over,
+# so demoting just this one back to a warning is the surgical fix.
+export CFLAGS="${CFLAGS:-} -Wno-error=cast-function-type-strict"
+export CXXFLAGS="${CXXFLAGS:-} -Wno-error=cast-function-type-strict"
 
 cmake -G "Unix Makefiles" \
   -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
