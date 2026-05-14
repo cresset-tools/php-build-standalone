@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.18](https://github.com/cresset-tools/php-build-standalone/compare/v0.1.17...v0.1.18) (2026-05-14)
+
+
+### Bug Fixes
+
+* **index:** emit frozen section entries only for targets the leg built ([62dc57e](https://github.com/cresset-tools/php-build-standalone/commit/62dc57e070fdbb995bd0a8535dbba51a70c7a9af))
+* **index:** emit frozen section entries only for targets the leg built ([0875de8](https://github.com/cresset-tools/php-build-standalone/commit/0875de87c4daa3e5f5d69cbf6fdd15d27ab54f6e))
+
 ## [0.1.17](https://github.com/cresset-tools/php-build-standalone/compare/v0.1.16...v0.1.17) (2026-05-14)
 
 
