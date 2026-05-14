@@ -359,6 +359,18 @@ pkgs.runCommand "pbs-index" {
     '') releases}
 
     # ---- Phase 2a: splice frozen-file entries ----
+    # local_targets: set of targets the current leg actually built. Phase 2
+    # only populates section_artifacts keyed by manifests this leg produced,
+    # so the targets appearing as the first slash-component are exactly the
+    # local set. Frozen entries for other targets are skipped — the leg that
+    # builds for that target will emit them, and merge-publish-tree.sh's
+    # cp -rn / jq-targets-merge stays consistent only when each target's
+    # section bytes and root entry come from the same leg.
+    declare -A local_targets
+    for key in "''${!section_artifacts[@]}"; do
+      local_targets["''${key%%/*}"]=1
+    done
+
     # live_tags: set of tags already present from live builds, for overlap check.
     declare -A live_tags
     for key in "''${!section_artifacts[@]}"; do
@@ -386,6 +398,13 @@ pkgs.runCommand "pbs-index" {
         ftarget="$(echo "$fentry" | jq -r '.target')"
         fkind="$(echo "$fentry" | jq -r '.kind')"
         fname="$(echo "$fentry" | jq -r '.name')"
+
+        # Skip entries for targets this leg didn't build — see local_targets
+        # comment above.
+        if [ -z "''${local_targets[$ftarget]:-}" ]; then
+          continue
+        fi
+
         fsection_entry="$(echo "$fentry" | jq -c '.section_entry')"
         fmanifest_body="$(echo "$fentry" | jq -S '.manifest')"
 
