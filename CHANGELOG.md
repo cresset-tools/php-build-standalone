@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.19](https://github.com/cresset-tools/php-build-standalone/compare/v0.1.18...v0.1.19) (2026-05-14)
+
+
+### Bug Fixes
+
+* **validate-index:** skip per-bundle blob HEAD for frozen artifacts ([d9c17e5](https://github.com/cresset-tools/php-build-standalone/commit/d9c17e591b17b4de3c4eb23dbbe070fe8a3070e5))
+* **validate-index:** skip per-bundle blob HEAD for frozen artifacts ([dc37037](https://github.com/cresset-tools/php-build-standalone/commit/dc3703790121df6ef94f87da6888d078df24fc1b))
+
 ## [0.1.18](https://github.com/cresset-tools/php-build-standalone/compare/v0.1.17...v0.1.18) (2026-05-14)
 
 
