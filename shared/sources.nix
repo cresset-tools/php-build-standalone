@@ -549,6 +549,34 @@
     version = "27.3.4.11";
   };
 
+  # RabbitMQ. Repackaged from upstream's `generic-unix` release tarball
+  # — pure Erlang bytecode (`.beam` / `.ez`) plus shell-script launchers,
+  # no native code outside what comes from our injected Erlang. Same
+  # OpenSearch-min playbook: one platform-agnostic source tarball serves
+  # both linux and darwin, and the only host-specific artifact is the
+  # bundled VM we inject under install/erlang/.
+  #
+  # Elixir is NOT a runtime dependency: RabbitMQ's CLI tools and several
+  # of its plugins are written in Elixir, but the generic-unix tarball
+  # ships pre-compiled `.beam` files plus the Elixir standard library's
+  # `.beam` files inside each escript ZIP archive — Elixir's runtime is
+  # just the Erlang VM running compiled Elixir bytecode. So the
+  # tools/rabbitmq tree only needs to inject our standalone Erlang
+  # (tools/erlang/), exactly like tools/opensearch injects tools/jdk.
+  #
+  # 4.2.6 is the latest stable patch on the 4.2 minor as of 2026-05-14.
+  # RabbitMQ 4.x supports OTP 26.x and 27.x; we ship OTP 27 LTS. Bumping
+  # RabbitMQ across a major requires re-checking the "Which Erlang for
+  # which RabbitMQ" compatibility matrix at rabbitmq.com/docs/which-erlang.
+  #
+  # Upstream publishes a sha256 sidecar as well; we use sha512 here for
+  # consistency with how tools/opensearch pins upstream's sha512.
+  rabbitmq = {
+    url = "https://github.com/rabbitmq/rabbitmq-server/releases/download/v4.2.6/rabbitmq-server-generic-unix-4.2.6.tar.xz";
+    sha512 = "29346cc7fb175a591f67ed957ba462f8b70bebd08b8fddf8a458edca7a6cc4392f5d4c7fd5c461896d0954df1b5b3357d2aaa09413a55bde08c294b079491177";
+    version = "4.2.6";
+  };
+
   # NSPR — Netscape Portable Runtime. Standalone build (it's a foundation
   # library for NSS, exposing threads/IO/memory primitives). Autoconf
   # build, behaves; only present here because NSS needs it. v4.36 is

@@ -688,13 +688,43 @@
             '';
           };
 
+          # ---- RabbitMQ tool bundle ----
+          # Repackages upstream's generic-unix (pure Erlang bytecode) and
+          # injects our standalone Erlang (tools/erlang/) under
+          # install/erlang/. Same prebuilt-repackage shape as OpenSearch.
+          # No `-tree` output: rabbitmq.nix bypasses shared/tree.nix
+          # entirely (no native code outside the injected Erlang, which
+          # has already been finalized).
+          rabbitmqSpec = sources.rabbitmq;
+          rabbitmq = pkgs.callPackage ./tools/rabbitmq/rabbitmq.nix {
+            inherit rabbitmqSpec;
+            erlangTree = erlangTree;
+          };
+          rabbitmqTarball = pkgs.callPackage ./tools/rabbitmq/tarball.nix {
+            inherit rabbitmq sources nixpkgsRev;
+            rabbitmqVersion = rabbitmqSpec.version;
+          };
+          rabbitmqRelease = pkgs.stdenvNoCC.mkDerivation {
+            pname = "pbs-release-rabbitmq";
+            version = rabbitmqSpec.version;
+            dontUnpack = true;
+            dontConfigure = true;
+            dontBuild = true;
+            dontFixup = true;
+            nativeBuildInputs = [ pkgs.coreutils ];
+            installPhase = ''
+              mkdir -p "$out"
+              cp -a ${rabbitmqTarball}/. "$out/" && chmod -R u+w "$out"
+            '';
+          };
+
           # Cross-variant index. Walks every release, parses per-extension
           # + interpreter manifests, reads .sha256 sidecars, and emits a
           # single index.json. Deduplication of store-path entries across
           # variants is enforced inside index.nix (collision = build error).
           allReleases =
             (map (v: v.release) (builtins.attrValues variants))
-            ++ [ mariadbRelease redisServerRelease erlangRelease mkcertRelease jdkRelease opensearchRelease ];
+            ++ [ mariadbRelease redisServerRelease erlangRelease mkcertRelease jdkRelease opensearchRelease rabbitmqRelease ];
           frozenFiles =
             let allFiles = pkgs.lib.filesystem.listFilesRecursive ./frozen;
             in builtins.filter
@@ -720,7 +750,8 @@
                   erlang erlangTree erlangTarball erlangRelease
                   mkcert mkcertTree mkcertTarball mkcertRelease
                   jdk jdkTarball jdkRelease
-                  opensearch opensearchTarball opensearchRelease;
+                  opensearch opensearchTarball opensearchRelease
+                  rabbitmq rabbitmqTarball rabbitmqRelease;
         };
 
       ctx = forEach contextFor;
@@ -865,6 +896,12 @@
           opensearch         = c.opensearch;
           opensearch-tarball = c.opensearchTarball;
           opensearch-release = c.opensearchRelease;
+          # RabbitMQ — repackaged generic-unix tarball with our Erlang
+          # injected under install/erlang/. Available on both linux and
+          # darwin (single source tarball; pure Erlang bytecode).
+          rabbitmq           = c.rabbitmq;
+          rabbitmq-tarball   = c.rabbitmqTarball;
+          rabbitmq-release   = c.rabbitmqRelease;
         });
 
       phpVariants  = forEach (system: ctx.${system}.variants);
