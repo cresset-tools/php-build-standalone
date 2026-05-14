@@ -567,13 +567,89 @@
             '';
           };
 
+          # ---- JDK tool bundle (Eclipse Temurin) ----
+          # First tool repackaged from an upstream prebuilt binary rather
+          # than built from source. Bypasses shared/tree.nix entirely:
+          # finalize-{linux,darwin}.sh would wipe Temurin's existing
+          # internal RPATHs (libjli → server/libjvm, bin/java → ../lib)
+          # and replace them with empty $ORIGIN-relative ones against an
+          # empty PBS_SONAME_STORE, bricking the JDK. See tools/jdk/jdk.nix
+          # for the rationale.
+          #
+          # `system` here is the Nix system string (x86_64-linux /
+          # aarch64-darwin); the jdk.nix picks the matching per-platform
+          # tarball pin from sources.jdk.platforms.<system>.
+          jdkSpec = sources.jdk;
+          jdk = pkgs.callPackage ./tools/jdk/jdk.nix {
+            inherit jdkSpec;
+            target = system;
+          };
+          jdkTarball = pkgs.callPackage ./tools/jdk/tarball.nix {
+            inherit jdk sources nixpkgsRev;
+            jdkVersion = jdkSpec.version;
+          };
+          jdkRelease = pkgs.stdenvNoCC.mkDerivation {
+            pname = "pbs-release-jdk";
+            version = jdkSpec.version;
+            dontUnpack = true;
+            dontConfigure = true;
+            dontBuild = true;
+            dontFixup = true;
+            nativeBuildInputs = [ pkgs.coreutils ];
+            installPhase = ''
+              mkdir -p "$out"
+              cp -a ${jdkTarball}/. "$out/" && chmod -R u+w "$out"
+            '';
+          };
+
+          # ---- OpenSearch tool bundle ----
+          # Symmetric across both platforms: a single platform-agnostic
+          # `min` (core-only) tarball (sources.opensearch), our
+          # standalone Temurin (tools/jdk/) wired in at install/jdk/,
+          # and a default plugin set (analysis-icu, analysis-phonetic)
+          # pre-fetched and installed into install/plugins/<name>/.
+          # See shared/sources.nix `opensearch` for why we use the
+          # Linux min tarball on both platforms (OpenSearch min is
+          # 100% platform-agnostic JVM bytecode).
+          #
+          # `pluginSpecs` is a list of { name, spec } pairs — the
+          # `name` becomes the install/plugins/<name>/ directory; the
+          # `spec` is the sources.nix entry with url+sha512+version.
+          # When adding a new default plugin, both add the
+          # sources.opensearch-<name> entry and append to this list.
+          opensearchSpec = sources.opensearch;
+          opensearch = pkgs.callPackage ./tools/opensearch/opensearch.nix {
+            inherit opensearchSpec jdk;
+            pluginSpecs = [
+              { name = "analysis-icu";       spec = sources.opensearch-analysis-icu; }
+              { name = "analysis-phonetic";  spec = sources.opensearch-analysis-phonetic; }
+            ];
+          };
+          opensearchTarball = pkgs.callPackage ./tools/opensearch/tarball.nix {
+            inherit opensearch sources nixpkgsRev;
+            opensearchVersion = opensearchSpec.version;
+          };
+          opensearchRelease = pkgs.stdenvNoCC.mkDerivation {
+            pname = "pbs-release-opensearch";
+            version = opensearchSpec.version;
+            dontUnpack = true;
+            dontConfigure = true;
+            dontBuild = true;
+            dontFixup = true;
+            nativeBuildInputs = [ pkgs.coreutils ];
+            installPhase = ''
+              mkdir -p "$out"
+              cp -a ${opensearchTarball}/. "$out/" && chmod -R u+w "$out"
+            '';
+          };
+
           # Cross-variant index. Walks every release, parses per-extension
           # + interpreter manifests, reads .sha256 sidecars, and emits a
           # single index.json. Deduplication of store-path entries across
           # variants is enforced inside index.nix (collision = build error).
           allReleases =
             (map (v: v.release) (builtins.attrValues variants))
-            ++ [ mariadbRelease redisServerRelease mkcertRelease ];
+            ++ [ mariadbRelease redisServerRelease mkcertRelease jdkRelease opensearchRelease ];
           frozenFiles =
             let allFiles = pkgs.lib.filesystem.listFilesRecursive ./frozen;
             in builtins.filter
@@ -596,7 +672,9 @@
           inherit pkgs sources darwin sysroot toolchain deps variants index latestVariant
                   mariadb mariadbTree mariadbTarball mariadbRelease
                   redisServer redisServerTree redisServerTarball redisServerRelease
-                  mkcert mkcertTree mkcertTarball mkcertRelease;
+                  mkcert mkcertTree mkcertTarball mkcertRelease
+                  jdk jdkTarball jdkRelease
+                  opensearch opensearchTarball opensearchRelease;
         };
 
       ctx = forEach contextFor;
@@ -723,6 +801,19 @@
           mkcert-tree     = c.mkcertTree;
           mkcert-tarball  = c.mkcertTarball;
           mkcert-release  = c.mkcertRelease;
+          # JDK (Eclipse Temurin) — standalone tool, available on both
+          # linux and darwin. No `-tree` output: jdk.nix bypasses
+          # shared/tree.nix entirely (see tools/jdk/jdk.nix for why).
+          jdk             = c.jdk;
+          jdk-tarball     = c.jdkTarball;
+          jdk-release     = c.jdkRelease;
+          # OpenSearch — available on both platforms, using different
+          # upstream tarballs (see shared/sources.nix `opensearch` for
+          # the per-platform rationale). On darwin the install tree
+          # bundles our pbs-jdk under install/jdk/.
+          opensearch         = c.opensearch;
+          opensearch-tarball = c.opensearchTarball;
+          opensearch-release = c.opensearchRelease;
         });
 
       phpVariants  = forEach (system: ctx.${system}.variants);

@@ -555,4 +555,96 @@
     sha256 = "32bd5519581bf0b03f53e5b22721692b99f39ab5b161dc27532c51eafa512ca9";
     version = "1.4.4";
   };
+
+  # Eclipse Temurin JDK 21 (LTS). First entry that's published only as a
+  # prebuilt binary — we don't build OpenJDK from source. Temurin Linux x64
+  # is built on CentOS 7 (glibc 2.17), the same floor our manylinux-style
+  # sysroot targets; macOS aarch64 builds target Big Sur (matches our
+  # MACOSX_DEPLOYMENT_TARGET=11.0). Per-platform tarballs live under
+  # `platforms.<system>`; flake.nix picks the entry for the current system.
+  #
+  # The 21.0.x line is the current LTS; 21.0.11+10 is the latest patch as
+  # of 2026-05-14. Bump in lockstep with whatever OpenSearch's required
+  # JDK is — OpenSearch 2.19 needs JDK 21.
+  jdk = {
+    version = "21.0.11+10";
+    platforms = {
+      "x86_64-linux" = {
+        url = "https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.11%2B10/OpenJDK21U-jdk_x64_linux_hotspot_21.0.11_10.tar.gz";
+        sha256 = "4b2220e232a97997b436ca6ab15cbf70171ecff52958a46159dfa5a8c44ca4de";
+      };
+      "aarch64-darwin" = {
+        url = "https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.11%2B10/OpenJDK21U-jdk_aarch64_mac_hotspot_21.0.11_10.tar.gz";
+        sha256 = "6ebcf221c9b41507b14c098e93c6ead6440b8d9bd154f8ec666c4c73abbdb201";
+      };
+    };
+  };
+
+  # OpenSearch 2.19.5 (current 2.x LTS patch as of 2026-05-14). Single
+  # platform-agnostic source: upstream's stable **min** (core-only)
+  # release tarball. opensearch.nix wires our standalone Temurin
+  # (tools/jdk/) in at install/jdk/ on both linux and darwin — the
+  # bundled-JDK shape is identical across platforms.
+  #
+  # Why a single URL works for both platforms: OpenSearch min is 100%
+  # platform-agnostic JVM bytecode (audited 2026-05-14). bin/ contains
+  # only Bourne-shell launchers, zero ELF/Mach-O binaries ship outside
+  # jdk/, and none of the 127 JAR files carry embedded native libs
+  # (.so / .dylib / .jnilib). The OpenSearch core itself has no
+  # platform-specific bits; upstream's per-platform tarballs only differ
+  # in which JDK they bundle, and we always supply our own JDK. Picking
+  # the Linux x64 release URL is arbitrary — same JARs ship to darwin.
+  #
+  # The releases/core/ path is stable + immutable (vs the snapshots/core/
+  # path which moves forward when newer builds land). We don't have to
+  # depend on a "-latest" alias.
+  #
+  # Users who want plugins (security, observability, alerting, sql, …)
+  # install them with `opensearch-plugin install <name>` from the
+  # OpenSearch plugin index. This matches bougie's dev-focused scope.
+  #
+  # OpenSearch publishes sha512 sidecars but not sha256 — we use sha512
+  # here (fetchurl accepts either).
+  opensearch = {
+    url = "https://artifacts.opensearch.org/releases/core/opensearch/2.19.5/opensearch-min-2.19.5-linux-x64.tar.gz";
+    sha512 = "9e74a9510044c53565a5aa72ba6a18cd0dcbe46fdd2666eeaf473528bd2f7ecf1bf0f8461154986270b8565c7feeb9543e246eaa956dd065c98db96fed83c389";
+    version = "2.19.5";
+  };
+
+  # OpenSearch plugins shipped by default in the tarball. The Nix
+  # sandbox has no network access, so we can't run
+  # `opensearch-plugin install` at build time — instead we pre-fetch
+  # the plugin ZIPs as fixed-output derivations and extract them into
+  # install/plugins/<name>/ in tools/opensearch/opensearch.nix.
+  #
+  # The plugin version MUST match the OpenSearch version exactly —
+  # OpenSearch refuses to load a plugin whose `opensearch.version` in
+  # its plugin-descriptor.properties doesn't match the running core.
+  # Bumping sources.opensearch.version requires bumping the plugin
+  # versions in lockstep.
+  #
+  # Plugin selection criteria: pick plugins that
+  #   (1) are useful to a meaningful fraction of dev users,
+  #   (2) are pure-JVM (plus their JAR-internal native libs, if any —
+  #       these load lazily via JNI's classpath fallback, so still
+  #       cross-platform),
+  #   (3) don't require external configuration to start safely.
+  #
+  # analysis-icu: Lucene's ICU integration. Provides Unicode-aware
+  #   tokenizers, normalizers, folders, collation. Standard pick for
+  #   any non-English text search. Pure JVM (Lucene ICU is bytecode-
+  #   only at runtime; the ICU C library isn't called).
+  # analysis-phonetic: Soundex / Metaphone / Caverphone / etc.
+  #   Common for name search ("find users named 'Smith' OR 'Smyth'").
+  #   Pure JVM.
+  opensearch-analysis-icu = {
+    url = "https://artifacts.opensearch.org/releases/plugins/analysis-icu/2.19.5/analysis-icu-2.19.5.zip";
+    sha512 = "28df1bf2d505ccd4ec6e4f96150228671e4799d3102f266e651d359206eca68adcd1bd0d31c630b30ad54fbc950dc560aa8781b85d1790a15736d23e91f8b97b";
+    version = "2.19.5";
+  };
+  opensearch-analysis-phonetic = {
+    url = "https://artifacts.opensearch.org/releases/plugins/analysis-phonetic/2.19.5/analysis-phonetic-2.19.5.zip";
+    sha512 = "4994a3017df9cd086e4abe59ed2afe72084fc172c6ec2af953fb10f527e8f740062393e62c82ffd189a91ad930912b87661d82f7e1c5398c0e2b64f77ad1acb6";
+    version = "2.19.5";
+  };
 }
