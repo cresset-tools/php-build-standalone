@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.20](https://github.com/cresset-tools/php-build-standalone/compare/v0.1.19...v0.1.20) (2026-05-15)
+
+
+### Features
+
+* **php:** add xsl extension via bundled libxslt 1.1.43 ([1622efd](https://github.com/cresset-tools/php-build-standalone/commit/1622efddb5a5a4bdb7b9a27aaf740e6963a3dd66))
+* **php:** add xsl extension via bundled libxslt 1.1.43 ([2941894](https://github.com/cresset-tools/php-build-standalone/commit/29418946f982795ceac482750df59dccf8446365))
+
 ## [0.1.19](https://github.com/cresset-tools/php-build-standalone/compare/v0.1.18...v0.1.19) (2026-05-14)
 
 
