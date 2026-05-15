@@ -14,7 +14,7 @@
 # Linux glibc provides iconv directly, so libiconv defaults to null and is
 # absent from the deps list.
 { mkDep, pkgs, phpSpec
-, zlib, openssl, libxml2, sqlite, oniguruma, libsodium, bzip2
+, zlib, openssl, libxml2, libxslt, sqlite, oniguruma, libsodium, bzip2
 , libpng, libjpeg-turbo, libwebp, freetype
 , nghttp2, libzip, icu, libcurl, ncurses, libedit, libpq, libgmp
 , libiconv ? null
@@ -28,7 +28,7 @@ mkDep {
   version = phpSpec.version;
   src = pkgs.fetchurl { inherit (phpSpec) url sha256; };
   deps = [
-    zlib openssl libxml2 sqlite oniguruma libsodium bzip2
+    zlib openssl libxml2 libxslt sqlite oniguruma libsodium bzip2
     libpng libjpeg-turbo libwebp freetype
     nghttp2 libzip icu libcurl ncurses libedit libpq libgmp
   ] ++ lib.optionals stdenv.isDarwin [ libiconv ];

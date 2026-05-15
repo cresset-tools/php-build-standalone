@@ -85,6 +85,7 @@
             zlib          = pkgs.callPackage ./shared/zlib.nix          { inherit mkDep; };
             openssl       = pkgs.callPackage ./shared/openssl.nix       { inherit mkDep zlib; };
             libxml2       = pkgs.callPackage ./shared/libxml2.nix       { inherit mkDep zlib; };
+            libxslt       = pkgs.callPackage ./shared/libxslt.nix       { inherit mkDep libxml2 zlib; };
             sqlite        = pkgs.callPackage ./shared/sqlite.nix        { inherit mkDep; };
             oniguruma     = pkgs.callPackage ./shared/oniguruma.nix     { inherit mkDep; };
             libsodium     = pkgs.callPackage ./shared/libsodium.nix     { inherit mkDep; };
@@ -188,7 +189,7 @@
               php = pkgs.callPackage ./php/php.nix ({
                 inherit mkDep phpSpec;
                 inherit (deps)
-                  zlib openssl libxml2 sqlite oniguruma libsodium bzip2
+                  zlib openssl libxml2 libxslt sqlite oniguruma libsodium bzip2
                   libpng libjpeg-turbo libwebp freetype
                   nghttp2 libzip icu libcurl ncurses libedit libpq libgmp;
               } // pkgs.lib.optionalAttrs darwin { inherit (deps) libiconv; });
@@ -375,6 +376,7 @@
                 sysvshm     = mkBuiltinExt "sysvshm";
                 soap        = mkBuiltinExt "soap";
                 gmp         = mkBuiltinExt "gmp";
+                xsl         = mkBuiltinExt "xsl";
               } // pkgs.lib.optionalAttrs (!darwin) {
                 # gettext is Linux-only (apple-sdk_14 + Apple's libc don't
                 # provide a real libintl implementation; build-php.sh sets

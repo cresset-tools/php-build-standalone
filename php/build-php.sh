@@ -23,6 +23,7 @@ set -euo pipefail
 : "${PBS_DEP_ZLIB:?}"
 : "${PBS_DEP_OPENSSL:?}"
 : "${PBS_DEP_LIBXML2:?}"
+: "${PBS_DEP_LIBXSLT:?}"
 : "${PBS_DEP_SQLITE:?}"
 : "${PBS_DEP_ONIGURUMA:?}"
 : "${PBS_DEP_LIBSODIUM:?}"
@@ -98,6 +99,7 @@ source "$PBS_PHP_PRE_CONFIGURE"
   --with-zlib="$PBS_DEP_ZLIB" \
   --with-openssl="shared,$PBS_DEP_OPENSSL" \
   --with-libxml="$PBS_DEP_LIBXML2" \
+  --with-xsl="shared,$PBS_DEP_LIBXSLT" \
   --enable-dom=shared \
   --enable-xml=shared \
   --enable-xmlreader=shared \
@@ -144,7 +146,7 @@ source "$PBS_PHP_PRE_CONFIGURE"
   "${PBS_PHP_GETTEXT_ARG//__PBS_SYSROOT__/${PBS_SYSROOT:-/dev/null}}" \
   --with-libedit="$PBS_DEP_LIBEDIT" \
   --enable-opcache \
-  PKG_CONFIG_PATH="$PBS_DEP_LIBZIP/lib/pkgconfig:$PBS_DEP_ICU/lib/pkgconfig:$PBS_DEP_LIBPNG/lib/pkgconfig:$PBS_DEP_LIBWEBP/lib/pkgconfig:$PBS_DEP_FREETYPE/lib/pkgconfig:$PBS_DEP_LIBJPEG_TURBO/lib/pkgconfig:$PBS_DEP_OPENSSL/lib/pkgconfig:$PBS_DEP_LIBCURL/lib/pkgconfig:$PBS_DEP_LIBXML2/lib/pkgconfig:$PBS_DEP_ONIGURUMA/lib/pkgconfig:$PBS_DEP_ZLIB/lib/pkgconfig:$PBS_DEP_SQLITE/lib/pkgconfig:$PBS_DEP_LIBSODIUM/lib/pkgconfig:$PBS_DEP_BZIP2/lib/pkgconfig:$PBS_DEP_NGHTTP2/lib/pkgconfig:$PBS_DEP_LIBEDIT/lib/pkgconfig:$PBS_DEP_NCURSES/lib/pkgconfig:$PBS_DEP_LIBPQ/lib/pkgconfig"
+  PKG_CONFIG_PATH="$PBS_DEP_LIBZIP/lib/pkgconfig:$PBS_DEP_ICU/lib/pkgconfig:$PBS_DEP_LIBPNG/lib/pkgconfig:$PBS_DEP_LIBWEBP/lib/pkgconfig:$PBS_DEP_FREETYPE/lib/pkgconfig:$PBS_DEP_LIBJPEG_TURBO/lib/pkgconfig:$PBS_DEP_OPENSSL/lib/pkgconfig:$PBS_DEP_LIBCURL/lib/pkgconfig:$PBS_DEP_LIBXML2/lib/pkgconfig:$PBS_DEP_LIBXSLT/lib/pkgconfig:$PBS_DEP_ONIGURUMA/lib/pkgconfig:$PBS_DEP_ZLIB/lib/pkgconfig:$PBS_DEP_SQLITE/lib/pkgconfig:$PBS_DEP_LIBSODIUM/lib/pkgconfig:$PBS_DEP_BZIP2/lib/pkgconfig:$PBS_DEP_NGHTTP2/lib/pkgconfig:$PBS_DEP_LIBEDIT/lib/pkgconfig:$PBS_DEP_NCURSES/lib/pkgconfig:$PBS_DEP_LIBPQ/lib/pkgconfig"
 
 # Detoxify build-defs.h BEFORE compile. configure has just substituted
 # /nix/store/<hash>-pbs-* paths into CONFIGURE_COMMAND, PHP_PREFIX,
@@ -239,6 +241,9 @@ _ini 50-xmlreader.ini  "extension=xmlreader"
 _ini 50-xmlwriter.ini  "extension=xmlwriter"
 _ini 50-simplexml.ini  "extension=simplexml"
 _ini 50-soap.ini       "extension=soap"
+# xsl depends on dom — XSLTProcessor accepts/returns DOMDocument instances,
+# so the dom module must be loaded first. 50- prefix puts it after dom's 20-.
+_ini 50-xsl.ini        "extension=xsl"
 # gettext is Linux-only (Apple's libc lacks a real libintl implementation —
 # see PBS_PHP_GETTEXT_ARG in php.nix). Emit the loader fragment only when
 # configure actually produced gettext.so so Darwin builds don't end up with
@@ -273,7 +278,7 @@ for _ext in mbstring intl curl pdo pdo_mysql pdo_sqlite pdo_pgsql sqlite3 \
             pgsql sodium bz2 zip gd exif fileinfo filter phar posix session \
             tokenizer ctype iconv dom xml xmlreader xmlwriter simplexml \
             mysqli openssl bcmath calendar ftp pcntl shmop sockets \
-            sysvmsg sysvsem sysvshm soap gmp; do
+            sysvmsg sysvsem sysvshm soap gmp xsl; do
   _check_ext "$_ext"
   echo "  ext OK: $_ext"
 done
