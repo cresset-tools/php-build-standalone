@@ -224,6 +224,8 @@ flags are an error.
 | `bougie init`      | Create a new project (`bougie.toml`, `.bougie/` skeleton).     | `uv init`         |
 | `bougie ext …`     | Add/remove/list PHP extensions; deferred to Composer + sync.   | `uv add`/`uv remove` |
 | `bougie sync`      | Install everything the project requires.                       | `uv sync`         |
+| `bougie up`        | Start the project's declared services (mariadb, redis, …).     | (none — uv has no analogue) |
+| `bougie down`      | Stop the project's services; tenants survive without `--purge`. | (none — uv has no analogue) |
 | `bougie run`       | Run a command in the project environment.                      | `uv run`          |
 | `bougie php …`     | Manage PHP interpreter installations.                          | `uv python …`     |
 | `bougie composer …`| Manage Composer installs.                                       | (none — pip is bundled) |
@@ -907,22 +909,30 @@ Lists the project's declared services and their current state. With
 `--all`, lists every service the daemon knows about across every
 project that has registered tenants. Supports `--format json-v1`.
 
-#### 3.8.4 `bougie services up [<name>…]`
+#### 3.8.4 `bougie up [<name>…]`
 
+Top-level shorthand for "start this project's declared services."
 Ensures the named services (or all the project's services) are
 running, then provisions the project's tenant in each. Auto-downloads
 missing tarballs from the bougie index, streaming progress over the
 daemon IPC channel.
 
+`up` is a top-level command (not under `bougie services …`) because
+it's the most common project-startup verb in everyday use, mirroring
+docker-compose / podman-compose's `up`. The handler still lives in
+the services subsystem; only the CLI surface is promoted. The former
+spelling `bougie services up` no longer exists.
+
 Service start order is computed via Kahn topological sort over
 catalog `requires` / `after` edges. A failed `requires` cascades:
 dependents transition to `Failed` without spawning.
 
-#### 3.8.5 `bougie services down [<name>…] [--purge]`
+#### 3.8.5 `bougie down [<name>…] [--purge]`
 
-De-provisions the project's tenant for the named services. Stops the
-global service iff no other project has a tenant left. `--purge`
-behaves as in §3.8.2.
+Top-level shorthand, paired with `bougie up`. De-provisions the
+project's tenant for the named services. Stops the global service iff
+no other project has a tenant left. `--purge` behaves as in §3.8.2.
+The former spelling `bougie services down` no longer exists.
 
 #### 3.8.6 `bougie services restart [<name>…]`
 
