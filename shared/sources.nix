@@ -42,6 +42,20 @@
     version = "2.13.9";
   };
 
+  # libxslt — XSLT 1.0 processor; required by PHP's xsl extension (used by
+  # Magento and other CMSes that render XML via XSLT). Built against our
+  # bundled libxml2; libgcrypt (EXSLT crypto module) and libxslt's Python
+  # bindings are explicitly disabled — see build-libxslt.sh.
+  #
+  # Pinned to 1.1.43 deliberately: 1.1.45 raised its libxml2 floor to
+  # 2.15.1, which we don't yet ship (we're on 2.13.9). 1.1.43's floor is
+  # 2.6.27 — clears our 2.13.9 trivially. Bump in lockstep with libxml2.
+  libxslt = {
+    url = "https://download.gnome.org/sources/libxslt/1.1/libxslt-1.1.43.tar.xz";
+    sha256 = "5a3d6b383ca5afc235b171118e90f5ff6aa27e9fea3303065231a6d403f0183a";
+    version = "1.1.43";
+  };
+
   # sqlite — for pdo_sqlite. The autoconf tarball name encodes the version
   # numerically (3470200 = 3.47.2), see build-sqlite.sh.
   sqlite = {
