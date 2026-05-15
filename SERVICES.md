@@ -57,7 +57,7 @@ The catalog is compiled into the bougie binary. Each entry has:
 | Name | Version | Binding | Tenant unit | Notes |
 |---|---|---|---|---|
 | `mariadb` | 11.4 LTS | unix socket | DB + user | Provisioned via `mariadb` client over the unix socket. |
-| `redis` | 7.4 | unix socket | logical DB (0..15) | Hard cap at 16 tenants; daemon errors with actionable hint if exhausted. |
+| `redis` | 8.6 | unix socket | logical DB (0..15) | Hard cap at 16 tenants; daemon errors with actionable hint if exhausted. |
 | `opensearch` | 2.x | TCP `127.0.0.1:9200` | index name prefix | `requires = ["jdk"]`. JVM heap `-Xms512m -Xmx512m` baked into catalog default. |
 | `rabbitmq` | 4.x | TCP `127.0.0.1:5672` (AMQP) | vhost + user | `requires = ["erlang"]`. Tarball at `f5089b2`. |
 | `erlang` | 27.x | n/a (dep only) | n/a | Not user-facing; `bougie services add erlang` errors. Tarball at `7b7ccda`. |
@@ -81,9 +81,11 @@ mariadb = "11.4"          # upstream major.minor; catalog picks the latest match
 redis = "*"               # whatever the catalog default is at sync time
 ```
 
-Patch-level pins (`mariadb = "11.4.3"`) are rejected by `bougie
-services add` — the catalog ships one tarball per minor, not per
-patch.
+Patch-level pins (`mariadb = "11.4.3"`) are accepted but currently
+ignored by the resolver — the catalog ships one tarball per minor,
+not per patch, so a patch-level pin resolves to the catalog
+default. A stricter rejection at `bougie services add` time may
+land later.
 
 ## 3. Multi-tenancy
 
@@ -144,7 +146,11 @@ BOUGIE_SERVICE_REDIS_DB             # logical DB number 0..15
 BOUGIE_SERVICE_OPENSEARCH_URL       # http://127.0.0.1:<port>
 BOUGIE_SERVICE_OPENSEARCH_INDEX_PREFIX
 BOUGIE_SERVICE_RABBITMQ_URL         # amqp://<user>:<pw>@127.0.0.1:<port>/<vhost>
-BOUGIE_SERVICE_SERVER_URL           # http://<host>.bougie.run:<port>
+BOUGIE_SERVICE_RABBITMQ_VHOST       # tenant name
+BOUGIE_SERVICE_RABBITMQ_USER        # tenant name (user matches vhost name)
+BOUGIE_SERVICE_RABBITMQ_PASSWORD    # generated at provisioning, persisted in tenants.json
+BOUGIE_SERVICE_SERVER_URL           # http://127.0.0.1:<port> (loopback; apps compose vhost URLs via HOSTNAME below)
+BOUGIE_SERVICE_SERVER_HOSTNAME      # <tenant>.bougie.run
 ```
 
 Framework config (Laravel `config/database.php`, Symfony DSNs, etc.)
@@ -238,8 +244,13 @@ Stopped ─start─▶ Starting ─exec ok─▶ HealthChecking ─probe ok─�
 ```
 
 Restart on failure uses deadline scheduling (`restart_at: Instant`),
-not blocking sleeps; the ticker evaluates due restarts. Default grace
-window is 5 seconds.
+not blocking sleeps; the 1-second ticker evaluates due restarts.
+Exponential backoff: `1s, 2s, 4s, 8s, …` capped at **5 minutes**.
+If the previous Running window lasted at least **60 seconds**, the
+next failure is treated as a fresh first-failure (backoff resets to
+1s). After **10 consecutive failures** inside the reset threshold,
+the supervisor stops respawning; the service stays in `Failed`
+until the operator runs `bougie services up <name>` manually.
 
 ### 5.2 Start order
 
@@ -264,8 +275,13 @@ Three kinds, declared per catalog entry:
 - **`exec`** — run a small command; exit 0 = ready. Reserved for
   cases the connect-based probes don't cover (none in v1).
 
-Probe timeout: 60 seconds with 250ms-spaced retries. Exceeding it
-transitions to `Failed`.
+Probe timeout: 60 seconds with 250ms-spaced retries by default.
+JVM-based and Erlang-based services (opensearch, rabbitmq) extend
+this to 90 seconds because cold-start time on CI runners
+dominates: JVM class-loading + JIT + cluster bootstrap for
+opensearch, Erlang VM boot + mnesia + plugin discovery for
+rabbitmq. Exceeding the per-service timeout transitions to
+`Failed`, which then schedules a backoff respawn per §5.1.
 
 ### 5.5 Log rotation
 
@@ -368,12 +384,12 @@ client closes the connection to stop following.
 
 | Method | Args | Result |
 |---|---|---|
-| `status` | none | `{services: [{name, state, pid?, uptime_ms?, binding, tenant_count}]}` |
+| `status` | none | `{services: [{name, state, pid?, uptime_ms?, binding, failure_count?, next_restart_ms?}]}` |
 | `daemon.version` | none | `{version, build_hash}` |
 | `daemon.shutdown` | none | `{ok: true}` (daemon exits after responding) |
 | `service.up` | `{project, services?}` | `{started: [...], tenants: {...}}` |
 | `service.down` | `{project, services?, purge?: false}` | `{stopped: [...], deprovisioned: [...]}` |
-| `service.restart` | `{project, services?}` | same as `service.up` |
+| `service.restart` | `{project, services}` | `{restarted: [...]}` — stop+start the named services; tenant ledger untouched, so generated passwords / DB numbers survive. A service that wasn't running is skipped (no-op restart). |
 | `service.env` | `{project}` | `{vars: {"BOUGIE_SERVICE_…": "..."}}` — used by `bougie run`. |
 | `service.logs` | `{service, follow, lines}` | streams `progress` frames; terminal `result` is `{lines_streamed: n}` |
 | `catalog` | none | the full catalog as JSON (for `bougie services catalog`) |
@@ -398,6 +414,11 @@ schema_version; removed or semantically-changed methods MUST bump it.
   in both projects' configs.
 
 ## 9. Interaction with `bougie cache prune`
+
+(Deferred: `bougie cache prune` is currently a stub at
+`src/commands/cache_prune.rs` pending the broader reachability
+walk; this section describes the intended behavior once that
+lands.)
 
 The reachable set defined in `CLI.md` §3.6.2 (cache prune) is
 extended: a service tarball is reachable when at least one tracked
