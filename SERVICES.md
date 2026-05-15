@@ -188,13 +188,26 @@ Per-entry overrides (in the catalog, not in user config):
 
 | Service | Override |
 |---|---|
-| `opensearch` | `limit_nofile = 65536` (Lucene mmap caps); JVM tmpdir needs an explicit `read_write_paths` entry. |
+| `opensearch` | `limit_nofile = 65536` (Lucene mmap caps); `OPENSEARCH_TMPDIR=<datadir>/tmp` because `ProtectSystem::Strict` hides `/tmp`; daemon copies the tarball's `config/` into `<service_conf>/` and rewrites `jvm.options`'s `logs/gc.log`, `logs/hs_err`, `data` paths to absolute (the JVM resolves them relative to CWD, and `bin/opensearch-env` ends with `cd $OPENSEARCH_HOME` which lands in the read-only store); `OPENSEARCH_PATH_CONF` points at the rewritten copy. Tarball bundles its own Temurin JDK at `install/jdk/`, so no separate runtime_dep wiring. |
 | `mariadb` | `limit_nofile = 65536` (InnoDB derives `open_files_limit` from `max_connections + table_open_cache*2` which lands above 32k with stock settings); `--tmpdir=<datadir>/tmp` so InnoDB's startup temporaries land under the existing RW area. |
 | `erlang` | n/a — only invoked as rabbitmq's runtime. |
-| `jdk` | n/a — only invoked as opensearch's runtime. |
+| `jdk` | n/a — published separately for advanced users; opensearch bundles its own. |
 | `rabbitmq` | (No nproc override in v1 — see note above.) |
 | `redis` | No override. |
 | `server` | `read_write_paths` extended to include the project's `.bougie/` (bougie server needs to render conf.d variants). |
+
+The per-service `conf/` dir under `<state>/services/<svc>/` is **read-write**
+in v1 (originally specced read-only, promoted in Phase 7 after opensearch's
+launcher was found to write `config/opensearch.keystore` and similar on
+first start). The boundary against user-input poisoning still holds via
+`ProtectHome=Yes` and the read-only `store/` mount.
+
+The baseline `read_write_paths` also includes the standard POSIX character
+devices `/dev/null`, `/dev/zero`, `/dev/full`, `/dev/random`, `/dev/urandom`
+— Landlock's `ProtectSystem::Strict` denies writes outside the explicit
+allowlist, and POSIX services routinely write to `/dev/null` (shell
+`>/dev/null`, launcher scripts) and read from `/dev/urandom` (TLS,
+password gen).
 
 There is no v1 mechanism for the user to relax or disable the
 sandbox. The catalog is the only place sandbox policy lives.
