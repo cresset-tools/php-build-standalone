@@ -112,7 +112,7 @@ set an explicit `tenant` in the rare case both apply.
 | `redis` | Allocate first free DB number (0..15); store in `tenants.json`. No server-side op. | Release DB number; keep keys. | `redis-cli -n <n> FLUSHDB`. |
 | `opensearch` | Create index template scoped to `<t>-*`. | Remove from `tenants.json`; keep indices. | `DELETE <t>-*`. |
 | `rabbitmq` | `rabbitmqctl add_user <t> <pw>; add_vhost <t>; set_permissions -p <t> <t> ".*" ".*" ".*"`. | Remove from `tenants.json`; keep vhost. | `rabbitmqctl delete_vhost <t>; delete_user <t>`. |
-| `server` | Insert `[[host]]` block into `server.toml`; send `Reload` to running `bougie server`. | Remove host block; reload. | Same as default — `server` has no persistent state to purge. |
+| `server` | Insert `[[host]]` block (`<tenant>.bougie.run` → project) into `<svc_conf>/server.toml`; send `reload-config` to the running `bougie server` so the in-memory `hostname → host` map is atomically swapped without a restart. | Remove host block; `reload-config`. | Default keeps the server.toml mutation (host block stays gone) + `$XDG_RUNTIME_DIR/bougie/server/<project-hash>/` (php-fpm sockets + rendered conf.d variants) is wiped. |
 
 ### 3.3 Tenant store
 
