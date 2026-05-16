@@ -158,22 +158,17 @@ pkgs.stdenvNoCC.mkDerivation {
     # so it needs write permission, even when the parent is unchanged).
     chmod -R u+w "$staging/install"
 
-    # Debian-aligned split: the interpreter tarball ships only the core
-    # extension set (REFACTOR_DEBIAN_ALIGNED.md). Everything else built
-    # shared by PHP — and the PECL extensions xdebug/imagick/redis/vips —
-    # gets pruned here and is distributed via per-ext tarballs instead.
+    # Debian-aligned split (REFACTOR_DEBIAN_ALIGNED.md Phase A): the
+    # interpreter tarball ships zero .so files. coreExtensions is `[]`,
+    # so this loop prunes every shared extension PHP's configure emitted
+    # into lib/extensions/<api>/. The build-php.sh side no longer generates
+    # any conf.d fragments, but we still scrub etc/php/conf.d/ defensively
+    # in case a future build script lands one. Every .so is shipped only
+    # via its per-ext tarball, which carries its own conf.d fragment.
     #
-    # Two-step prune:
-    #   (a) lib/extensions/<api>/<name>.so — drop every .so whose basename
-    #       (sans .so) is not in the core allowlist.
-    #   (b) etc/php/conf.d/*-<name>.ini — drop every auto-loader fragment
-    #       whose target extension is no longer present, so the shipped
-    #       interpreter doesn't fail to start with "Unable to load
-    #       dynamic library 'X.so'".
-    #
-    # The set of *kept* names below mirrors flake.nix's coreExtensions list.
-    # Any optional .so still needed by a project gets installed via its
-    # per-ext tarball, which carries its own conf.d fragment alongside.
+    # The grep alternation collapses to `^()$` when coreExtensions is empty,
+    # which matches only empty strings — and basenames are never empty, so
+    # every .so + .ini gets dropped.
     keep_re='${pkgs.lib.concatStringsSep "|" coreExtensions}'
     ext_dir="$(find "$staging/install/lib/extensions" -mindepth 1 -maxdepth 1 -type d | head -n1)"
     if [ -n "$ext_dir" ]; then

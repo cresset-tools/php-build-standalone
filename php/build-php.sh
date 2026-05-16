@@ -39,6 +39,7 @@ set -euo pipefail
 : "${PBS_DEP_LIBEDIT:?}"
 : "${PBS_DEP_LIBPQ:?}"
 : "${PBS_DEP_LIBGMP:?}"
+: "${PBS_DEP_LIBFFI:?}"
 : "${PBS_PHP_PRE_CONFIGURE:?set by php.nix}"
 : "${PBS_PHP_POST_INSTALL:?set by php.nix}"
 : "${PBS_PHP_AUDIT_EXTRA:?set by php.nix}"
@@ -97,7 +98,7 @@ source "$PBS_PHP_PRE_CONFIGURE"
   --with-config-file-path="$PBS_DEPS/etc/php" \
   --with-config-file-scan-dir="$PBS_DEPS/etc/php/conf.d" \
   --with-zlib="$PBS_DEP_ZLIB" \
-  --with-openssl="shared,$PBS_DEP_OPENSSL" \
+  --with-openssl="$PBS_DEP_OPENSSL" \
   --with-libxml="$PBS_DEP_LIBXML2" \
   --with-xsl="shared,$PBS_DEP_LIBXSLT" \
   --enable-dom=shared \
@@ -106,7 +107,7 @@ source "$PBS_PHP_PRE_CONFIGURE"
   --enable-xmlwriter=shared \
   --enable-simplexml=shared \
   --enable-mbstring=shared \
-  --enable-mysqlnd \
+  --enable-mysqlnd=shared \
   --with-mysqli="shared,mysqlnd" \
   --enable-pdo=shared \
   --with-pdo-mysql="shared,mysqlnd" \
@@ -114,7 +115,7 @@ source "$PBS_PHP_PRE_CONFIGURE"
   --with-sqlite3="shared,$PBS_DEP_SQLITE" \
   --with-pgsql="shared,$PBS_DEP_LIBPQ" \
   --with-pdo-pgsql="shared,$PBS_DEP_LIBPQ" \
-  --with-sodium="shared,$PBS_DEP_LIBSODIUM" \
+  --with-sodium="$PBS_DEP_LIBSODIUM" \
   --with-bz2="shared,$PBS_DEP_BZIP2" \
   --with-curl="shared,$PBS_DEP_LIBCURL" \
   --enable-intl=shared \
@@ -125,16 +126,16 @@ source "$PBS_PHP_PRE_CONFIGURE"
   --with-freetype="$PBS_DEP_FREETYPE" \
   --enable-exif=shared \
   --enable-fileinfo=shared \
-  --enable-filter=shared \
+  --enable-filter \
   --enable-phar=shared \
   --enable-posix=shared \
-  --enable-session=shared \
+  --enable-session \
   --enable-tokenizer=shared \
   --enable-ctype=shared \
   --enable-bcmath=shared \
   --enable-calendar=shared \
   --enable-ftp=shared \
-  --enable-pcntl=shared \
+  --enable-pcntl \
   --enable-shmop=shared \
   --enable-sockets=shared \
   --enable-sysvmsg=shared \
@@ -144,9 +145,10 @@ source "$PBS_PHP_PRE_CONFIGURE"
   --with-gmp="shared,$PBS_DEP_LIBGMP" \
   "$PBS_PHP_ICONV_ARG" \
   "${PBS_PHP_GETTEXT_ARG//__PBS_SYSROOT__/${PBS_SYSROOT:-/dev/null}}" \
-  --with-libedit="$PBS_DEP_LIBEDIT" \
+  --with-libedit="shared,$PBS_DEP_LIBEDIT" \
+  --with-ffi=shared \
   --enable-opcache \
-  PKG_CONFIG_PATH="$PBS_DEP_LIBZIP/lib/pkgconfig:$PBS_DEP_ICU/lib/pkgconfig:$PBS_DEP_LIBPNG/lib/pkgconfig:$PBS_DEP_LIBWEBP/lib/pkgconfig:$PBS_DEP_FREETYPE/lib/pkgconfig:$PBS_DEP_LIBJPEG_TURBO/lib/pkgconfig:$PBS_DEP_OPENSSL/lib/pkgconfig:$PBS_DEP_LIBCURL/lib/pkgconfig:$PBS_DEP_LIBXML2/lib/pkgconfig:$PBS_DEP_LIBXSLT/lib/pkgconfig:$PBS_DEP_ONIGURUMA/lib/pkgconfig:$PBS_DEP_ZLIB/lib/pkgconfig:$PBS_DEP_SQLITE/lib/pkgconfig:$PBS_DEP_LIBSODIUM/lib/pkgconfig:$PBS_DEP_BZIP2/lib/pkgconfig:$PBS_DEP_NGHTTP2/lib/pkgconfig:$PBS_DEP_LIBEDIT/lib/pkgconfig:$PBS_DEP_NCURSES/lib/pkgconfig:$PBS_DEP_LIBPQ/lib/pkgconfig"
+  PKG_CONFIG_PATH="$PBS_DEP_LIBZIP/lib/pkgconfig:$PBS_DEP_ICU/lib/pkgconfig:$PBS_DEP_LIBPNG/lib/pkgconfig:$PBS_DEP_LIBWEBP/lib/pkgconfig:$PBS_DEP_FREETYPE/lib/pkgconfig:$PBS_DEP_LIBJPEG_TURBO/lib/pkgconfig:$PBS_DEP_OPENSSL/lib/pkgconfig:$PBS_DEP_LIBCURL/lib/pkgconfig:$PBS_DEP_LIBXML2/lib/pkgconfig:$PBS_DEP_LIBXSLT/lib/pkgconfig:$PBS_DEP_ONIGURUMA/lib/pkgconfig:$PBS_DEP_ZLIB/lib/pkgconfig:$PBS_DEP_SQLITE/lib/pkgconfig:$PBS_DEP_LIBSODIUM/lib/pkgconfig:$PBS_DEP_BZIP2/lib/pkgconfig:$PBS_DEP_NGHTTP2/lib/pkgconfig:$PBS_DEP_LIBEDIT/lib/pkgconfig:$PBS_DEP_NCURSES/lib/pkgconfig:$PBS_DEP_LIBPQ/lib/pkgconfig:$PBS_DEP_LIBFFI/lib/pkgconfig"
 
 # Detoxify build-defs.h BEFORE compile. configure has just substituted
 # /nix/store/<hash>-pbs-* paths into CONFIGURE_COMMAND, PHP_PREFIX,
@@ -183,111 +185,119 @@ if [ ! -f "$PBS_DEPS/bin/phar.phar" ]; then
   exit 1
 fi
 
-# Generate conf.d fragments for every always-shipped shared extension.
-# Ordering ensures extensions are loaded after their dependencies:
-#   10-* : zend_extensions (opcache) — must precede regular extensions
-#   20-* : extensions with no cross-extension deps
-#   30-* : pdo (driver extensions depend on it)
-#   35-* : pdo_mysql, pdo_sqlite (depend on pdo)
-#   40-* : mysqli, sqlite3 (depend on mysqlnd/libsqlite, not on pdo)
-#   50-* : xmlreader, xmlwriter, simplexml (depend on dom being loaded)
-mkdir -p "$PBS_DEPS/etc/php/conf.d"
-_ini() { printf '%s\n' "$2" > "$PBS_DEPS/etc/php/conf.d/$1"; }
-# PHP 8.5 made opcache always-static (built into bin/php); the
-# --enable-opcache configure flag is ignored on that branch and no
-# opcache.so is produced. Only emit the loader fragment if the .so
-# actually exists, so 8.5 doesn't end up with a dangling reference.
+# No conf.d generation: the interpreter tarball ships zero auto-loading
+# fragments (REFACTOR_DEBIAN_ALIGNED.md). Each per-ext tarball emits its
+# own conf.d/*.ini at consumer-install time, so the bare interpreter starts
+# with the Debian-faithful static set only.
 ext_dir=$(find "$PBS_DEPS/lib/extensions" -maxdepth 1 -mindepth 1 -type d | head -n1)
-if [ -n "$ext_dir" ] && [ -f "$ext_dir/opcache.so" ]; then
-  _ini 10-opcache.ini    "zend_extension=opcache"
-fi
-_ini 20-mbstring.ini   "extension=mbstring"
-_ini 20-intl.ini       "extension=intl"
-_ini 20-curl.ini       "extension=curl"
-_ini 20-sodium.ini     "extension=sodium"
-_ini 20-bz2.ini        "extension=bz2"
-_ini 20-zip.ini        "extension=zip"
-_ini 20-gd.ini         "extension=gd"
-_ini 20-exif.ini       "extension=exif"
-_ini 20-bcmath.ini     "extension=bcmath"
-_ini 20-calendar.ini   "extension=calendar"
-_ini 20-ftp.ini        "extension=ftp"
-_ini 20-pcntl.ini      "extension=pcntl"
-_ini 20-shmop.ini      "extension=shmop"
-_ini 20-sockets.ini    "extension=sockets"
-_ini 20-sysvmsg.ini    "extension=sysvmsg"
-_ini 20-sysvsem.ini    "extension=sysvsem"
-_ini 20-sysvshm.ini    "extension=sysvshm"
-_ini 20-gmp.ini        "extension=gmp"
-_ini 20-fileinfo.ini   "extension=fileinfo"
-_ini 20-filter.ini     "extension=filter"
-_ini 20-phar.ini       "extension=phar"
-_ini 20-posix.ini      "extension=posix"
-_ini 20-session.ini    "extension=session"
-_ini 20-tokenizer.ini  "extension=tokenizer"
-_ini 20-ctype.ini      "extension=ctype"
-_ini 20-iconv.ini      "extension=iconv"
-_ini 20-openssl.ini    "extension=openssl"
-_ini 20-xml.ini        "extension=xml"
-_ini 20-dom.ini        "extension=dom"
-_ini 30-pdo.ini        "extension=pdo"
-_ini 35-pdo_mysql.ini  "extension=pdo_mysql"
-_ini 35-pdo_sqlite.ini "extension=pdo_sqlite"
-_ini 35-pdo_pgsql.ini  "extension=pdo_pgsql"
-_ini 40-mysqli.ini     "extension=mysqli"
-_ini 40-sqlite3.ini    "extension=sqlite3"
-_ini 40-pgsql.ini      "extension=pgsql"
-_ini 50-xmlreader.ini  "extension=xmlreader"
-_ini 50-xmlwriter.ini  "extension=xmlwriter"
-_ini 50-simplexml.ini  "extension=simplexml"
-_ini 50-soap.ini       "extension=soap"
-# xsl depends on dom — XSLTProcessor accepts/returns DOMDocument instances,
-# so the dom module must be loaded first. 50- prefix puts it after dom's 20-.
-_ini 50-xsl.ini        "extension=xsl"
-# gettext is Linux-only (Apple's libc lacks a real libintl implementation —
-# see PBS_PHP_GETTEXT_ARG in php.nix). Emit the loader fragment only when
-# configure actually produced gettext.so so Darwin builds don't end up with
-# a dangling reference.
-if [ -n "$ext_dir" ] && [ -f "$ext_dir/gettext.so" ]; then
-  _ini 20-gettext.ini    "extension=gettext"
-fi
+[ -n "$ext_dir" ] || { echo "FATAL: no lib/extensions/<api>/ produced" >&2; exit 1; }
 
-# Confirm readline (libedit-backed) is compiled into the binary. PHP
-# builds ext/readline statically into the CLI (no readline.so), so we
-# verify via php -m rather than looking for an extension .so file.
-if ! env "$PBS_RPATH_VAR=$PBS_DEPS/lib${PBS_DEPS_LDPATH:+:$PBS_DEPS_LDPATH}" "$PBS_DEPS/bin/php" -m | grep -qi readline; then
-  echo "FATAL: readline not listed in php -m; --with-libedit configure step may have silently failed" >&2
-  exit 1
-fi
-echo "readline OK (libedit-backed)"
-
-# Verify every always-shipped extension loads. Uses `php -m` which picks
-# up conf.d fragments generated above. Failure names the missing extension
-# explicitly so it's easy to bisect from build logs.
-_php_m=$(env "$PBS_RPATH_VAR=$PBS_DEPS/lib${PBS_DEPS_LDPATH:+:$PBS_DEPS_LDPATH}" "$PBS_DEPS/bin/php" -m 2>&1)
-_check_ext() {
-  local ext="$1"
-  if ! printf '%s\n' "$_php_m" | grep -qi "^${ext}$"; then
-    echo "FATAL: always-shipped extension '$ext' not listed in php -m" >&2
-    echo "       php -m output:" >&2
-    printf '%s\n' "$_php_m" >&2
+# Bare-interpreter assertion: php -m on bin/php (no -d flags, no conf.d)
+# must show the Debian-faithful static set — and must NOT show any of the
+# extensions that should now ship only as per-ext tarballs. Required +
+# forbidden sets, not strict equality, so version-specific modules (random
+# is 8.2+; opcache is static on 8.5) don't trip the check.
+bare_modules=$(env "$PBS_RPATH_VAR=$PBS_DEPS/lib${PBS_DEPS_LDPATH:+:$PBS_DEPS_LDPATH}" \
+                 "$PBS_DEPS/bin/php" -n -m 2>&1)
+# Required: every Debian-php8.2-cli static module that exists in every
+# supported PHP minor (8.1–8.5). `Core` is omitted by ext/standard's
+# modules table on every PHP, so it's not checkable here.
+for _req in Reflection SPL date filter hash json libxml openssl \
+            pcntl pcre session sodium standard zlib; do
+  if ! printf '%s\n' "$bare_modules" | grep -qE "^${_req}$"; then
+    echo "FATAL: required static module '$_req' missing from bare php -m" >&2
+    printf '%s\n' "$bare_modules" >&2
     exit 1
   fi
-}
-for _ext in mbstring intl curl pdo pdo_mysql pdo_sqlite pdo_pgsql sqlite3 \
-            pgsql sodium bz2 zip gd exif fileinfo filter phar posix session \
-            tokenizer ctype iconv dom xml xmlreader xmlwriter simplexml \
-            mysqli openssl bcmath calendar ftp pcntl shmop sockets \
-            sysvmsg sysvsem sysvshm soap gmp xsl; do
-  _check_ext "$_ext"
-  echo "  ext OK: $_ext"
 done
-# gettext is Linux-only; check only when configure actually built it.
-if [ -n "$ext_dir" ] && [ -f "$ext_dir/gettext.so" ]; then
-  _check_ext gettext
-  echo "  ext OK: gettext"
+# Forbidden: any module that should ship only as a per-ext tarball must
+# NOT appear in the bare interpreter's php -m. If one does, a configure
+# flag flip got reverted or a static-by-default got missed.
+for _fbd in ctype iconv mbstring intl curl gd fileinfo phar posix \
+            tokenizer pdo dom mysqli mysqlnd sqlite3 readline ffi \
+            bcmath calendar ftp exif bz2 zip shmop soap sockets \
+            sysvmsg sysvsem sysvshm gmp pgsql xmlreader xmlwriter \
+            SimpleXML xsl; do
+  if printf '%s\n' "$bare_modules" | grep -qE "^${_fbd}$"; then
+    echo "FATAL: forbidden module '$_fbd' present in bare php -m (should be per-ext only)" >&2
+    printf '%s\n' "$bare_modules" >&2
+    exit 1
+  fi
+done
+echo "bare interpreter php -m matches Debian-faithful static set"
+
+# Canonical readline check (spec §"Two consequences worth being explicit"):
+# `php -a` on the bare interpreter must error with the Debian-equivalent
+# message because readline.so is no longer loaded by default. This is the
+# explicit positive proof that the interpreter tarball alone is *less*
+# than apt install php8.2-cli.
+readline_err=$(env "$PBS_RPATH_VAR=$PBS_DEPS/lib${PBS_DEPS_LDPATH:+:$PBS_DEPS_LDPATH}" \
+                 "$PBS_DEPS/bin/php" -n -a < /dev/null 2>&1 || true)
+if ! printf '%s\n' "$readline_err" | grep -qi "readline"; then
+  echo "FATAL: php -a did not complain about missing readline" >&2
+  echo "       output: $readline_err" >&2
+  exit 1
 fi
-echo "all always-shipped extensions OK"
+echo "php -a → readline-required error (Debian-equivalent)"
+
+# Per-ext .so ad-hoc load test: each shared extension built by configure
+# must load cleanly on its own when force-loaded against the bare
+# interpreter. Catches missing DT_NEEDED entries, ABI mismatches, or
+# extensions that lost their --enable-X=shared flag.
+#
+# Some extensions require another module to be loaded first:
+#   mysqli, pdo_mysql require mysqlnd
+#   pdo_mysql, pdo_sqlite, pdo_pgsql require pdo
+#   xmlreader, xmlwriter, simplexml require dom (and dom requires libxml)
+# We pass multiple -d extension= flags in dependency order for those.
+_load_test() {
+  local probe_name="$1"; shift
+  local args=()
+  for so in "$@"; do
+    case "$so" in
+      opcache) args+=(-d "zend_extension=$ext_dir/$so.so") ;;
+      *)       args+=(-d "extension=$ext_dir/$so.so") ;;
+    esac
+  done
+  if ! env "$PBS_RPATH_VAR=$PBS_DEPS/lib${PBS_DEPS_LDPATH:+:$PBS_DEPS_LDPATH}" \
+       "$PBS_DEPS/bin/php" -n "${args[@]}" -m 2>&1 | grep -qiE "^${probe_name}$"; then
+    echo "FATAL: ad-hoc load failed for $probe_name (loaded: $*)" >&2
+    env "$PBS_RPATH_VAR=$PBS_DEPS/lib${PBS_DEPS_LDPATH:+:$PBS_DEPS_LDPATH}" \
+       "$PBS_DEPS/bin/php" -n "${args[@]}" -m >&2 || true
+    exit 1
+  fi
+  echo "  ad-hoc load OK: $probe_name"
+}
+
+# Standalone extensions (no required dep beyond what bin/php already has).
+# openssl/sodium are now statically linked into bin/php — no .so emitted.
+# filter/session/pcntl likewise. Those don't appear here.
+for _ext in mbstring intl curl bz2 zip gd exif bcmath calendar ftp \
+            shmop sockets sysvmsg sysvsem sysvshm gmp fileinfo phar posix \
+            tokenizer ctype iconv xml dom pdo pgsql sqlite3 soap \
+            ffi mysqlnd; do
+  _load_test "$_ext" "$_ext"
+done
+# Dependent extensions: load required modules first.
+_load_test "mysqli"     mysqlnd mysqli
+_load_test "pdo_mysql"  pdo mysqlnd pdo_mysql
+_load_test "pdo_sqlite" pdo pdo_sqlite
+_load_test "pdo_pgsql"  pdo pdo_pgsql
+_load_test "xmlreader"  dom xmlreader
+_load_test "xmlwriter"  dom xmlwriter
+_load_test "SimpleXML"  dom simplexml
+_load_test "xsl"        dom xsl
+# readline.so replaces the previously-static ext/readline. Verify it loads.
+_load_test "readline"   readline
+# opcache: zend_extension on 8.1–8.4, static on 8.5 (then no .so exists).
+if [ -f "$ext_dir/opcache.so" ]; then
+  _load_test "Zend OPcache" opcache
+fi
+# gettext is Linux-only; build-php.sh produces gettext.so only there.
+if [ -f "$ext_dir/gettext.so" ]; then
+  _load_test "gettext" gettext
+fi
+echo "all per-ext ad-hoc loads OK"
 
 # Sanity: a request-bearing run (script file argument) must shut down
 # cleanly. The 0004-relocate-extension-dir-startup patch has historically

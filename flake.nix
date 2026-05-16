@@ -191,7 +191,7 @@
                 inherit (deps)
                   zlib openssl libxml2 libxslt sqlite oniguruma libsodium bzip2
                   libpng libjpeg-turbo libwebp freetype
-                  nghttp2 libzip icu libcurl ncurses libedit libpq libgmp;
+                  nghttp2 libzip icu libcurl ncurses libedit libpq libgmp libffi;
               } // pkgs.lib.optionalAttrs darwin { inherit (deps) libiconv; });
 
               xdebug = pkgs.callPackage ./php/xdebug.nix {
@@ -222,38 +222,39 @@
               };
               tree = pkgs.callPackage ./shared/tree.nix {
                 bundledDeps = sharedDeps;
+                # tree still carries every .so — PECL extensions and PHP's
+                # own shared exts. tarball-extension.nix walks tree to find
+                # each .so (already finalized with $ORIGIN RPATHs), and
+                # closure.nix walks tree to record per-.so transitive store
+                # paths. The pruning to the Debian-faithful interpreter
+                # shape happens in tarball.nix at staging time (coreExtensions
+                # = [] drops every .so before the tarball is emitted).
                 interpreterDeps = [
                   php xdebug imagick vips redis igbinary msgpack apcu pcov
                 ];
                 inherit toolchain;
                 phpVersion = phpSpec.version;
               };
-              # Core extensions (per REFACTOR_DEBIAN_ALIGNED.md): these
-              # ship in the interpreter tarball with auto-loading conf.d
-              # fragments. Everything else built shared by PHP gets
-              # pruned out of the interpreter tarball during staging and
-              # is reachable only via per-ext tarballs.
-              # opcache is a zend_extension; on PHP 8.5 it's static-built
-              # into bin/php and produces no .so (build-php.sh's loader
-              # generation already conditional-skips it). Listing it here
-              # is a no-op on 8.5 and load-bearing on 8.1–8.4.
-              coreExtensions = [
-                "ctype" "dom" "fileinfo" "filter" "iconv" "opcache"
-                "openssl" "pdo" "phar" "posix" "session" "simplexml"
-                "sodium" "tokenizer" "xml" "xmlreader" "xmlwriter"
-              ];
-              # Core C-libs (Phase B): the only bundled deps that stay in
-              # the interpreter tarball's store/ tree. bin/php and the core
-              # extensions DT_NEEDED these (zlib + openssl for HTTPS streams
-              # / phar signatures / mysqlnd TLS, libxml2 for the dom/xml
-              # family, libsodium for sodium, libedit + ncurses for the
-              # readline REPL). libiconv is added on Darwin only because
-              # apple-sdk strips its headers; Linux's glibc ships iconv.
-              # Every other bundled dep is reachable only via per-store-path
-              # tarballs that the CLI fetches when an optional extension
-              # declares them in its closure manifest.
+              # Phase A (REFACTOR_DEBIAN_ALIGNED.md): the interpreter
+              # tarball ships zero .so files. The Debian-faithful static
+              # set (openssl, sodium, session, filter, pcntl, zlib, libxml,
+              # plus PHP's unconditional core) is linked directly into
+              # bin/php by configure flag flips in build-php.sh — none of
+              # those produce a .so. Everything else built shared by PHP
+              # is pruned from lib/extensions/ at tarball time and ships
+              # exclusively via per-ext tarballs.
+              coreExtensions = [ ];
+              # Phase B core C-libs: only zlib + openssl + libxml2 + libsodium
+              # remain in the interpreter tarball's store/ tree because
+              # bin/php's static linkage of openssl/sodium/libxml-wrapper/zlib
+              # is the entire interpreter-tarball DT_NEEDED surface. libedit
+              # / ncurses moved out alongside readline.so (now a per-ext);
+              # every other bundled dep travels with whichever per-ext or
+              # per-store-path tarball references it. libiconv stays on
+              # Darwin because Apple's libc lacks a usable iconv and the
+              # bundled GNU libiconv is still required during PHP init.
               coreDepNames = [
-                "zlib" "openssl" "libxml2" "libsodium" "libedit" "ncurses"
+                "zlib" "openssl" "libxml2" "libsodium"
               ] ++ pkgs.lib.optional darwin "libiconv";
               tarball = pkgs.callPackage ./php/tarball.nix {
                 inherit tree sources nixpkgsRev phpSpec xdebugSpec
@@ -377,11 +378,39 @@
                 soap        = mkBuiltinExt "soap";
                 gmp         = mkBuiltinExt "gmp";
                 xsl         = mkBuiltinExt "xsl";
+                # Phase A additions: configure now builds these shared so
+                # they ship only via per-ext tarballs. The bougie default-
+                # install list (Debian-faithful php8.2-cli closure) fetches
+                # ffi + readline alongside the interpreter. mysqlnd is a
+                # shared dep of mysqli + pdo_mysql; bougie fetches it
+                # implicitly when either of those is requested.
+                ffi         = mkBuiltinExt "ffi";
+                readline    = mkBuiltinExt "readline";
+                mysqlnd     = mkBuiltinExt "mysqlnd";
               } // pkgs.lib.optionalAttrs (!darwin) {
                 # gettext is Linux-only (apple-sdk_14 + Apple's libc don't
                 # provide a real libintl implementation; build-php.sh sets
                 # --without-gettext on Darwin and produces no gettext.so).
                 gettext = mkBuiltinExt "gettext";
+              } // pkgs.lib.optionalAttrs (phpKey != "8.5") {
+                # opcache: --enable-opcache produces opcache.so on 8.1–8.4.
+                # PHP 8.5 made opcache always-static (built into bin/php);
+                # there's no opcache.so to package, so the per-ext tarball
+                # is unavailable on that branch. bougie's default-install
+                # list must skip opcache for 8.5 (it's already loaded).
+                #
+                # confFragment uses `zend_extension=` not `extension=` —
+                # opcache registers as a Zend extension and PHP rejects
+                # `extension=opcache` with "is not a valid Zend extension".
+                # zendExtension=true tags the manifest entry so bougie's
+                # ext loader knows to emit the right .ini directive.
+                opcache = mkExt {
+                  extDrv = php;
+                  extName = "opcache";
+                  extVersion = phpSpec.version;
+                  confFragment = "zend_extension=opcache";
+                  zendExtension = true;
+                };
               });
 
               # Release aggregate: collects every artifact for this PHP
