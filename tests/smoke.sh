@@ -47,23 +47,32 @@ rm -f "$script"
 [ "$rc" -eq 0 ] || die "php script.php exited rc=$rc (139 = zend_ini_deactivate segfault); output: $out"
 [ "$out" = "ok" ] || die "php script.php produced unexpected output: $out"
 
-# 3. php -m must list the Debian-aligned core extension set that the
-#    interpreter tarball auto-loads (REFACTOR_DEBIAN_ALIGNED.md).
-#    Optional extensions (curl, intl, mbstring, gd, mysqli, pgsql, sqlite3,
-#    bz2, zip, soap, exif, the trivial bucket) are NOT in the interpreter
-#    tarball — they ship via per-ext tarballs and are tested separately.
-#    opcache + xdebug are zend_extensions and are NOT auto-loaded; dedicated
-#    gates below exercise their dlopen path via -dzend_extension.
+# 3. php -m must list the Debian-faithful static set that the bare
+#    interpreter ships with (REFACTOR_DEBIAN_ALIGNED.md). After Phase A
+#    the interpreter tarball contains ZERO .so files — every loadable
+#    extension travels via its own per-ext tarball. The set below is the
+#    intersection of modules statically linked into bin/php across every
+#    supported PHP minor (8.1–8.5); 8.2+ also has random, and PHP 8.5+
+#    statically builds opcache + ships lexbor/uri. Those version-specific
+#    members are not asserted here.
 emit "php -m"
 modules=$("$PHP" -m) || die "php -m failed"
 printf '%s\n' "$modules"
-for ext in Core ctype date dom fileinfo filter hash iconv json libxml \
-           openssl pcre PDO Phar posix readline Reflection session \
-           SimpleXML sodium SPL standard tokenizer xml xmlreader \
-           xmlwriter zlib; do
+for ext in Core date filter hash json libxml openssl pcntl pcre \
+           Reflection session sodium SPL standard zlib; do
     printf '%s\n' "$modules" | grep -qx "$ext" || \
         printf '%s\n' "$modules" | grep -qix "$ext" || \
-        die "expected core extension '$ext' not loaded"
+        die "expected static module '$ext' not loaded"
+done
+# Forbidden: nothing that was moved to per-ext should appear in the bare
+# interpreter's `php -m`. If something does, a configure flag flip got
+# reverted upstream.
+for ext in ctype dom fileinfo iconv mbstring intl curl gd PDO Phar \
+           posix readline SimpleXML tokenizer xml xmlreader xmlwriter \
+           mysqli mysqlnd sqlite3 ffi; do
+    if printf '%s\n' "$modules" | grep -qx "$ext"; then
+        die "ext '$ext' is in the bare interpreter — should ship as per-ext only"
+    fi
 done
 
 # 4. xdebug must dlopen and report its version. This is the central use
@@ -109,33 +118,60 @@ else
     emit "NOTICE: imagick.so not found at $_imagick_so — skipping imagick dlopen gate (per-ext tarball not extracted)"
 fi
 
-# 4b. opcache (zend_extension) must register. On 8.1-8.4 it ships as
-#     opcache.so loaded by the 10-opcache.ini conf.d fragment; on 8.5+
-#     it's built statically into bin/php and no conf.d fragment is
-#     emitted. Both paths show up to userland identically as
-#     "Zend OPcache" via extension_loaded(), so the gate asks PHP
-#     directly without -dzend_extension (which on 8.5 would emit a
-#     "Failed loading" startup warning to stdout because opcache.so
-#     doesn't exist).
+# 4b. opcache (zend_extension): on PHP 8.5+ it's built statically into
+#     bin/php and registers automatically. On 8.1–8.4 opcache.so ships
+#     only as a per-ext tarball, so the bare interpreter has no opcache
+#     loaded. Detect the layout: if opcache.so is present in extension_dir
+#     (per-ext extracted alongside /php), load it explicitly via
+#     -dzend_extension and verify. If absent, skip if-and-only-if PHP < 8.5;
+#     fail if 8.5+ (where opcache is supposed to be static).
 emit "opcache load"
-out=$("$PHP" -r 'echo extension_loaded("Zend OPcache") ? "opcache=ok\n" : "opcache=missing\n";') \
-    || die "opcache load failed"
+php_major_minor=$("$PHP" -r 'echo PHP_MAJOR_VERSION, ".", PHP_MINOR_VERSION;')
+ext_dir=$("$PHP" -r 'echo ini_get("extension_dir");' 2>/dev/null)
+_opcache_so="${OPCACHE_SO:-$ext_dir/opcache.so}"
+if [ -f "$_opcache_so" ]; then
+    out=$("$PHP" -dzend_extension="$_opcache_so" \
+                  -r 'echo extension_loaded("Zend OPcache") ? "opcache=ok\n" : "opcache=missing\n";') \
+        || die "opcache load failed"
+elif [ "$php_major_minor" = "8.5" ] || [ "$php_major_minor" \> "8.5" ]; then
+    # 8.5+: opcache is static-built; should be loaded without any -d flag.
+    out=$("$PHP" -r 'echo extension_loaded("Zend OPcache") ? "opcache=ok\n" : "opcache=missing\n";') \
+        || die "opcache load failed"
+else
+    emit "NOTICE: opcache.so not found at $_opcache_so on PHP $php_major_minor — skipping (per-ext tarball not extracted)"
+    out="opcache=ok"
+fi
 printf '%s\n' "$out"
 case "$out" in opcache=ok) : ;; *) die "opcache did not register: $out" ;; esac
 
-# 5. dom (libxml2) must parse + XPath a small document — exercises the
-#    bundled libxml2 end-to-end (was previously an intl currency probe;
-#    intl moved out of the interpreter tarball with the Debian-aligned
-#    split and its own per-ext tarball is exercised separately).
-emit "dom + libxml2 roundtrip"
+# 5. libxml is built static into bin/php — exercise the bundled libxml2
+#    store path through PHP's procedural libxml_* functions (no dom.so
+#    needed; dom is a per-ext now and not loaded by default). If dom.so
+#    is extracted alongside /php, additionally verify a DOMDocument
+#    roundtrip; otherwise the static probe is sufficient.
+emit "libxml (static)"
 out=$("$PHP" -r '
-    $d = new DOMDocument();
-    $d->loadXML("<r><n>hi</n></r>");
-    $xp = new DOMXPath($d);
-    echo $xp->query("/r/n")->item(0)->textContent, "\n";
-') || die "dom roundtrip failed"
+    libxml_use_internal_errors(true);
+    libxml_clear_errors();
+    if (libxml_use_internal_errors() !== true) { echo "fail-flag\n"; exit; }
+    if (libxml_get_errors() !== []) { echo "fail-clear\n"; exit; }
+    echo "ok\n";
+') || die "libxml static probe failed"
 printf '%s\n' "$out"
-[ "$out" = "hi" ] || die "dom roundtrip got '$out', expected 'hi'"
+[ "$out" = "ok" ] || die "libxml static probe got '$out'"
+
+_dom_so="${DOM_SO:-$ext_dir/dom.so}"
+if [ -f "$_dom_so" ]; then
+    emit "dom + libxml2 roundtrip (per-ext extracted)"
+    out=$("$PHP" -dextension="$_dom_so" -r '
+        $d = new DOMDocument();
+        $d->loadXML("<r><n>hi</n></r>");
+        $xp = new DOMXPath($d);
+        echo $xp->query("/r/n")->item(0)->textContent, "\n";
+    ') || die "dom roundtrip failed"
+    printf '%s\n' "$out"
+    [ "$out" = "hi" ] || die "dom roundtrip got '$out', expected 'hi'"
+fi
 
 # 6. openssl must complete a real handshake-equivalent op (not just load).
 emit "openssl + hash"
