@@ -385,6 +385,29 @@
                 soap        = mkBuiltinExt "soap";
                 gmp         = mkBuiltinExt "gmp";
                 xsl         = mkBuiltinExt "xsl";
+                # Phase A completion: the remainder of Debian's
+                # `apt install php8.2-cli` transitive closure. build-php.sh
+                # already passes --enable-<X>=shared for every name below
+                # (see lines 104–134), so the .so files exist in the
+                # pre-prune tree; before v0.2.1 the flake just didn't
+                # package them, leaving bougie's BASELINE_EXTENSIONS list
+                # pointing at sections the index didn't publish.
+                # XML family — Debian's php-xml package, but in bougie's
+                # baseline because composer itself needs phar/xml at
+                # runtime and Magento + every modern framework requires
+                # dom/simplexml/xmlreader/xmlwriter.
+                ctype       = mkBuiltinExt "ctype";
+                dom         = mkBuiltinExt "dom";
+                fileinfo    = mkBuiltinExt "fileinfo";
+                iconv       = mkBuiltinExt "iconv";
+                pdo         = mkBuiltinExt "pdo";
+                phar        = mkBuiltinExt "phar";
+                posix       = mkBuiltinExt "posix";
+                simplexml   = mkBuiltinExt "simplexml";
+                tokenizer   = mkBuiltinExt "tokenizer";
+                xml         = mkBuiltinExt "xml";
+                xmlreader   = mkBuiltinExt "xmlreader";
+                xmlwriter   = mkBuiltinExt "xmlwriter";
                 # Phase A additions: configure now builds these shared so
                 # they ship only via per-ext tarballs. mysqlnd is a shared
                 # dep of mysqli + pdo_mysql; bougie fetches it implicitly
