@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.2.1](https://github.com/cresset-tools/php-build-standalone/compare/v0.2.0...v0.2.1) (2026-05-16)
+
+
+### Features
+
+* **php:** publish php-common+xml extensions and fix store-path RPATHs ([eb8c4a0](https://github.com/cresset-tools/php-build-standalone/commit/eb8c4a082bc6f63e51d82cf4438b74a7c785dbfb))
+* **php:** publish php-common+xml extensions and fix store-path RPATHs ([0bc65ab](https://github.com/cresset-tools/php-build-standalone/commit/0bc65ab1bb739f3f195eeab6b194a1f4fca45718))
+
 ## [0.2.0](https://github.com/cresset-tools/php-build-standalone/compare/v0.1.20...v0.2.0) (2026-05-16)
 
 
