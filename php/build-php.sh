@@ -39,6 +39,7 @@ set -euo pipefail
 : "${PBS_DEP_LIBEDIT:?}"
 : "${PBS_DEP_LIBPQ:?}"
 : "${PBS_DEP_LIBGMP:?}"
+: "${PBS_DEP_LIBFFI:?}"
 : "${PBS_PHP_PRE_CONFIGURE:?set by php.nix}"
 : "${PBS_PHP_POST_INSTALL:?set by php.nix}"
 : "${PBS_PHP_AUDIT_EXTRA:?set by php.nix}"
@@ -145,8 +146,9 @@ source "$PBS_PHP_PRE_CONFIGURE"
   "$PBS_PHP_ICONV_ARG" \
   "${PBS_PHP_GETTEXT_ARG//__PBS_SYSROOT__/${PBS_SYSROOT:-/dev/null}}" \
   --with-libedit="shared,$PBS_DEP_LIBEDIT" \
+  --with-ffi=shared \
   --enable-opcache \
-  PKG_CONFIG_PATH="$PBS_DEP_LIBZIP/lib/pkgconfig:$PBS_DEP_ICU/lib/pkgconfig:$PBS_DEP_LIBPNG/lib/pkgconfig:$PBS_DEP_LIBWEBP/lib/pkgconfig:$PBS_DEP_FREETYPE/lib/pkgconfig:$PBS_DEP_LIBJPEG_TURBO/lib/pkgconfig:$PBS_DEP_OPENSSL/lib/pkgconfig:$PBS_DEP_LIBCURL/lib/pkgconfig:$PBS_DEP_LIBXML2/lib/pkgconfig:$PBS_DEP_LIBXSLT/lib/pkgconfig:$PBS_DEP_ONIGURUMA/lib/pkgconfig:$PBS_DEP_ZLIB/lib/pkgconfig:$PBS_DEP_SQLITE/lib/pkgconfig:$PBS_DEP_LIBSODIUM/lib/pkgconfig:$PBS_DEP_BZIP2/lib/pkgconfig:$PBS_DEP_NGHTTP2/lib/pkgconfig:$PBS_DEP_LIBEDIT/lib/pkgconfig:$PBS_DEP_NCURSES/lib/pkgconfig:$PBS_DEP_LIBPQ/lib/pkgconfig"
+  PKG_CONFIG_PATH="$PBS_DEP_LIBZIP/lib/pkgconfig:$PBS_DEP_ICU/lib/pkgconfig:$PBS_DEP_LIBPNG/lib/pkgconfig:$PBS_DEP_LIBWEBP/lib/pkgconfig:$PBS_DEP_FREETYPE/lib/pkgconfig:$PBS_DEP_LIBJPEG_TURBO/lib/pkgconfig:$PBS_DEP_OPENSSL/lib/pkgconfig:$PBS_DEP_LIBCURL/lib/pkgconfig:$PBS_DEP_LIBXML2/lib/pkgconfig:$PBS_DEP_LIBXSLT/lib/pkgconfig:$PBS_DEP_ONIGURUMA/lib/pkgconfig:$PBS_DEP_ZLIB/lib/pkgconfig:$PBS_DEP_SQLITE/lib/pkgconfig:$PBS_DEP_LIBSODIUM/lib/pkgconfig:$PBS_DEP_BZIP2/lib/pkgconfig:$PBS_DEP_NGHTTP2/lib/pkgconfig:$PBS_DEP_LIBEDIT/lib/pkgconfig:$PBS_DEP_NCURSES/lib/pkgconfig:$PBS_DEP_LIBPQ/lib/pkgconfig:$PBS_DEP_LIBFFI/lib/pkgconfig"
 
 # Detoxify build-defs.h BEFORE compile. configure has just substituted
 # /nix/store/<hash>-pbs-* paths into CONFIGURE_COMMAND, PHP_PREFIX,
@@ -211,10 +213,8 @@ done
 # Forbidden: any module that should ship only as a per-ext tarball must
 # NOT appear in the bare interpreter's php -m. If one does, a configure
 # flag flip got reverted or a static-by-default got missed.
-# (ffi: deferred to a follow-up — PHP 8.5.6's ext/ffi/ffi.c has a compile
-# error against clang 18 + libffi 3.4.8 we need to debug separately.)
 for _fbd in ctype iconv mbstring intl curl gd fileinfo phar posix \
-            tokenizer pdo dom mysqli mysqlnd sqlite3 readline \
+            tokenizer pdo dom mysqli mysqlnd sqlite3 readline ffi \
             bcmath calendar ftp exif bz2 zip shmop soap sockets \
             sysvmsg sysvsem sysvshm gmp pgsql xmlreader xmlwriter \
             SimpleXML xsl; do
@@ -275,7 +275,7 @@ _load_test() {
 for _ext in mbstring intl curl bz2 zip gd exif bcmath calendar ftp \
             shmop sockets sysvmsg sysvsem sysvshm gmp fileinfo phar posix \
             tokenizer ctype iconv xml dom pdo pgsql sqlite3 soap \
-            mysqlnd; do
+            ffi mysqlnd; do
   _load_test "$_ext" "$_ext"
 done
 # Dependent extensions: load required modules first.

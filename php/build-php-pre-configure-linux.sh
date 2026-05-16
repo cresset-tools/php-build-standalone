@@ -27,3 +27,17 @@ fi
 export CC="${PBS_TOOLCHAIN}/bin/cc -Wl,--as-needed"
 export CXX="${PBS_TOOLCHAIN}/bin/c++ -Wl,--as-needed"
 export LDFLAGS="$LDFLAGS ${libstdcxx_a}"
+
+# Suppress glibc's inline string macros. Our CentOS 7 / glibc 2.17 sysroot
+# (manylinux floor) ships <bits/string2.h>, which under -O2 redefines
+# strncmp/strcmp/etc. as 3-arg function-like macros. Glibc 2.25+ removed
+# these inlines, so upstream PHP CI never trips on it — but ext/ffi/ffi.c
+# in PHP 8.5+ uses `strncmp(p, ZEND_STRL("FFI_SCOPE"))`, and the C
+# preprocessor counts top-level commas in strncmp's arg list BEFORE
+# expanding ZEND_STRL, so it looks like 2 args to the macro and the
+# build fails with "too few arguments provided to function-like macro
+# invocation". Defining __NO_STRING_INLINES (a glibc-documented opt-out
+# checked in <features.h>) prevents bits/string2.h from being included
+# at all; the regular libc function is used instead, and modern compiler
+# builtins inline the simple cases anyway, so there's no perf delta.
+export CPPFLAGS="$CPPFLAGS -D__NO_STRING_INLINES"

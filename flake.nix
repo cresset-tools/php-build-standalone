@@ -191,7 +191,7 @@
                 inherit (deps)
                   zlib openssl libxml2 libxslt sqlite oniguruma libsodium bzip2
                   libpng libjpeg-turbo libwebp freetype
-                  nghttp2 libzip icu libcurl ncurses libedit libpq libgmp;
+                  nghttp2 libzip icu libcurl ncurses libedit libpq libgmp libffi;
               } // pkgs.lib.optionalAttrs darwin { inherit (deps) libiconv; });
 
               xdebug = pkgs.callPackage ./php/xdebug.nix {
@@ -383,13 +383,7 @@
                 # dep of mysqli + pdo_mysql; bougie fetches it implicitly
                 # when either of those is requested. Readline replaces
                 # PHP's previously-static ext/readline (libedit-backed).
-                #
-                # ffi is intentionally absent: PHP 8.5.6's ext/ffi/ffi.c
-                # fails to compile against clang 18 + libffi 3.4.8 (the
-                # ZEND_STRL("FFI_SCOPE") pattern trips a function-like-macro
-                # arg-count diagnostic). Adding ffi back is tracked as a
-                # follow-up; bougie's default-install list must omit it
-                # until a per-ext tarball exists.
+                ffi         = mkBuiltinExt "ffi";
                 readline    = mkBuiltinExt "readline";
                 mysqlnd     = mkBuiltinExt "mysqlnd";
               } // pkgs.lib.optionalAttrs (!darwin) {
