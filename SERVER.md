@@ -77,8 +77,8 @@ manage_etc_hosts = true              # default: false
 ```
 
 With the flag on, the bougie-server tenancy provisioner spawns
-`sudo bougie server hosts apply` after every `bougie services up
-server` mutation to re-sync the bougie sentinel block in
+`sudo bougie server hosts apply` after every `bougie up server`
+mutation to re-sync the bougie sentinel block in
 `/etc/hosts`. The sudo prompt is interactive (stdin/stdout/stderr
 inherited) so the password challenge lands in the user's terminal.
 If sudo fails or is cancelled, the server.toml change is still
@@ -131,8 +131,8 @@ exist in practice:
 
 * **Bougied-managed**:
   `$BOUGIE_HOME/state/services/server/conf/server.toml` — written by
-  the bougie-server tenancy provisioner during `bougie services up
-  server`. One `[[host]]` block per project tenant
+  the bougie-server tenancy provisioner during `bougie up server`.
+  One `[[host]]` block per project tenant
   (`<tenant>.bougie.run → <project>`). This is the path most users
   see.
 * **Hand-authored**: any file the user wrote, passed via
@@ -142,7 +142,7 @@ exist in practice:
 
 The CLI does **not** ship `bougie server add` / `bougie server
 remove` mutators. Host registration on the bougied-managed path
-goes through `bougie services up server`; on the hand-authored
+goes through `bougie up server`; on the hand-authored
 path users edit `server.toml` directly.
 
 ### 4.2 Schema
@@ -184,7 +184,7 @@ bougie server list [--format json-v1]
 `list` prints configured hosts in the resolved `server.toml` and (if
 a server is running and reachable on its control socket) live pool
 status. Host *mutation* is not a CLI surface — use
-`bougie services up server` (which the bougied tenancy provisioner
+`bougie up server` (which the bougied tenancy provisioner
 turns into a `[[host]]` block) or edit a hand-authored `server.toml`
 directly.
 
@@ -314,7 +314,7 @@ bougie server tls install                    # v1.x; fetch mkcert, run mkcert -i
 bougie server tls uninstall                  # v1.x; run mkcert -uninstall, drop $BOUGIE_HOME/tls/
 ```
 
-Host registration goes through `bougie services up server` (see
+Host registration goes through `bougie up server` (see
 SERVICES.md §3.5) rather than a dedicated `server add` mutator —
 the bougied-managed `server.toml` is treated as service state, not
 user config, and is the canonical source of `[[host]]` blocks for
@@ -399,7 +399,7 @@ Reuse from existing code:
 End-to-end smoke test against a project with PHP + xdebug installed via
 bougie:
 
-1. `bougie services add server` + `bougie services up server` from inside `/tmp/myapp` (provisions a `[[host]]` block for `myapp.bougie.run` and brings the server online under `bougied`). For a hand-authored config: write a `server.toml` with the `[[host]]` block and run `bougie server run --config /tmp/myapp/server.toml`.
+1. `bougie services add server` + `bougie up server` from inside `/tmp/myapp` (provisions a `[[host]]` block for `myapp.bougie.run` and brings the server online under `bougied`). For a hand-authored config: write a `server.toml` with the `[[host]]` block and run `bougie server run --config /tmp/myapp/server.toml`.
 2. `curl -i http://myapp.bougie.run:7080/` → 200, `X-Bougie-Pool: normal`.
 3. `curl -i -b XDEBUG_SESSION=1 http://myapp.bougie.run:7080/` → 200,
    `X-Bougie-Pool: xdebug`.

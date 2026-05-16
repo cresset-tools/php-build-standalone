@@ -159,7 +159,7 @@ consumes these without per-project service-specific knowledge.
 If `bougied` is not running, `bougie run` does NOT auto-spawn it.
 The env vars are absent; PHP code that depends on them fails with a
 connection error. Auto-spawning a daemon mid-`run` is too
-surprising — the user must `bougie services up` explicitly.
+surprising — the user must `bougie up` explicitly.
 
 ## 4. Sandbox policy
 
@@ -250,12 +250,12 @@ If the previous Running window lasted at least **60 seconds**, the
 next failure is treated as a fresh first-failure (backoff resets to
 1s). After **10 consecutive failures** inside the reset threshold,
 the supervisor stops respawning; the service stays in `Failed`
-until the operator runs `bougie services up <name>` manually.
+until the operator runs `bougie up <name>` manually.
 
 ### 5.2 Start order
 
 Catalog `after` / `requires` edges drive a Kahn topological sort at
-`services up`. `requires` failures are hard: dependents transition to
+`bougie up`. `requires` failures are hard: dependents transition to
 `Failed` without spawning. `after` is best-effort ordering only.
 
 ### 5.3 Stop order
