@@ -1,5 +1,36 @@
 # Changelog
 
+## [0.2.0](https://github.com/cresset-tools/php-build-standalone/compare/v0.1.20...v0.2.0) (2026-05-16)
+
+
+### ⚠ BREAKING CHANGES
+
+* **tools:** tool tarball binaries now require their closure libs to be installed in a sibling store/ directory and (for opensearch/rabbitmq) their requires_tools[] entries to be resolved. Clients from before bougie grows closure-walking + requires_tools support (UNBUNDLE_PLAN.md phases 0–2) cannot install these artifacts. Old self-bundled tool tarballs from prior publishes remain reachable under their original /versions/<V>/ snapshots.
+* **php:** consumers who unpacked the interpreter tarball directly and expected opcache/readline/pdo/etc. to be loaded must now fetch the matching per-ext tarballs. The bougie default-install policy (separate repo) reproduces apt install php8.2-cli on top of the bare interpreter.
+* **cli:** rename `bougie services up`/`down` → top-level `bougie up`/`down`
+* **server:** retire `server add/remove`; document --config-required `server run`
+
+### Features
+
+* **tools:** split bundled C-libs and embedded runtimes out of tool tarballs ([708a948](https://github.com/cresset-tools/php-build-standalone/commit/708a948a9eb3c87f3a536ab8b70fe71f8bb62907))
+
+
+### Bug Fixes
+
+* **php:** drop pcntl from extensions attrset (now static, no .so) ([ca9ff56](https://github.com/cresset-tools/php-build-standalone/commit/ca9ff56f841b2aa4a844c1ba64ab63de8cbaa7bb))
+* **php:** re-enable --with-ffi=shared, side-step glibc 2.17 string-inline macros ([0d84f38](https://github.com/cresset-tools/php-build-standalone/commit/0d84f3822c85cb71d6e3505d8322e0c8db44010b))
+
+
+### Refactoring
+
+* **php:** ship Debian-faithful interpreter tarball (Phase A+B) ([50eadc7](https://github.com/cresset-tools/php-build-standalone/commit/50eadc7071cac1e7a42f43455c5a1d05378d7e22))
+
+
+### Documentation
+
+* **cli:** rename `bougie services up`/`down` → top-level `bougie up`/`down` ([692de47](https://github.com/cresset-tools/php-build-standalone/commit/692de47b89d17da665c4c8a67b4a0b9071c4c97b))
+* **server:** retire `server add/remove`; document --config-required `server run` ([e2c07e4](https://github.com/cresset-tools/php-build-standalone/commit/e2c07e4f9a0d0c198104e75c07e5c4e85d549c30))
+
 ## [0.1.20](https://github.com/cresset-tools/php-build-standalone/compare/v0.1.19...v0.1.20) (2026-05-15)
 
 
