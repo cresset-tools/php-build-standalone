@@ -114,7 +114,27 @@ set an explicit `tenant` in the rare case both apply.
 | `redis` | Allocate first free DB number (0..15); store in `tenants.json`. No server-side op. | Release DB number; keep keys. | `redis-cli -n <n> FLUSHDB`. |
 | `opensearch` | Create index template scoped to `<t>-*`. | Remove from `tenants.json`; keep indices. | `DELETE <t>-*`. |
 | `rabbitmq` | `rabbitmqctl add_user <t> <pw>; add_vhost <t>; set_permissions -p <t> <t> ".*" ".*" ".*"`. | Remove from `tenants.json`; keep vhost. | `rabbitmqctl delete_vhost <t>; delete_user <t>`. |
-| `server` | Insert `[[host]]` block (`<tenant>.bougie.run` → project) into `<svc_conf>/server.toml`; send `reload-config` to the running `bougie server` so the in-memory `hostname → host` map is atomically swapped without a restart. | Remove host block; `reload-config`. | Default keeps the server.toml mutation (host block stays gone) + `$XDG_RUNTIME_DIR/bougie/server/<project-hash>/` (php-fpm sockets + rendered conf.d variants) is wiped. |
+| `server` | Resolve the project's docroot (see §3.2.5), then insert `[[host]]` block (`<tenant>.bougie.run` → project, `root = "<resolved>"`) into `<svc_conf>/server.toml`; send `reload-config` to the running `bougie server` so the in-memory `hostname → host` map is atomically swapped without a restart. | Remove host block; `reload-config`. | Default keeps the server.toml mutation (host block stays gone) + `$XDG_RUNTIME_DIR/bougie/server/<project-hash>/` (php-fpm sockets + rendered conf.d variants) is wiped. |
+
+#### 3.2.5 Server docroot resolution
+
+The `server` provisioner needs a project-relative docroot to write
+into the `[[host]]` block's `root = "…"` field. Precedence:
+
+1. **Explicit project config wins.** `[server] root = "<dir>"` in
+   `bougie.toml`, or `extra.bougie.server.root` in `composer.json`,
+   is used verbatim. Empty strings are rejected.
+2. **Auto-detect `pub/`.** Magento 2 and a handful of legacy
+   projects use this layout.
+3. **Auto-detect `public/`.** Laravel, Symfony, Drupal, and most
+   modern PHP frameworks.
+4. **Error otherwise.** `bougie up server` fails with `provision_failed`
+   and a hint pointing at both config sites. The user must set
+   the field; the tool will not invent a value.
+
+The check runs every `services up` (including idempotent re-ups
+where the tenant ledger already has an entry), so adding a `public/`
+directory and re-running `up` picks it up on the next provision.
 
 ### 3.3 Tenant store
 
