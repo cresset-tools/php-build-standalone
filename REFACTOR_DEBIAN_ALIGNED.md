@@ -2,88 +2,192 @@
 
 ## Decision
 
-Adopt the Debian model: a small fixed core in the interpreter tarball,
-everything else as separately-addressable per-extension downloads. The
-bougie CLI defines a "fat default" set on top so casual users still get a
-familiar PHP without having to think about extensions.
+Make the interpreter tarball mirror Debian's `php8.2-cli` package literally:
+just `bin/php` (+ `bin/php-fpm` + build-system files), zero `.so` files, no
+auto-loading conf.d. The composition of `bin/php` itself matches Debian's
+static-vs-shared split — modules Debian builds with `--enable-X` (no
+`=shared`) are statically linked in; modules Debian builds with `=shared`
+are not in the interpreter tarball at all.
 
-Status today: the interpreter tarball is "batteries-included" — every
-extension we build (35+ regular extensions + xdebug/imagick/redis/vips)
-ships in `lib/extensions/` with auto-loading conf.d fragments, AND each
-optional one is *also* generated as a per-ext tarball. Two byte-identical
-copies, with the per-ext distribution layer effectively demo-ware.
+Everything Debian ships as `.so` — including the `php-common`, `php-opcache`,
+and `php-readline` set that `apt install php8.2-cli` transitively pulls in —
+ships only as per-ext tarballs. The bougie CLI maintains a built-in
+**default-install** list naming those extensions, so `bougie php install 8.5`
+reproduces the user experience of `apt install php8.2-cli` by fetching the
+interpreter plus the default set in one go.
 
-After this refactor: the interpreter tarball ships only the core set with
-auto-loading conf.d fragments. Optional extensions ship only via the
-per-ext distribution layer (no .so in the interpreter tarball). The CLI
-chooses what to install on top.
+Two consequences worth being explicit about:
 
-## Core (bundled in the interpreter tarball, auto-loaded)
+1. The interpreter tarball alone is *less* than `apt install php8.2-cli`. It
+   matches `dpkg -L php8.2-cli`, not the four-package transitive closure.
+   `php -a` on the bare interpreter, for instance, errors with "Interactive
+   shell needs the readline extension" — same as a Debian system after
+   `apt-get remove php8.2-readline`.
 
-Aligned with what `php8.2-cli` provides on Debian Bookworm. Everything
-here is in the PHP source tree (`ext/`) and is broadly assumed by Composer,
-modern frameworks, and the `php -a` REPL.
+2. The "default-install" list is bougie CLI policy, not a tarball-layer
+   concept. Equivalent to apt's `Depends:` resolution: there is no tarball
+   that bundles the common set; there is a list the CLI iterates over.
 
-| Extension | C-lib deps | Why core |
-|---|---|---|
-| Core / Zend / standard | — | non-optional |
-| ctype | — | trivial, always present |
-| date | — | non-optional |
-| dom, simplexml, xml, xmlreader, xmlwriter | libxml2 | every framework touches XML at some level |
-| fileinfo | — | Composer / file uploads |
-| filter | — | basic input handling |
-| hash | — | non-optional |
-| iconv | libiconv (Darwin only) | charset conversion; Symfony/etc. fall back to mbstring or break |
-| json | — | non-optional since 8.0 |
-| libxml | libxml2 | wrapper for the dom/xml family |
-| openssl | openssl | HTTPS streams; phar OpenSSL signatures; mysqlnd TLS — Composer's network layer fails without it |
-| opcache | — | zend_extension; bundled into bin/php on 8.5, .so on older minors |
-| pcre | (built-in) | non-optional |
-| pdo | — | every DB library on top of it |
-| phar | — | Composer is a phar |
-| posix | — | trivial, distros all ship it |
-| readline | libedit + ncurses | `php -a` REPL line editing & history |
-| reflection | — | non-optional |
-| session | — | broad framework dep |
-| sodium | libsodium | `password_hash(ARGON2)`, modern crypto |
-| spl | — | non-optional |
-| tokenizer | — | reflection / static-analysis tooling |
-| zlib | zlib | gzip-compressed phars (composer.phar itself is gzip-compressed) |
-| mysqlnd | — | required by mysqli/pdo_mysql but lives in core; tiny |
+## What Debian actually does (the reference)
 
-**Bundled C libraries in the core tarball:**
-zlib, openssl, libxml2, libsodium, libedit, ncurses, (libiconv on Darwin only).
+Verified on Debian Bookworm:
 
-That's 7 store paths versus the 19+ today.
+```
+$ apt-cache show php8.2-cli | grep -E '^(Depends|Recommends):'
+Depends: …, php8.2-common, php8.2-opcache, php8.2-readline, …
+Recommends: (none — only Suggests: php-pear)
 
-## Optional (per-ext download via bougie)
+$ dpkg -L php8.2-cli | grep '\.so$'
+(empty)
+```
 
-Every other extension we currently build, plus the existing PECL set:
+`apt install php8.2-cli` resolves to four PHP packages:
 
-| Extension | C-lib deps |
+| Package | Ships |
 |---|---|
-| curl | libcurl, nghttp2 |
-| gd | libpng, libjpeg-turbo, libwebp, freetype |
-| intl | ICU |
-| mbstring | oniguruma |
-| mysqli, pdo_mysql | — (mysqlnd is core) |
-| pgsql, pdo_pgsql | libpq |
-| sqlite3, pdo_sqlite | sqlite |
-| bz2 | bzip2 |
-| zip | libzip |
-| soap | (libxml2 — already in core) |
-| exif | — |
-| bcmath, calendar, ftp, pcntl, shmop, sockets, sysvmsg, sysvsem, sysvshm | — |
-| **xdebug** | — |
-| **imagick** | imagemagick (+ libtiff, lcms2, openjpeg, libheif, libde265) |
-| **redis** | — |
-| **vips** *(Linux)* | libvips, glib, libffi, pcre2, expat |
+| `php8.2-cli` | the `php` binary, no `.so` files |
+| `php8.2-common` (hard Depends) | 17 `.so` + auto-loading conf.d for: calendar, ctype, exif, **ffi**, fileinfo, ftp, gettext, iconv, pdo, phar, posix, shmop, sockets, sysvmsg, sysvsem, sysvshm, tokenizer |
+| `php8.2-opcache` (hard Depends) | opcache.so + 10-opcache.ini |
+| `php8.2-readline` (hard Depends) | readline.so + 20-readline.ini |
 
-xdebug being moved out of the interpreter tarball is intentional. The
+The modules that remain when only `php8.2-cli` is present (i.e. without the
+three hard-dep packages) are **statically linked into `bin/php`** with
+`--enable-X` (no `=shared`):
+
+> Core, date, hash, json, libxml, pcre, random, Reflection, SPL, standard,
+> openssl, sodium, session, filter, pcntl, zlib
+
+That's the set the interpreter tarball must reproduce on its own.
+
+## The interpreter tarball
+
+### Built into `bin/php` (no `.so` file)
+
+| Extension | C-lib deps | Notes |
+|---|---|---|
+| Core, date, hash, json, pcre, random, Reflection, SPL, standard | — | non-optional; always built |
+| libxml | libxml2 | wrapper module; XML family ships as a per-ext download |
+| openssl | openssl | HTTPS streams, phar signatures, network layer for Composer |
+| sodium | libsodium | `password_hash(ARGON2)`, modern crypto |
+| session | — | broad framework dep |
+| filter | — | basic input handling |
+| pcntl | — | signal handling, fork; Debian builds in |
+| zlib | zlib | gzip-compressed phars (composer.phar) |
+
+### Bundled C libraries
+
+Only what `bin/php` links against directly:
+
+> zlib, openssl, libsodium, libxml2
+
+Four store paths versus the 19+ today.
+
+### What's NOT in the interpreter tarball
+
+No `.so` files. No `etc/php/conf.d/` fragments. No bundled libedit /
+ncurses / libffi / libcurl / ICU / libpng / libpq / etc. — those travel
+with whichever per-ext tarball needs them.
+
+`bin/php-fpm`, `bin/phpize`, `bin/php-config`, `include/php/`, `lib/build/`
+all stay in the interpreter tarball — they're SAPI binaries / build-system
+files, not extensions, and per-ext tarballs need them to be present when
+building extensions locally.
+
+## Default-install set (bougie CLI policy)
+
+`bougie php install <ver>` fetches the interpreter tarball **plus** the
+following per-ext tarballs, by name, mirroring Debian's transitive
+`php8.2-cli` closure. This list is hard-coded in the bougie CLI; it has no
+representation in the index or the tarball layout.
+
+| Group (informational) | Extensions |
+|---|---|
+| equiv. `php8.2-common` | calendar, ctype, exif, ffi, fileinfo, ftp, gettext (Linux only), iconv, pdo, phar, posix, shmop, sockets, sysvmsg, sysvsem, sysvshm, tokenizer |
+| equiv. `php8.2-opcache` | opcache |
+| equiv. `php8.2-readline` | readline |
+
+After `bougie php install 8.5`, `php -m` matches the 35-module output of
+Debian's `apt install php8.2-cli`.
+
+The default-install list can be opted out of with `bougie php install
+--bare`, which fetches only the interpreter tarball — useful for slim
+container images that vendor their own composer.json and let `bougie sync`
+materialize precisely what the project declares.
+
+## Optional (per-ext download via bougie, on top of the default)
+
+Everything Debian ships in `php8.2-*` packages outside the transitive
+`php8.2-cli` closure. Installed individually via `bougie ext add <name>`
+(which writes `ext-<name>: *` into `composer.json` and runs `bougie sync`)
+or implicitly when `composer.json` already declares them.
+
+The table groups extensions by their Debian package, for human reference
+only; the index keys on individual extension names.
+
+| Debian package | Extensions | C-lib deps |
+|---|---|---|
+| `php-xml` | dom, simplexml, xml, xmlreader, xmlwriter, xsl | libxml2 (already in core), libxslt |
+| `php-mysql` | mysqli, pdo_mysql, mysqlnd | — (mysqlnd built `=shared`, others link to it) |
+| `php-pgsql` | pgsql, pdo_pgsql | libpq |
+| `php-sqlite3` | sqlite3, pdo_sqlite | sqlite |
+| `php-curl` | curl | libcurl, nghttp2 |
+| `php-gd` | gd | libpng, libjpeg-turbo, libwebp, freetype |
+| `php-intl` | intl | ICU |
+| `php-mbstring` | mbstring | oniguruma |
+| `php-bz2` | bz2 | bzip2 |
+| `php-zip` | zip | libzip |
+| `php-soap` | soap | (libxml2 — already in core) |
+| `php-gmp` | gmp | libgmp |
+| `php-bcmath` | bcmath | — |
+| PECL — `php-xdebug` | xdebug | — |
+| PECL — `php-imagick` | imagick | imagemagick (+ libtiff, lcms2, openjpeg, libheif, libde265) |
+| PECL — `php-redis` | redis | — |
+| PECL — `php-apcu` | apcu | — |
+| PECL — `php-igbinary` | igbinary | — |
+| PECL — `php-msgpack` | msgpack | — |
+| PECL — `php-pcov` | pcov | — |
+| (no Debian package) | vips *(Linux)* | libvips, glib, libffi, pcre2, expat |
+
+Moving xdebug out of the interpreter tarball remains intentional. The
 project's selling point is "PHP that *can dlopen* xdebug" — that capability
-is the value, not pre-installation. `bougie install xdebug` is one command.
+is the value, not pre-installation. `bougie ext add xdebug` is one command.
 
-## Sources.nix factoring (do alongside Phase A)
+## Configure-flag changes
+
+The concrete delta to `php/build-php.sh`:
+
+```diff
+- --with-zlib="$PBS_DEP_ZLIB"
++ --with-zlib="$PBS_DEP_ZLIB"                # unchanged: static
+- --with-openssl="shared,$PBS_DEP_OPENSSL"
++ --with-openssl="$PBS_DEP_OPENSSL"          # static (Debian)
+- --with-libxml="$PBS_DEP_LIBXML2"
++ --with-libxml="$PBS_DEP_LIBXML2"           # unchanged: static
+- --with-sodium="shared,$PBS_DEP_LIBSODIUM"
++ --with-sodium="$PBS_DEP_LIBSODIUM"         # static (Debian)
+- --enable-session=shared
++ --enable-session                           # static (Debian)
+- --enable-filter=shared
++ --enable-filter                            # static (Debian)
+- --enable-pcntl=shared
++ --enable-pcntl                             # static (Debian)
+- --enable-mysqlnd
++ --enable-mysqlnd=shared                    # mysqlnd.so → per-ext (php-mysql)
++ --with-ffi=shared                          # NEW: per-ext (default-install)
+- --with-libedit="$PBS_DEP_LIBEDIT"
++ --with-libedit="shared,$PBS_DEP_LIBEDIT"   # readline.so → per-ext (default-install)
+```
+
+All other `=shared` flags stay (so PHP still emits the `.so` for each
+optional extension), but the interpreter-tarball assembly drops every
+`.so` from `lib/extensions/` and every `conf.d/*.ini` fragment. The `.so`
+files go straight into per-ext tarballs.
+
+XML family flags (`--enable-dom=shared`, etc.) stay too — they're needed
+so PHP builds dom.so, simplexml.so, etc. Those then ship as per-ext
+tarballs; the interpreter tarball drops them.
+
+## sources.nix factoring (do alongside Phase A)
 
 Today each `phpVersions.<minor>` entry carries pointers to extension series:
 
@@ -126,69 +230,81 @@ the interpreter — and untangling them in one PR keeps the story coherent.
 
 ## Phase A — extension membership
 
-Move the `.so` files for every "optional" extension out of the interpreter
-tarball, and stop emitting their auto-loading conf.d fragments from
-`build-php.sh`. They continue to be **built** (PHP's configure still emits
-`--enable-X=shared` for each), but the resulting .so is consumed only by
-the per-ext tarball derivation, not by the merged interpreter tree.
+Drop every `.so` and every auto-loading conf.d fragment from the interpreter
+tarball. Apply the static-vs-shared configure-flag flips so `bin/php`'s
+built-in module list matches Debian.
 
 Concretely:
 
-1. `build-php.sh`: remove the conf.d fragment generation for the optional
-   set (everything in the table above except mysqlnd/opcache). The
-   `--enable-X=shared` lines stay so PHP still builds the .so. Keep the
-   per-extension load test (`php -m | grep ^X$`) but run it against an
-   ad-hoc conf.d that loads each ext, since the default conf.d won't.
+1. `build-php.sh`:
+   - Apply the configure-flag diff above (flip session/filter/pcntl/sodium/
+     openssl/mysqlnd to non-shared static; flip libedit/readline to shared;
+     add `--with-ffi=shared`).
+   - Remove **all** conf.d fragment generation. The interpreter tarball
+     ships no `etc/php/conf.d/*.ini` files. (Default-install conf.d
+     fragments are emitted by each per-ext tarball.)
+   - Keep the per-extension load test (`php -m | grep ^X$`) but run it
+     against an ad-hoc conf.d that loads each ext, since the default
+     conf.d won't exist anymore.
 
-2. `flake.nix`: drop xdebug, imagick, redis, vips from `interpreterDeps`.
-   Add the rest of the optional extensions to the `extensions` attrset
-   (they're already built shared by PHP; they just need a `mkBuiltinExt`
-   call each).
+2. `flake.nix`:
+   - Drop xdebug, imagick, redis, vips from `interpreterDeps`.
+   - Trim `interpreterDeps` down to the four core C libs only (zlib,
+     openssl, libsodium, libxml2).
+   - Add the `php-common` set + opcache + readline + ffi as entries in
+     the `extensions` attrset alongside the existing per-ext list.
+     `mkBuiltinExt` for each.
 
-3. `tree.nix`: needs to know which `.so` files to keep when assembling
-   the interpreter tarball. Easiest path: pass the **core** extension
-   list in, and prune `lib/extensions/<api>/*.so` to that allowlist
-   after PHP's install but before finalize.
+3. `tree.nix`:
+   - Prune **all** `.so` files out of `lib/extensions/<api>/` before
+     finalizing the interpreter tarball.
+   - Prune **all** `etc/php/conf.d/*.ini` files.
+   - Keep `lib/build/`, `include/php/`, `bin/phpize`, `bin/php-config`
+     so per-ext tarballs can be built against the interpreter on a user's
+     machine if desired.
 
 4. `tarball-extension.nix`: no change — already keyed by extension name
-   and finds the .so in the tree it's given. We pass the unpruned tree
-   here so it can locate every optional .so.
+   and finds the `.so` in the tree it's given. We pass the unpruned tree
+   here so it can locate every `.so`.
 
-5. README + DESIGN: describe the rule explicitly.
+5. README + DESIGN: describe the rule explicitly: interpreter tarball =
+   `dpkg -L php8.2-cli` shape; default-install set = `apt install
+   php8.2-cli` shape; everything else = on demand.
 
-After Phase A: the interpreter tarball has the core .so set with auto-loading
-conf.d fragments; the optional .so files are reachable only via per-ext
-tarballs. Bundled C libs *all* still ship with the interpreter (Phase B
-trims them).
+After Phase A: the interpreter tarball ships `bin/php`, `bin/php-fpm`, the
+phpize/php-config build-system files, and the four core C libs. Nothing
+else. Per-ext tarballs cover the entire `.so` surface, including the
+default-install set. Bundled C libs *all* still ship with the interpreter
+(Phase B trims them); after Phase A only the optional-extension `.so`
+membership has moved.
 
-Tarball size impact: small — saves the .so bytes (~5–10 MB compressed) but
-not the heavy C libs.
+Tarball size impact: small — saves all `.so` bytes (~10–15 MB compressed)
+but not the heavy C libs.
 
 ## Phase B — bundled-C-lib membership
 
-Filter the bundled C libraries in the interpreter tarball down to the core
-set (zlib, openssl, libxml2, libsodium, libedit, ncurses, +libiconv on
-Darwin). Optional C libs ship only via the existing per-store-path tarballs
-that the CLI fetches when an optional extension declares them in its closure
-manifest.
+Filter the bundled C libraries in the interpreter tarball down to the four
+that `bin/php` directly links against: **zlib, openssl, libsodium,
+libxml2**. Everything else — libedit, ncurses, libffi, ICU, libcurl,
+nghttp2, libpng, libjpeg-turbo, libwebp, freetype, libpq, sqlite, bzip2,
+libzip, oniguruma, libgmp, libxslt, imagemagick & delegates, libvips & its
+glib/expat/pcre2/libffi deps — moves to per-store-path tarballs that the
+CLI fetches when the matching extension is installed.
 
 Concretely:
 
-1. `flake.nix`: split `deps` into `coreDeps` (the seven above) and
+1. `flake.nix`: split `deps` into `coreDeps` (the four above) and
    `optionalDeps` (everything else). `sharedDeps` becomes `coreDeps` for
    `tree.nix` consumption.
 
 2. `tree.nix`: change `bundledDeps` to receive only the core set. The
    merged tree's `store/` dir then contains only core C-lib store paths.
-   Optional extension `.so` files placed in the tree by Phase A still
-   carry their full original RPATHs pointing at the (now absent) optional
-   store paths — those paths exist in the per-store-path tarballs but
-   not in the interpreter tarball.
 
 3. `tarball-extension.nix` / `closure.nix`: the closure walk already
-   records every transitive store-path the .so links to. Per-ext manifests
-   already declare their full closure. The CLI is expected to materialize
-   missing store paths under `store/` when installing an optional ext.
+   records every transitive store-path a `.so` links to. Per-ext
+   manifests already declare their full closure. The CLI is expected to
+   materialize missing store paths under `store/` when installing an
+   extension.
 
 4. `tarball-store-path.nix`: unchanged — already produces independently
    addressable per-store-path tarballs for every dep. After Phase B,
@@ -196,48 +312,83 @@ Concretely:
    them on demand.
 
 5. Audit changes: today's audit gates assume all referenced store paths
-   exist in the merged tree. After Phase B, optional .so files referenced
-   from per-ext tarballs (built against the unpruned tree) will RPATH-resolve
-   only when the consumer has installed the matching per-store-path tarball.
-   The audit-time check needs to run against the unpruned tree (so RPATHs
-   resolve at *build* time), but the *shipped* interpreter tarball drops
-   the optional store paths.
+   exist in the merged tree. After Phase B, optional `.so` files
+   (per-ext-tarball artefacts built against the unpruned tree) will
+   RPATH-resolve only when the consumer has installed the matching
+   per-store-path tarball. The build-time audit needs to run against the
+   unpruned tree (so RPATHs resolve at *build* time), but the *shipped*
+   interpreter tarball drops the optional store paths.
 
    Practically: build-time audit walks the full pre-prune tree; pruning
    happens last, before tarball creation.
 
 Tarball size impact: tens of MB. ICU alone is ~30 MB uncompressed.
-libcurl + nghttp2 + libpq + freetype + the GD delegates + imagemagick's
-delegates account for most of the rest.
+libcurl + nghttp2 + libpq + freetype + GD delegates + imagemagick delegates
+account for most of the rest. After Phase B the interpreter tarball is in
+the few-MB range.
 
 ## Phase C — bougie default-install policy (separate repo)
 
-Out of scope for this refactor. The CLI side defines a "fat default" set
-that mirrors today's bundled list, so `bougie install` (or `bougie php
-install 8.5`) on a fresh machine pulls roughly what users get today,
-without forcing them to know which extensions exist.
+The bougie CLI carries a hard-coded list of extensions to fetch alongside
+the interpreter on `bougie php install <ver>`:
 
-Documented here only because Phase A+B remove the bundled-by-default
-behavior and the CLI side restores it as policy rather than as a structural
-property of the tarball.
+```rust
+const DEFAULT_INSTALL_EXTENSIONS: &[&str] = &[
+    // Debian php8.2-common transitive closure
+    "calendar", "ctype", "exif", "ffi", "fileinfo", "ftp",
+    "gettext", "iconv", "pdo", "phar", "posix", "shmop", "sockets",
+    "sysvmsg", "sysvsem", "sysvshm", "tokenizer",
+    // Debian php8.2-opcache
+    "opcache",
+    // Debian php8.2-readline
+    "readline",
+];
+```
+
+`gettext` is gated to Linux at install time (Apple's libc lacks a real
+libintl). Otherwise the list is platform-independent.
+
+Flags:
+
+- `bougie php install <ver> --bare` — skip the default-install set; fetch
+  only the interpreter tarball. For users who want maximum control or
+  small container images.
+- `bougie php install <ver> --without <name>` — skip a specific entry.
+- `bougie ext add <name>` and `bougie ext remove <name>` continue to work
+  on top of whatever's installed, including the default set. Removing a
+  default-install extension is allowed; the project keeps working as long
+  as nothing references it.
+
+The default-install list is intentionally not configurable per-project:
+projects already express their needs via `composer.json`'s `require.ext-*`,
+and `bougie sync` materializes them on top. The default-install set exists
+for "I just installed PHP and expect it to behave like Debian's PHP" —
+which is one experience to nail, not a knob to tune per project.
+
+Out of scope for this refactor — the bougie repo implements it, this repo
+just produces the per-ext tarballs the list names.
 
 ## Migration / compatibility
 
 This is a breaking change for any consumer who downloads the interpreter
-tarball directly and expects e.g. `curl` to be loaded. Mitigations:
+tarball directly and expects e.g. `opcache`, `readline`, or `pdo` to be
+loaded. Mitigations:
 
 - bump the index.json `interpreters[].schema_version` so cached clients
   notice the boundary
-- README and DISTRIBUTION.md call out the change and the `bougie install`
-  workflow
+- README and DISTRIBUTION.md call out the change and the `bougie php
+  install` / `bougie ext add` workflow
 - the per-ext distribution layer is the supported path forward; no
-  back-compat tarball flavor
+  back-compat tarball flavour
 
 There is no deprecation period — bougie isn't released yet, and the
 interpreter tarballs aren't yet pinned by external consumers.
 
 ## Out of scope for this refactor
 
+- Splitting build-system files (phpize, php-config, headers) into a
+  separate `php-dev`-equivalent tarball. They stay in the interpreter
+  tarball for now.
 - musl variant (deferred separately)
 - ABI tagging spec (a manylinux-equivalent for PHP)
 - TS / debug build matrix
@@ -245,3 +396,5 @@ interpreter tarballs aren't yet pinned by external consumers.
   addressing works
 - Changes to the audit gates beyond the pruning-vs-audit timing fix
   required by Phase B
+- Per-SAPI splitting (Debian splits php8.2-cli vs php8.2-fpm vs
+  php8.2-embed; we ship CLI + FPM together)
