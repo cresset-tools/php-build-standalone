@@ -163,6 +163,21 @@
           # same fold, so the lists stay parallel by construction.
           sharedDeps = builtins.attrValues deps;
 
+          # Per-store-path tarballs for every bundled C-lib dep. Keyed by
+          # the same short name as `deps`; each value is a derivation
+          # producing <storeName>.tar.zst + <storeName>.sha256.
+          #
+          # Hoisted to top-level so both mkPhpVariant (for PHP + per-ext
+          # closure manifests) and the tool tarballs (mariadb, redis,
+          # mkcert, erlang) reference the SAME derivations. Each Nix
+          # derivation is content-addressed by its inputs, so a tool's
+          # closure entry for openssl resolves to the same .sha256 the
+          # PHP extension closure walker emits — they dedupe at the blob
+          # layer when index.nix runs.
+          storePathTarballs = builtins.mapAttrs
+            (_: dep: pkgs.callPackage ./shared/tarball-store-path.nix { inherit dep; })
+            deps;
+
           # Build one complete PHP variant from a phpVersions key.
           # Bundled C deps are shared; only the PHP and per-extension
           # derivations differ between variants.
@@ -269,16 +284,6 @@
                 inherit tree;
                 storeManifestFile = tree.passthru.storeManifestFile;
               };
-
-              # Per-store-path tarballs for every bundled C-lib dep.
-              # Keyed by the same short name as `deps`; each value is a
-              # derivation producing <storeName>.tar.zst + <storeName>.sha256.
-              # The tarball itself embeds the full content-addressed
-              # storeName in its filename — the attribute name only needs
-              # to be stable enough to address the output.
-              storePathTarballs = builtins.mapAttrs
-                (_: dep: pkgs.callPackage ./shared/tarball-store-path.nix { inherit dep; })
-                deps;
 
               # Shared args for every per-extension tarball. Keeps the per-
               # extension definitions below to just (extDrv, extName,
@@ -487,8 +492,17 @@
             tree = mariadbTree;
             inherit sources nixpkgsRev;
             mariadbVersion = mariadbSpec.version;
-            bundledDepNames = mariadbBundledDepNames;
+            bundledDeps = mariadbBundledDeps;
+            storePathTarballs = builtins.attrValues storePathTarballs;
           };
+          # Store-path tarballs for mariadb's closure libs. Same shared
+          # derivations PHP variants use — content-addressed dedup at
+          # the blob layer takes care of the cross-reference. We pull
+          # the subset matching mariadbBundledDepNames into the
+          # release dir so shared/index.nix picks them up alongside
+          # the mariadb tarball + manifest.
+          mariadbStorePathTarballs =
+            map (n: storePathTarballs.${n}) mariadbBundledDepNames;
           # Release aggregate for mariadb. Same flat-dir shape as the
           # per-PHP-minor release derivation so shared/index.nix walks
           # both kinds with the same loop.
@@ -503,6 +517,9 @@
             installPhase = ''
               mkdir -p "$out"
               cp -a ${mariadbTarball}/. "$out/" && chmod -R u+w "$out"
+              ${pkgs.lib.concatMapStringsSep "\n" (spt: ''
+                cp -a ${spt}/. "$out/" && chmod -R u+w "$out"
+              '') mariadbStorePathTarballs}
             '';
           };
 
@@ -534,8 +551,11 @@
             tree = redisServerTree;
             inherit sources nixpkgsRev;
             redisVersion = redisServerSpec.version;
-            bundledDepNames = redisServerBundledDepNames;
+            bundledDeps = redisServerBundledDeps;
+            storePathTarballs = builtins.attrValues storePathTarballs;
           };
+          redisServerStorePathTarballs =
+            map (n: storePathTarballs.${n}) redisServerBundledDepNames;
           redisServerRelease = pkgs.stdenvNoCC.mkDerivation {
             pname = "pbs-release-redis";
             version = redisServerSpec.version;
@@ -547,6 +567,9 @@
             installPhase = ''
               mkdir -p "$out"
               cp -a ${redisServerTarball}/. "$out/" && chmod -R u+w "$out"
+              ${pkgs.lib.concatMapStringsSep "\n" (spt: ''
+                cp -a ${spt}/. "$out/" && chmod -R u+w "$out"
+              '') redisServerStorePathTarballs}
             '';
           };
 
@@ -579,8 +602,11 @@
             tree = erlangTree;
             inherit sources nixpkgsRev;
             erlangVersion = erlangSpec.version;
-            bundledDepNames = erlangBundledDepNames;
+            bundledDeps = erlangBundledDeps;
+            storePathTarballs = builtins.attrValues storePathTarballs;
           };
+          erlangStorePathTarballs =
+            map (n: storePathTarballs.${n}) erlangBundledDepNames;
           erlangRelease = pkgs.stdenvNoCC.mkDerivation {
             pname = "pbs-release-erlang";
             version = erlangSpec.version;
@@ -592,6 +618,9 @@
             installPhase = ''
               mkdir -p "$out"
               cp -a ${erlangTarball}/. "$out/" && chmod -R u+w "$out"
+              ${pkgs.lib.concatMapStringsSep "\n" (spt: ''
+                cp -a ${spt}/. "$out/" && chmod -R u+w "$out"
+              '') erlangStorePathTarballs}
             '';
           };
 
@@ -626,8 +655,11 @@
             tree = mkcertTree;
             inherit sources nixpkgsRev;
             mkcertVersion = mkcertSpec.version;
-            bundledDepNames = mkcertBundledDepNames;
+            bundledDeps = mkcertBundledDeps;
+            storePathTarballs = builtins.attrValues storePathTarballs;
           };
+          mkcertStorePathTarballs =
+            map (n: storePathTarballs.${n}) mkcertBundledDepNames;
           # Release flat-dir aggregate — same shape mariadb uses so
           # shared/index.nix walks both kinds with the same loop.
           mkcertRelease = pkgs.stdenvNoCC.mkDerivation {
@@ -641,6 +673,9 @@
             installPhase = ''
               mkdir -p "$out"
               cp -a ${mkcertTarball}/. "$out/" && chmod -R u+w "$out"
+              ${pkgs.lib.concatMapStringsSep "\n" (spt: ''
+                cp -a ${spt}/. "$out/" && chmod -R u+w "$out"
+              '') mkcertStorePathTarballs}
             '';
           };
 
@@ -695,15 +730,19 @@
           # When adding a new default plugin, both add the
           # sources.opensearch-<name> entry and append to this list.
           opensearchSpec = sources.opensearch;
+          # `jdk` is no longer threaded in: after the tool-closure
+          # split (UNBUNDLE_PLAN.md) the JDK ships as its own tool
+          # tarball, and the client materializes the install/jdk
+          # symlink at install time.
           opensearch = pkgs.callPackage ./tools/opensearch/opensearch.nix {
-            inherit opensearchSpec jdk;
+            inherit opensearchSpec;
             pluginSpecs = [
               { name = "analysis-icu";       spec = sources.opensearch-analysis-icu; }
               { name = "analysis-phonetic";  spec = sources.opensearch-analysis-phonetic; }
             ];
           };
           opensearchTarball = pkgs.callPackage ./tools/opensearch/tarball.nix {
-            inherit opensearch sources nixpkgsRev;
+            inherit opensearch jdkTarball sources nixpkgsRev;
             opensearchVersion = opensearchSpec.version;
           };
           opensearchRelease = pkgs.stdenvNoCC.mkDerivation {
@@ -728,12 +767,15 @@
           # entirely (no native code outside the injected Erlang, which
           # has already been finalized).
           rabbitmqSpec = sources.rabbitmq;
+          # After the tool-closure split (UNBUNDLE_PLAN.md) erlang
+          # rides as its own tool tarball, so rabbitmq.nix no longer
+          # consumes erlangTree directly. The tarball.nix declares
+          # the dependency via requires_tools[].
           rabbitmq = pkgs.callPackage ./tools/rabbitmq/rabbitmq.nix {
             inherit rabbitmqSpec;
-            erlangTree = erlangTree;
           };
           rabbitmqTarball = pkgs.callPackage ./tools/rabbitmq/tarball.nix {
-            inherit rabbitmq sources nixpkgsRev;
+            inherit rabbitmq erlangTarball sources nixpkgsRev;
             rabbitmqVersion = rabbitmqSpec.version;
           };
           rabbitmqRelease = pkgs.stdenvNoCC.mkDerivation {

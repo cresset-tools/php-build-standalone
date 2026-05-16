@@ -82,6 +82,16 @@ pkgs.stdenvNoCC.mkDerivation {
   pname = "pbs-tarball-jdk";
   version = jdkVersion;
 
+  # Surface tag + version so consuming tools (opensearch's requires_tools
+  # entry) can reference this artifact's identity without re-deriving
+  # the filename-sanitization logic. version stays in the upstream
+  # `+`-form for the manifest path; the tag uses the sanitized form
+  # for the filename.
+  passthru = {
+    inherit tag;
+    version = jdkVersion;
+  };
+
   dontUnpack = true;
   dontConfigure = true;
   dontBuild = true;

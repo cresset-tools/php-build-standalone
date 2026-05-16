@@ -1,7 +1,7 @@
-# Erlang/OTP tarball derivation. Mirrors tools/redis/tarball.nix +
-# tools/mariadb/tarball.nix: produces one self-contained .tar.zst
-# carrying the OTP install tree plus bundled C-libs under store/, with
-# a `kind=tool` manifest.
+# Erlang/OTP tarball derivation. Mirrors tools/mariadb/tarball.nix:
+# emits a `kind=tool` manifest carrying the OTP install tree. Bundled
+# OpenSSL / zlib / ncurses ride as closure[] entries; the client
+# resolves them through $BOUGIE_HOME/store/. See UNBUNDLE_PLAN.md.
 #
 # Produces under $out:
 #   erlang-<ver>-<triple>.tar.zst   redistributable artifact
@@ -10,16 +10,13 @@
 , target ? if pkgs.stdenv.isDarwin then "aarch64-apple-darwin" else "x86_64-unknown-linux-gnu"
 , erlangVersion ? "0.0.0-unknown"
 , nixpkgsRev
-, bundledDepNames
+, bundledDeps        # list of pbs-<lib> derivations (closure entries).
+, storePathTarballs  # list of pbs-store-<lib> derivations.
 }:
 let
   inherit (pkgs) stdenv lib;
 
-  bundledLibraries =
-    lib.listToAttrs (map
-      (n: { name = n; value = sources.${n}.version; })
-      bundledDepNames)
-    // { erlang = erlangVersion; };
+  bundledLibraries = { erlang = erlangVersion; };
 
   libcAttr = if stdenv.isDarwin
     then { family = "darwin"; min = "@MIN_MACOS@"; }
@@ -39,8 +36,9 @@ let
     blob = {
       url = "{BLOB_BASE}/blobs/@TARBALL_SHA256_PFX@/@TARBALL_SHA256@";
       sha256 = "@TARBALL_SHA256@";
+      size = "@TARBALL_SIZE@";
     };
-    closure = [];
+    closure = "@CLOSURE_PLACEHOLDER@";
     # Headline CLI surface. OTP also installs run_erl / to_erl for
     # detached-shell use, but those are operations primitives consumed
     # by `rabbitmq-server -detached` etc. rather than a user-facing CLI.
@@ -55,6 +53,10 @@ let
   };
 
   metadataFile = pkgs.writeText "erlang.json.in" (builtins.toJSON metadata);
+
+  closureSnippet = import ./../../shared/tool-closure.nix {
+    inherit pkgs bundledDeps storePathTarballs;
+  };
 
   libcProbeAndSub = if stdenv.isDarwin then ''
     min_macos=$( { find ${tree} -type f \( -name '*.dylib' -o -name '*.so' -o -path '*/bin/*' \) -print0 \
@@ -78,12 +80,19 @@ pkgs.stdenvNoCC.mkDerivation {
   pname = "pbs-tarball-erlang";
   inherit (tree) version;
 
+  # Surface tag + version so consuming tools (rabbitmq's
+  # requires_tools entry) can reference this artifact's identity.
+  passthru = {
+    inherit tag;
+    version = erlangVersion;
+  };
+
   dontUnpack = true;
   dontConfigure = true;
   dontBuild = true;
 
   nativeBuildInputs = with pkgs;
-    [ gnutar zstd coreutils gnused findutils gawk ]
+    [ gnutar zstd coreutils gnused findutils gawk jq ]
     ++ lib.optionals (!stdenv.isDarwin) [ binutils-unwrapped ];
 
   installPhase = ''
@@ -97,6 +106,9 @@ pkgs.stdenvNoCC.mkDerivation {
     cp -a ${tree}/. "$staging/install/"
     chmod -R u+w "$staging/install"
 
+    # Drop bundled C-libs; they ride as closure entries.
+    rm -rf "$staging/install/store"
+
     export SOURCE_DATE_EPOCH=1704067200
     tar --sort=name \
         --mtime="@$SOURCE_DATE_EPOCH" \
@@ -107,14 +119,19 @@ pkgs.stdenvNoCC.mkDerivation {
     tree_hash=$(zstd -dc "$out/$base.tar.zst" | sha256sum | awk '{print $1}')
     tarball_sha256=$(sha256sum "$out/$base.tar.zst" | awk '{print $1}')
     tarball_sha256_pfx="''${tarball_sha256:0:2}"
+    tarball_size=$(stat -c %s "$out/$base.tar.zst")
 
     ${libcProbeAndSub}
+    ${closureSnippet}
 
     sed -e "s/@TREE_HASH@/$tree_hash/" \
         -e "s/@TARBALL_SHA256@/$tarball_sha256/g" \
         -e "s/@TARBALL_SHA256_PFX@/$tarball_sha256_pfx/g" \
+        -e "s|\"@TARBALL_SIZE@\"|$tarball_size|g" \
         "''${libc_sed[@]}" \
-        ${metadataFile} > "$out/$base.json"
+        ${metadataFile} \
+      | jq --argjson cl "$closure_json_array" '. + {closure: $cl}' \
+      > "$out/$base.json"
 
     echo "produced:"
     ls -la "$out"

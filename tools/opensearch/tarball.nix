@@ -1,33 +1,26 @@
-# OpenSearch tarball derivation. Mirrors tools/redis/tarball.nix +
-# tools/mkcert/tarball.nix: produces one self-contained .tar.zst carrying
-# the OpenSearch tree (core + bundled JDK + default plugin set) and
-# a `kind=tool` manifest.
+# OpenSearch tarball derivation. Mirrors tools/mariadb/tarball.nix: emits
+# a `kind=tool` manifest carrying the OpenSearch core + default plugin
+# set. The bundled JDK ships SEPARATELY as the `jdk` tool; the client
+# resolves it through `requires_tools[]` and materializes a symlink at
+# install/jdk → $BOUGIE_HOME/store/jdk-<ver>/. See UNBUNDLE_PLAN.md.
 #
 # Produces under $out:
-#   opensearch-<ver>-<triple>.tar.zst   redistributable artifact (~270MB)
+#   opensearch-<ver>-<triple>.tar.zst   redistributable artifact (~70MB,
+#                                       down from ~270MB pre-JDK-split)
 #   opensearch-<ver>-<triple>.json      fat manifest (DISTRIBUTION.md shape)
-{ pkgs, opensearch, sources, nixpkgsRev
+{ pkgs, opensearch, jdkTarball, sources, nixpkgsRev
 , target ? if pkgs.stdenv.isDarwin then "aarch64-apple-darwin" else "x86_64-unknown-linux-gnu"
 , opensearchVersion
 }:
 let
   inherit (pkgs) stdenv lib;
 
-  # OpenSearch tree carries our standalone Temurin JDK (tools/jdk/)
-  # wired in at install/jdk/, plus the default plugin set under
-  # install/plugins/. Surface all three (core, JDK, plugins) in the
-  # manifest so the bundled_libraries record stays informative —
-  # useful for security audits even though they ship inside this
-  # tarball rather than as separately addressable artifacts.
-  #
-  # Plugin names come from opensearch.passthru.bundledPluginNames
-  # (set in tools/opensearch/opensearch.nix from the pluginSpecs list);
-  # their versions are pinned to opensearchVersion since the plugin
-  # version MUST match the core version (verified at build time).
+  # Post-split bundled_libraries records only what physically ships
+  # inside this tarball: opensearch core + its default plugin set.
+  # The JDK is no longer bundled here — it travels as a separate tool
+  # artifact, audited via the JDK manifest's own bundled_libraries.
   bundledLibraries =
-    { opensearch = opensearchVersion;
-      jdk = sources.jdk.version;
-    }
+    { opensearch = opensearchVersion; }
     // (lib.listToAttrs (map
          (n: { name = "opensearch-${n}"; value = opensearchVersion; })
          (opensearch.passthru.bundledPluginNames or [])));
@@ -38,6 +31,26 @@ let
 
   flavor = "default";
   tag = "opensearch-${opensearchVersion}-${target}-${flavor}";
+
+  # The JDK requires_tools entry. Path components in manifest_url:
+  #   {INDEX_BASE}        → substituted by index.nix's stage_manifest
+  #   {PUBLISH_VERSION}   → substituted by index.nix's stage_manifest
+  #   target              → resolved at this tarball's eval time
+  #   jdk version+tag     → read from jdkTarball.passthru (preserves
+  #                         the upstream `+`-form for the version
+  #                         path component and the sanitized form for
+  #                         the tag filename — see tools/jdk/tarball.nix)
+  jdkRequiresTool = {
+    name = "jdk";
+    version = jdkTarball.passthru.version;
+    tag = jdkTarball.passthru.tag;
+    manifest_url =
+      "{INDEX_BASE}/versions/{PUBLISH_VERSION}/targets/${target}/manifests/tool/jdk/${jdkTarball.passthru.version}/${jdkTarball.passthru.tag}.json";
+    # link_into is relative to the outer tool's install root. OpenSearch's
+    # launcher reads OPENSEARCH_JAVA_HOME from ${OPENSEARCH_HOME}/jdk
+    # when not set explicitly, so the symlink lands at install/jdk/.
+    link_into = "jdk";
+  };
 
   metadata = {
     schema = 1;
@@ -50,8 +63,10 @@ let
     blob = {
       url = "{BLOB_BASE}/blobs/@TARBALL_SHA256_PFX@/@TARBALL_SHA256@";
       sha256 = "@TARBALL_SHA256@";
+      size = "@TARBALL_SIZE@";
     };
     closure = [];
+    requires_tools = [ jdkRequiresTool ];
     binaries = [ "opensearch" "opensearch-cli" "opensearch-keystore" "opensearch-plugin" "opensearch-shard" ];
     bundled_libraries = bundledLibraries;
     build_info = {
@@ -84,6 +99,11 @@ pkgs.stdenvNoCC.mkDerivation {
   pname = "pbs-tarball-opensearch";
   version = opensearchVersion;
 
+  passthru = {
+    inherit tag;
+    version = opensearchVersion;
+  };
+
   dontUnpack = true;
   dontConfigure = true;
   dontBuild = true;
@@ -113,12 +133,14 @@ pkgs.stdenvNoCC.mkDerivation {
     tree_hash=$(zstd -dc "$out/$base.tar.zst" | sha256sum | awk '{print $1}')
     tarball_sha256=$(sha256sum "$out/$base.tar.zst" | awk '{print $1}')
     tarball_sha256_pfx="''${tarball_sha256:0:2}"
+    tarball_size=$(stat -c %s "$out/$base.tar.zst")
 
     ${libcProbeAndSub}
 
     sed -e "s/@TREE_HASH@/$tree_hash/" \
         -e "s/@TARBALL_SHA256@/$tarball_sha256/g" \
         -e "s/@TARBALL_SHA256_PFX@/$tarball_sha256_pfx/g" \
+        -e "s|\"@TARBALL_SIZE@\"|$tarball_size|g" \
         "''${libc_sed[@]}" \
         ${metadataFile} > "$out/$base.json"
 

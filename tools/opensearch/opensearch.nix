@@ -1,20 +1,21 @@
 # OpenSearch server bundle.
 #
-# Repackages upstream's `min` (core-only) OpenSearch tarball and wires:
-#   - our standalone Temurin (tools/jdk/) into install/jdk/
-#   - the default plugin set (analysis-icu, analysis-phonetic) into
-#     install/plugins/<name>/
+# Repackages upstream's `min` (core-only) OpenSearch tarball: strips
+# the bundled JDK (which ships separately as the `jdk` tool — see
+# UNBUNDLE_PLAN.md) and pre-installs the default plugin set
+# (analysis-icu, analysis-phonetic) into install/plugins/<name>/.
 #
 # Symmetric across both supported platforms (x86_64-linux, aarch64-
-# darwin) — OpenSearch min is 100% platform-agnostic JVM bytecode
-# (audited 2026-05-14: zero ELF/Mach-O outside jdk/, zero embedded
-# native libs inside the 127 JARs), so one upstream tarball serves
-# both. See shared/sources.nix `opensearch` for the URL pin rationale.
+# darwin) — OpenSearch min (without its bundled JDK) is 100%
+# platform-agnostic JVM bytecode (audited 2026-05-14: zero ELF/Mach-O
+# outside jdk/, zero embedded native libs inside the 127 JARs), so
+# one upstream tarball serves both. See shared/sources.nix
+# `opensearch` for the URL pin rationale.
 #
 # Like tools/jdk/jdk.nix, this DOES NOT go through shared/tree.nix +
-# finalize-{linux,darwin}.sh — there are no ELFs/Mach-Os in the
-# OpenSearch tree itself, and the injected JDK already has relocatable
-# RPATHs intact from its repackage step.
+# finalize-{linux,darwin}.sh — there are no ELFs/Mach-Os left in the
+# tree after the JDK strip, and the externally-shipped JDK already
+# has relocatable RPATHs intact from its own repackage step.
 #
 # Plugin handling: the Nix sandbox has no network access, so
 # `bin/opensearch-plugin install <name>` doesn't work at build time.
@@ -30,7 +31,7 @@
 # sources.opensearch.version requires bumping the plugin versions in
 # lockstep — there's a `version` field on each plugin spec in
 # sources.nix to make that explicit.
-{ pkgs, opensearchSpec, jdk, pluginSpecs }:
+{ pkgs, opensearchSpec, pluginSpecs }:
 let
   inherit (pkgs) stdenv lib;
   src = pkgs.fetchurl {
@@ -85,27 +86,37 @@ pkgs.stdenvNoCC.mkDerivation {
     rm -f "$out/README.md" "$out/NOTICE.txt" "$out/LICENSE.txt" \
           "$out/CONTRIBUTING.md" "$out/SECURITY.md"
 
-    # Wire our JDK in at install/jdk/. OpenSearch's launcher resolves
-    # OPENSEARCH_JAVA_HOME from OPENSEARCH_HOME/jdk when not set
-    # explicitly, so this is the canonical location. cp -a preserves
-    # the JDK's internal symlink chains (libjli → server/libjvm via
-    # $ORIGIN / @loader_path) which the JVM needs at startup.
-    mkdir -p "$out/jdk"
-    cp -a ${jdk}/. "$out/jdk/"
-    chmod -R u+w "$out/jdk"
+    # Strip the upstream bundled JDK. The "min" upstream tarball still
+    # carries a complete Temurin tree at jdk/ (~200MB of the 270MB
+    # release size) — the "min" naming refers to the absent
+    # performance-analyzer / cross-cluster-replication / SQL plugins,
+    # not the JDK. Pre-split, our build replaced this tree with our
+    # own; post-split (UNBUNDLE_PLAN.md), the JDK ships as its own
+    # tool tarball and the client materializes the symlink at install
+    # time. Removing it here is what gets the opensearch tarball down
+    # from ~270MB to ~70MB.
+    rm -rf "$out/jdk"
+
+    # The client materializes install/jdk/ at install time as a
+    # symlink to $BOUGIE_HOME/store/jdk-<ver>/ — the `link_into:
+    # "jdk"` mechanism declared in this tarball's manifest under
+    # requires_tools[]. OpenSearch's launcher reads
+    # OPENSEARCH_JAVA_HOME from $OPENSEARCH_HOME/jdk; the symlink
+    # absorbs the indirection. The smoke-test script lays the
+    # symlink down to verify the artifact in isolation (see
+    # scripts/smoke-test-tarball.sh).
 
     # Install pre-fetched plugins into install/plugins/<name>/.
     ${installPluginSteps}
 
-    # Audit: bin/opensearch + jdk/bin/java both present + executable.
+    # Audit: bin/opensearch present + executable. The jdk/bin/java
+    # check moves to smoke-test time, after the symlink is laid down.
     [ -x "$out/bin/opensearch" ] \
       || { echo "FATAL: $out/bin/opensearch not present/executable" >&2; exit 1; }
-    [ -x "$out/jdk/bin/java" ] \
-      || { echo "FATAL: $out/jdk/bin/java not present/executable (JDK injection failed)" >&2; exit 1; }
 
-    # Sanity: no /nix/store leak. Upstream tarball is built outside
-    # Nix; our injected JDK was also built outside Nix originally. So
-    # this is purely a packaging-bug tripwire.
+    # Sanity: no /nix/store leak. The upstream tarball is built
+    # outside Nix; nothing this derivation does should introduce a
+    # /nix/store reference. Tripwire for future packaging bugs.
     if grep -rlI '/nix/store/' "$out" 2>/dev/null | head -1 | grep -q .; then
       echo "FATAL: /nix/store reference leaked into OpenSearch install tree" >&2
       grep -rlI '/nix/store/' "$out" 2>/dev/null | head -5 >&2
