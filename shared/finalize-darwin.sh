@@ -287,19 +287,52 @@ _audit_codesign_one() {
 }
 
 # ---- Phase dispatch ----
+#
+# Two callers: tree.nix (full merged tree) and tarball-store-path.nix
+# (single bundled dep staged at store/<X>/). The Darwin audit gates
+# (rpath_allowlist, load_dylib, codesign) are all structural — they
+# inspect LC_RPATH / LC_LOAD_DYLIB shapes, not on-disk file presence —
+# so they work unchanged on a partial tree. Only the phases that
+# touch PHP-specific files (phpize prefix rewrite, toolchain-leak
+# strip) need to be skipped in store-path mode.
+#
+# Selected via PBS_FINALIZE_MODE=full|store-path. Default `full`
+# keeps tree.nix's call site unchanged.
 
 _build_soname_map
 
-run_phases \
-  darwin_install_name_walk \
-  common_remove_la_files \
-  common_detoxify_pc_files \
-  common_detoxify_text_files \
-  common_rewrite_phpize_prefix \
-  darwin_strip_toolchain_leaks \
-  darwin_strip_machos \
-  darwin_codesign \
-  common_audit_no_nix_store_text \
-  darwin_audit_rpath_allowlist \
-  darwin_audit_load_dylib \
-  darwin_audit_codesign
+PBS_FINALIZE_MODE="${PBS_FINALIZE_MODE:-full}"
+case "$PBS_FINALIZE_MODE" in
+  full)
+    run_phases \
+      darwin_install_name_walk \
+      common_remove_la_files \
+      common_detoxify_pc_files \
+      common_detoxify_text_files \
+      common_rewrite_phpize_prefix \
+      darwin_strip_toolchain_leaks \
+      darwin_strip_machos \
+      darwin_codesign \
+      common_audit_no_nix_store_text \
+      darwin_audit_rpath_allowlist \
+      darwin_audit_load_dylib \
+      darwin_audit_codesign
+    ;;
+  store-path)
+    run_phases \
+      darwin_install_name_walk \
+      common_remove_la_files \
+      common_detoxify_pc_files \
+      common_detoxify_text_files \
+      darwin_strip_machos \
+      darwin_codesign \
+      common_audit_no_nix_store_text \
+      darwin_audit_rpath_allowlist \
+      darwin_audit_load_dylib \
+      darwin_audit_codesign
+    ;;
+  *)
+    echo "FAIL: unknown PBS_FINALIZE_MODE=$PBS_FINALIZE_MODE (expected full|store-path)" >&2
+    exit 1
+    ;;
+esac

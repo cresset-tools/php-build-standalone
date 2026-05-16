@@ -329,21 +329,133 @@ _check_rpath_resolves() {
   done
 }
 
+# ---- Partial-tree audit variant ----
+#
+# Per-store-path tarballs run finalize against a staging tree that
+# contains ONLY one bundled dep at store/<X>/, not its peer closure. The
+# default linux_audit_rpath_resolves gate would then fail because every
+# DT_NEEDED soname's encoded RPATH points at $ORIGIN/../../../store/<Y>/lib
+# where <Y> isn't physically present in the staging tree (it'll be
+# materialized on the consumer side from the peer's own tarball).
+#
+# This variant does the same soname-resolution check but resolves
+# $ORIGIN relative to the file's directory in PBS_INSTALL, then walks
+# the SONAME map (built from PBS_STORE_MANIFEST, which carries peer
+# nixPaths) to verify the soname lives in one of the peer store paths
+# the encoded RPATH names. Pass it instead of linux_audit_rpath_resolves
+# when finalizing a partial tree.
+
+linux_audit_rpath_resolves_partial() {
+  local fail=""
+  walk_files _check_rpath_resolves_partial
+  if [ -n "$fail" ]; then
+    echo "FAIL: DT_NEEDED soname not resolvable via RPATH+SONAME map:" >&2
+    echo "$fail" >&2
+    return 1
+  fi
+}
+_check_rpath_resolves_partial() {
+  local f="$1"
+  is_elf "$f" || return 0
+
+  local neededs=()
+  while IFS= read -r needed; do
+    [ -n "$needed" ] || continue
+    _is_system_soname "$needed" && continue
+    neededs+=("$needed")
+  done < <(readelf -d "$f" 2>/dev/null | awk -F'[][]' '/\(NEEDED\)/ {print $2}')
+
+  [ ${#neededs[@]} -eq 0 ] && return 0
+
+  local raw_rpath
+  raw_rpath="$(readelf -d "$f" 2>/dev/null | awk -F'[][]' '/\(RPATH\)/ {print $2}')"
+  if [ -z "$raw_rpath" ]; then
+    fail+="$f: has non-system DT_NEEDED but no RPATH: ${neededs[*]}"$'\n'
+    return 0
+  fi
+
+  # The RPATH entries are $ORIGIN-relative; extract the storeName
+  # segment ("...store/<storeName>/lib") from each and verify the
+  # SONAME map agrees that the needed soname lives there.
+  local rpath_stores=()
+  IFS=':' read -ra rpath_entries <<< "$raw_rpath"
+  for entry in "${rpath_entries[@]}"; do
+    case "$entry" in
+      *'/store/'*'/lib'*)
+        local sn="${entry##*/store/}"
+        sn="${sn%/lib*}"
+        rpath_stores+=("$sn")
+        ;;
+    esac
+  done
+
+  for needed in "${neededs[@]}"; do
+    local provider="${PBS_SONAME_STORE[$needed]:-}"
+    if [ -z "$provider" ]; then
+      fail+="$f: NEEDED $needed has no provider in SONAME map"$'\n'
+      continue
+    fi
+    local matched=0
+    for s in "${rpath_stores[@]}"; do
+      [ "$s" = "$provider" ] && { matched=1; break; }
+    done
+    if [ "$matched" -eq 0 ]; then
+      fail+="$f: NEEDED $needed → $provider, but RPATH lists only [${rpath_stores[*]}]"$'\n'
+    fi
+  done
+}
+
 # ---- Phase dispatch ----
+#
+# Two callers feed this script:
+#   tree.nix              — full merged interpreter/tool tree. Default
+#                           phase list (every gate).
+#   tarball-store-path.nix — single bundled dep staged at store/<X>/
+#                           for republishing as a per-store-path
+#                           tarball. Skips phases that don't apply
+#                           (no phpize/php-config to detoxify, no
+#                           sibling deps for the resolves gate),
+#                           swaps in the partial resolves variant.
+#
+# Callers select via PBS_FINALIZE_MODE=full|store-path. Default is
+# `full` so the existing tree.nix call site keeps working unchanged.
 
 _build_soname_map
 
-run_phases \
-  linux_strip_elfs \
-  linux_patchelf_walk \
-  common_remove_la_files \
-  common_detoxify_pc_files \
-  common_detoxify_text_files \
-  common_rewrite_phpize_prefix \
-  linux_strip_toolchain_leaks \
-  common_audit_no_nix_store_text \
-  linux_audit_runpath_disallowed \
-  linux_audit_rpath_origin \
-  linux_audit_needed_bare \
-  linux_audit_interp \
-  linux_audit_rpath_resolves
+PBS_FINALIZE_MODE="${PBS_FINALIZE_MODE:-full}"
+case "$PBS_FINALIZE_MODE" in
+  full)
+    run_phases \
+      linux_strip_elfs \
+      linux_patchelf_walk \
+      common_remove_la_files \
+      common_detoxify_pc_files \
+      common_detoxify_text_files \
+      common_rewrite_phpize_prefix \
+      linux_strip_toolchain_leaks \
+      common_audit_no_nix_store_text \
+      linux_audit_runpath_disallowed \
+      linux_audit_rpath_origin \
+      linux_audit_needed_bare \
+      linux_audit_interp \
+      linux_audit_rpath_resolves
+    ;;
+  store-path)
+    run_phases \
+      linux_strip_elfs \
+      linux_patchelf_walk \
+      common_remove_la_files \
+      common_detoxify_pc_files \
+      common_detoxify_text_files \
+      common_audit_no_nix_store_text \
+      linux_audit_runpath_disallowed \
+      linux_audit_rpath_origin \
+      linux_audit_needed_bare \
+      linux_audit_interp \
+      linux_audit_rpath_resolves_partial
+    ;;
+  *)
+    echo "FAIL: unknown PBS_FINALIZE_MODE=$PBS_FINALIZE_MODE (expected full|store-path)" >&2
+    exit 1
+    ;;
+esac

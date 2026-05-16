@@ -295,6 +295,17 @@ let
     # Deterministic: the Nix derivation hash encodes every build input.
     passthru.storeName =
       "${name}-${version}-${builtins.substring 11 8 (baseNameOf drv.outPath)}";
+
+    # transitiveBundledDeps: every pbs-* dep this one transitively
+    # needs at runtime for its DT_NEEDED/LC_LOAD_DYLIB sonames to
+    # resolve. Does NOT include self — callers prepend `[dep]` when
+    # they need a self-inclusive manifest. lib.unique by derivation
+    # identity collapses diamond closures (e.g. libcurl pulls openssl
+    # + nghttp2, both of which pull zlib → one zlib entry).
+    passthru.transitiveBundledDeps =
+      lib.unique (lib.concatLists (map
+        (d: (d.passthru.transitiveBundledDeps or [ ]) ++ [ d ])
+        deps));
   };
 in
   drv
