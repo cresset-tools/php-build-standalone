@@ -369,7 +369,9 @@
                 bcmath      = mkBuiltinExt "bcmath";
                 calendar    = mkBuiltinExt "calendar";
                 ftp         = mkBuiltinExt "ftp";
-                pcntl       = mkBuiltinExt "pcntl";
+                # pcntl moved from =shared to static in build-php.sh
+                # (Phase A — matches Debian's php8.2-cli static set), so
+                # no pcntl.so is produced. It's part of bin/php directly.
                 shmop       = mkBuiltinExt "shmop";
                 sockets     = mkBuiltinExt "sockets";
                 sysvmsg     = mkBuiltinExt "sysvmsg";
