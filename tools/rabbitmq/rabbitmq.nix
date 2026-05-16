@@ -1,11 +1,12 @@
 # RabbitMQ server bundle.
 #
-# Repackages upstream's `generic-unix` RabbitMQ tarball and wires our
-# standalone Erlang/OTP (tools/erlang/) into install/erlang/. Same
-# shape tools/opensearch uses for tools/jdk: prebuilt-repackage,
-# bypasses shared/tree.nix because the platform-specific bits live
-# inside the injected runtime (already $ORIGIN-rewritten by finalize)
-# rather than in the upstream tarball.
+# Repackages upstream's `generic-unix` RabbitMQ tarball. Erlang/OTP
+# ships separately as the `erlang` tool — see UNBUNDLE_PLAN.md — and
+# the client materializes install/erlang/ at install time via the
+# `link_into: "erlang"` mechanism in this tarball's manifest. Same
+# pattern tools/opensearch uses for tools/jdk. This derivation
+# bypasses shared/tree.nix because all platform-specific bits live
+# inside the externally-shipped Erlang tarball.
 #
 # Symmetric across linux + darwin: generic-unix is 100% platform-
 # agnostic Erlang bytecode (.beam, .ez), the shell launchers under
@@ -25,19 +26,13 @@
 #
 # Erlang home wiring: RabbitMQ's launcher scripts (sbin/rabbitmq-env)
 # call `erl` and `escript` from PATH. We patch sbin/rabbitmq-env to
-# prepend ${RABBITMQ_HOME}/erlang/bin to PATH so the bundled VM is
-# always picked up, even when the user has a system Erlang of a
-# different (potentially incompatible) version on PATH.
-#
-# We consume `erlangTree` (the finalized install tree) rather than the
-# bare `erlang` derivation. The bare derivation still carries the
-# build's /nix/store paths inside its shell wrappers; the finalized
-# tree has those replaced with /__PBS_PREFIX__ by finalize-common.sh's
-# text-detoxify pass and has $ORIGIN-relative RPATHs encoded into the
-# crypto NIF + beam.smp. The store/<openssl>/<zlib>/<ncurses> bundled
-# C-lib subtree comes along with it under install/erlang/store/,
-# preserved as-is so the RPATH offsets remain valid.
-{ pkgs, rabbitmqSpec, erlangTree }:
+# prepend $RABBITMQ_HOME/erlang/bin to PATH. After the tool-closure
+# split that path resolves through the client-materialized symlink at
+# install/erlang/ — pointing at the separately-installed erlang tool
+# tarball — so the bundled VM is always picked up, even when the user
+# has a system Erlang of a different (potentially incompatible)
+# version on PATH.
+{ pkgs, rabbitmqSpec }:
 let
   inherit (pkgs) stdenv lib;
   src = pkgs.fetchurl {
@@ -67,13 +62,14 @@ pkgs.stdenvNoCC.mkDerivation {
     # surface, not relevant to a tarball-managed install.
     rm -f "$out"/LICENSE* "$out"/INSTALL
 
-    # Wire our Erlang in at install/erlang/. cp -a preserves the wrapper
-    # symlinks (bin/erlc → ../lib/erlang/bin/erlc etc.) and the stub
-    # bin/erl that the erlang tool ships, so dyn_erl-based relocation
-    # still works when the whole RabbitMQ tree is moved.
-    mkdir -p "$out/erlang"
-    cp -a ${erlangTree}/. "$out/erlang/"
-    chmod -R u+w "$out/erlang"
+    # Erlang is NOT injected into install/erlang/ anymore. After the
+    # tool-closure split (UNBUNDLE_PLAN.md), Erlang ships as its own
+    # `kind=tool` tarball, and the client materializes install/erlang/
+    # at install time as a symlink to $BOUGIE_HOME/store/erlang-<ver>/
+    # — the `link_into: "erlang"` mechanism declared in this tarball's
+    # manifest under requires_tools[]. The rabbitmq-env path patch
+    # below still resolves through `$0/../erlang/bin` because it walks
+    # the symlink.
 
     # Patch sbin/rabbitmq-env to prepend our bundled Erlang's bin dir to
     # PATH. Every other sbin/ script (rabbitmq-server, rabbitmqctl,
@@ -119,22 +115,15 @@ unset _pbs_erlang_bin\
     mkdir -p "$out/etc/rabbitmq"
     echo '[rabbitmq_management].' > "$out/etc/rabbitmq/enabled_plugins"
 
-    # Audit: launcher + erl + escript all present + executable. erl is a
-    # symlink in our Erlang bundle so `-x` on it follows the link; that's
-    # fine — we want the resolved file to be executable.
+    # Audit: launcher present + executable. erl/escript checks move
+    # to smoke-test time, after the install/erlang/ symlink is laid
+    # down against an extracted erlang tool tarball.
     [ -x "$out/sbin/rabbitmq-server" ] \
       || { echo "FATAL: $out/sbin/rabbitmq-server not present/executable" >&2; exit 1; }
-    [ -x "$out/erlang/bin/erl" ] \
-      || { echo "FATAL: $out/erlang/bin/erl not present/executable (Erlang injection failed)" >&2; exit 1; }
-    [ -x "$out/erlang/bin/escript" ] \
-      || { echo "FATAL: $out/erlang/bin/escript not present/executable" >&2; exit 1; }
 
-    # Sanity: no /nix/store leak. Upstream tarball is built outside Nix;
-    # our injected Erlang's RPATHs went through finalize already. So a
-    # /nix/store reference inside this tree would mean either upstream
-    # baked one in (vanishingly unlikely for a pure-bytecode artifact)
-    # or our Erlang tree carries an un-finalized leak. Same tripwire
-    # tools/opensearch uses.
+    # Sanity: no /nix/store leak. Upstream tarball is built outside
+    # Nix; nothing this derivation does should introduce a /nix/store
+    # reference. Tripwire for future packaging bugs.
     if grep -rlI '/nix/store/' "$out" 2>/dev/null | head -1 | grep -q .; then
       echo "FATAL: /nix/store reference leaked into RabbitMQ install tree" >&2
       grep -rlI '/nix/store/' "$out" 2>/dev/null | head -5 >&2

@@ -102,7 +102,19 @@ pkgs.runCommand "pbs-index" {
       local src="$1"
       local dst
       dst="$(mktemp "$staging_dir/m.XXXXXXXX.json")"
-      sed -e "s|{BLOB_BASE}|$BLOB_BASE|g" -e "s|{INDEX_BASE}|$INDEX_BASE|g" "$src" > "$dst"
+      # Three publish-time placeholders are substituted into manifest
+      # bodies here so the served bytes (and their hash in the section
+      # row) reflect final URLs:
+      #   {BLOB_BASE}        — blob host (blobs.bougie.tools by default)
+      #   {INDEX_BASE}       — index host (index.bougie.tools by default)
+      #   {PUBLISH_VERSION}  — the immutable per-publish snapshot ID
+      # used by `requires_tools[].manifest_url` so the depended-on
+      # manifest URL points at the same /versions/<V>/ tree this
+      # publish lives under.
+      sed -e "s|{BLOB_BASE}|$BLOB_BASE|g" \
+          -e "s|{INDEX_BASE}|$INDEX_BASE|g" \
+          -e "s|{PUBLISH_VERSION}|${publishVersion}|g" \
+          "$src" > "$dst"
       echo "$dst"
     }
 
@@ -462,14 +474,21 @@ pkgs.runCommand "pbs-index" {
           exit 1
         fi
 
-        # Substitute {BLOB_BASE} in the body for both the on-disk manifest
-        # and the recomputed section entry. The frozen file's recorded
-        # manifest.sha256 is host-agnostic (placeholder bytes); the live
-        # root needs the hash of the *served* (substituted) bytes instead.
-        # Section rows themselves no longer carry URLs that need substitution
-        # (manifest.path is absolute and hostname-free), so only the manifest
-        # body needs sed.
-        substituted_body="$(echo "$fmanifest_body" | sed -e "s|{BLOB_BASE}|$BLOB_BASE|g")"
+        # Substitute publish-time placeholders in the body. The frozen
+        # file's recorded manifest.sha256 is host-agnostic (placeholder
+        # bytes); the live root needs the hash of the *served*
+        # (substituted) bytes instead. Section rows themselves no
+        # longer carry URLs that need substitution (manifest.path is
+        # absolute and hostname-free), so only the manifest body needs
+        # sed. The {PUBLISH_VERSION} substitution re-versions any
+        # `requires_tools[].manifest_url` URLs the frozen entry
+        # carried so they point into the *current* publish's tree
+        # (same re-versioning trick the manifest_path case-statement
+        # above does for the on-disk manifest path).
+        substituted_body="$(echo "$fmanifest_body" \
+          | sed -e "s|{BLOB_BASE}|$BLOB_BASE|g" \
+                -e "s|{INDEX_BASE}|$INDEX_BASE|g" \
+                -e "s|{PUBLISH_VERSION}|${publishVersion}|g")"
         substituted_sha256="$(echo "$substituted_body" | sha256sum | awk '{print $1}')"
 
         manifest_dest="$out/$fmanifest_dest_rel"

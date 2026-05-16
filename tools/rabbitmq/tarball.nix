@@ -1,31 +1,27 @@
-# RabbitMQ tarball derivation. Mirrors tools/opensearch/tarball.nix —
-# bypass shared/tree.nix because the RabbitMQ install tree itself has
-# zero ELFs/Mach-Os (all bytecode + shell), and the injected Erlang
-# already has its RPATHs finalized.
+# RabbitMQ tarball derivation. Mirrors tools/opensearch/tarball.nix:
+# bypasses shared/tree.nix (the RabbitMQ install tree itself has zero
+# ELFs/Mach-Os — all bytecode + shell), strips the embedded Erlang
+# (which now ships as the `erlang` tool — see UNBUNDLE_PLAN.md), and
+# declares an `erlang` dependency via requires_tools[]. The client
+# materializes install/erlang/ at install time as a symlink to the
+# extracted erlang tool, which absorbs the indirection for
+# sbin/rabbitmq-env's PATH-prepend.
 #
 # Produces under $out:
 #   rabbitmq-<ver>-<triple>.tar.zst   redistributable artifact
 #   rabbitmq-<ver>-<triple>.json      fat manifest (DISTRIBUTION.md shape)
-{ pkgs, rabbitmq, sources, nixpkgsRev
+{ pkgs, rabbitmq, erlangTarball, sources, nixpkgsRev
 , target ? if pkgs.stdenv.isDarwin then "aarch64-apple-darwin" else "x86_64-unknown-linux-gnu"
 , rabbitmqVersion
 }:
 let
   inherit (pkgs) stdenv lib;
 
-  # bundled_libraries surfaces every C library that physically ships
-  # inside this tarball. Our injected erlangTree carries openssl/zlib/
-  # ncurses under install/erlang/store/<name>/, so this manifest lists
-  # them too — they are bundled-in-this-artifact, not just
-  # bundled-in-some-other-artifact. Same audit-stance bookkeeping
-  # tools/redis/tarball.nix uses for its bundledDepNames list.
-  bundledLibraries = {
-    rabbitmq = rabbitmqVersion;
-    erlang = sources.erlang.version;
-    openssl = sources.openssl.version;
-    zlib = sources.zlib.version;
-    ncurses = sources.ncurses.version;
-  };
+  # Post-split bundled_libraries records only what physically ships
+  # inside this tarball — which is just RabbitMQ itself. erlang and
+  # its C-lib closure (openssl/zlib/ncurses) ship in the erlang tool
+  # tarball and are audited via its manifest.
+  bundledLibraries = { rabbitmq = rabbitmqVersion; };
 
   libcAttr = if stdenv.isDarwin
     then { family = "darwin"; min = "@MIN_MACOS@"; }
@@ -33,6 +29,17 @@ let
 
   flavor = "default";
   tag = "rabbitmq-${rabbitmqVersion}-${target}-${flavor}";
+
+  erlangRequiresTool = {
+    name = "erlang";
+    version = erlangTarball.passthru.version;
+    tag = erlangTarball.passthru.tag;
+    manifest_url =
+      "{INDEX_BASE}/versions/{PUBLISH_VERSION}/targets/${target}/manifests/tool/erlang/${erlangTarball.passthru.version}/${erlangTarball.passthru.tag}.json";
+    # sbin/rabbitmq-env's PATH-prepend resolves $0/../erlang/bin, so
+    # the symlink slot is "erlang".
+    link_into = "erlang";
+  };
 
   metadata = {
     schema = 1;
@@ -45,8 +52,10 @@ let
     blob = {
       url = "{BLOB_BASE}/blobs/@TARBALL_SHA256_PFX@/@TARBALL_SHA256@";
       sha256 = "@TARBALL_SHA256@";
+      size = "@TARBALL_SIZE@";
     };
     closure = [];
+    requires_tools = [ erlangRequiresTool ];
     binaries = [
       "rabbitmq-server" "rabbitmqctl" "rabbitmq-plugins"
       "rabbitmq-diagnostics" "rabbitmq-queues" "rabbitmq-streams"
@@ -83,6 +92,11 @@ pkgs.stdenvNoCC.mkDerivation {
   pname = "pbs-tarball-rabbitmq";
   version = rabbitmqVersion;
 
+  passthru = {
+    inherit tag;
+    version = rabbitmqVersion;
+  };
+
   dontUnpack = true;
   dontConfigure = true;
   dontBuild = true;
@@ -112,12 +126,14 @@ pkgs.stdenvNoCC.mkDerivation {
     tree_hash=$(zstd -dc "$out/$base.tar.zst" | sha256sum | awk '{print $1}')
     tarball_sha256=$(sha256sum "$out/$base.tar.zst" | awk '{print $1}')
     tarball_sha256_pfx="''${tarball_sha256:0:2}"
+    tarball_size=$(stat -c %s "$out/$base.tar.zst")
 
     ${libcProbeAndSub}
 
     sed -e "s/@TREE_HASH@/$tree_hash/" \
         -e "s/@TARBALL_SHA256@/$tarball_sha256/g" \
         -e "s/@TARBALL_SHA256_PFX@/$tarball_sha256_pfx/g" \
+        -e "s|\"@TARBALL_SIZE@\"|$tarball_size|g" \
         "''${libc_sed[@]}" \
         ${metadataFile} > "$out/$base.json"
 

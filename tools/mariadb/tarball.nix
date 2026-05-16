@@ -1,7 +1,9 @@
 # MariaDB tarball derivation. Mirrors php/tarball.nix but for the
-# `service` section: emits one self-contained tarball carrying mariadbd,
-# the client tools, libmariadb, the plugin set, and the bundled C-libs
-# (OpenSSL, zlib, ncurses) under store/<storeName>/.
+# `tool` section: emits one tarball carrying mariadbd, the client
+# tools, libmariadb, and the plugin set. Bundled C-libs (OpenSSL,
+# zlib, ncurses, libedit, pcre2, libxcrypt) ride separately as
+# closure entries in the manifest — clients resolve them through the
+# shared `$BOUGIE_HOME/store/` pool. See UNBUNDLE_PLAN.md.
 #
 # Produces under $out:
 #   mariadb-<ver>-<triple>.tar.zst   redistributable artifact
@@ -14,23 +16,22 @@
 , target ? if pkgs.stdenv.isDarwin then "aarch64-apple-darwin" else "x86_64-unknown-linux-gnu"
 , mariadbVersion ? "0.0.0-unknown"
 , nixpkgsRev
-, bundledDepNames  # short names of bundled C-libs actually carried under
-                   # store/<storeName>/ inside this tarball. Looked up in
-                   # sources.<name>.version for the manifest record.
+, bundledDeps        # list of pbs-<lib> derivations (carry passthru.storeName).
+                     # Used to emit closure[] entries that point at the
+                     # matching per-store-path tarballs.
+, storePathTarballs  # list of pbs-store-<lib> derivations (output of
+                     # shared/tarball-store-path.nix). Superset of
+                     # bundledDeps's storeNames — the closure helper
+                     # greps for each storeName here.
 }:
 let
   inherit (pkgs) stdenv lib;
 
-  # Manifest bundled_libraries reflects what the tarball ACTUALLY carries
-  # under store/, not the full sources.nix surface. Consumers reading
-  # this field treat it as a load-bearing inventory ("which C-lib
-  # versions ship inside this artifact"), so listing libs that aren't
-  # actually bundled would be misleading.
-  bundledLibraries =
-    lib.listToAttrs (map
-      (n: { name = n; value = sources.${n}.version; })
-      bundledDepNames)
-    // { mariadb = mariadbVersion; };
+  # `bundled_libraries` after the split is a near-empty bookkeeping
+  # field — it reflects what physically ships *inside the tarball*,
+  # which is now just mariadb itself. The bundled C-libs are carried
+  # by closure[] instead and audited there.
+  bundledLibraries = { mariadb = mariadbVersion; };
 
   libcAttr = if stdenv.isDarwin
     then { family = "darwin"; min = "@MIN_MACOS@"; }
@@ -50,12 +51,12 @@ let
     blob = {
       url = "{BLOB_BASE}/blobs/@TARBALL_SHA256_PFX@/@TARBALL_SHA256@";
       sha256 = "@TARBALL_SHA256@";
+      size = "@TARBALL_SIZE@";
     };
-    # MariaDB ships as a single self-contained tarball today (no per-
-    # store-path split like the PHP optional-dep layer). The closure
-    # therefore stays empty; bundled C-libs live inside this tarball
-    # under store/<storeName>/.
-    closure = [];
+    # closure[] is filled in at build time by the snippet from
+    # shared/tool-closure.nix, after sed substitution of the other
+    # sentinels.
+    closure = "@CLOSURE_PLACEHOLDER@";
     binaries = [ "mariadbd" "mariadb" "mariadb-dump" "mariadb-admin" "mariadb-install-db" ];
     bundled_libraries = bundledLibraries;
     build_info = {
@@ -65,6 +66,10 @@ let
   };
 
   metadataFile = pkgs.writeText "mariadb.json.in" (builtins.toJSON metadata);
+
+  closureSnippet = import ./../../shared/tool-closure.nix {
+    inherit pkgs bundledDeps storePathTarballs;
+  };
 
   libcProbeAndSub = if stdenv.isDarwin then ''
     min_macos=$( { find ${tree} -type f \( -name '*.dylib' -o -name '*.so' -o -path '*/bin/*' \) -print0 \
@@ -93,7 +98,7 @@ pkgs.stdenvNoCC.mkDerivation {
   dontBuild = true;
 
   nativeBuildInputs = with pkgs;
-    [ gnutar zstd coreutils gnused findutils gawk ]
+    [ gnutar zstd coreutils gnused findutils gawk jq ]
     ++ lib.optionals (!stdenv.isDarwin) [ binutils-unwrapped ];
 
   installPhase = ''
@@ -107,6 +112,13 @@ pkgs.stdenvNoCC.mkDerivation {
     cp -a ${tree}/. "$staging/install/"
     chmod -R u+w "$staging/install"
 
+    # Drop the bundled-store subtree. The tool binaries' RPATHs still
+    # point at $ORIGIN/../store/<lib>-<ver>-<hash>/lib — the client's
+    # closure-peer materialization step (bougie's
+    # `materialize_closure_peer`) lays those down at install time
+    # against the shared $BOUGIE_HOME/store/ pool. See UNBUNDLE_PLAN.md.
+    rm -rf "$staging/install/store"
+
     export SOURCE_DATE_EPOCH=1704067200
     tar --sort=name \
         --mtime="@$SOURCE_DATE_EPOCH" \
@@ -117,14 +129,24 @@ pkgs.stdenvNoCC.mkDerivation {
     tree_hash=$(zstd -dc "$out/$base.tar.zst" | sha256sum | awk '{print $1}')
     tarball_sha256=$(sha256sum "$out/$base.tar.zst" | awk '{print $1}')
     tarball_sha256_pfx="''${tarball_sha256:0:2}"
+    tarball_size=$(stat -c %s "$out/$base.tar.zst")
 
     ${libcProbeAndSub}
 
+    # Build closure_json_array from bundledDeps via the shared helper.
+    ${closureSnippet}
+
+    # Substitute the static sentinels, then splice the closure array
+    # in via jq (so the resulting JSON is valid even when the array
+    # contains commas / nested objects).
     sed -e "s/@TREE_HASH@/$tree_hash/" \
         -e "s/@TARBALL_SHA256@/$tarball_sha256/g" \
         -e "s/@TARBALL_SHA256_PFX@/$tarball_sha256_pfx/g" \
+        -e "s|\"@TARBALL_SIZE@\"|$tarball_size|g" \
         "''${libc_sed[@]}" \
-        ${metadataFile} > "$out/$base.json"
+        ${metadataFile} \
+      | jq --argjson cl "$closure_json_array" '. + {closure: $cl}' \
+      > "$out/$base.json"
 
     echo "produced:"
     ls -la "$out"
