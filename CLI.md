@@ -533,73 +533,94 @@ invocation.
   is created as a symlink.
 - After the interpreter is extracted, the **baseline extension set**
   (§3.5.1.1) is resolved against the index and installed into the same
-  install root, with auto-loading conf.d fragments emitted alongside
-  the core ones. `--no-baseline` skips this step; `--baseline-only=<ext,…>`
-  narrows it to a subset. Failures here are downgraded to warnings —
-  the interpreter install is still considered successful, and
-  `bougie sync` will retry the missing baseline extensions on next run.
+  install root, with auto-loading conf.d fragments emitted alongside.
+  The interpreter tarball itself ships zero `.so` files (REFACTOR_
+  DEBIAN_ALIGNED.md, Phase A), so the baseline is what makes a freshly
+  installed bougie behave like `apt install php8.2-cli` on Debian.
+  `--bare` skips this step (bare interpreter only); `--without <name>`
+  excludes a single baseline entry and may be repeated. Failures here
+  are downgraded to warnings — the interpreter install is still
+  considered successful, and `bougie sync` will retry the missing
+  baseline extensions on next run.
 - Path-shaped requests (executable-path, install-dir) error out here
   — `install` only takes index-shaped requests.
 
 Outputs (on `--format json-v1`):
-`{ "schema_version": 1, "installed": [{ "version": "...", "flavor": "...", "path": "...", "already_present": false, "baseline": ["mbstring", "curl", …], "baseline_failed": [] }, …] }`.
+`{ "schema_version": 1, "installed": [{ "version": "...", "flavor": "...", "path": "...", "already_present": false, "baseline": ["calendar", "ctype", …, "readline"], "baseline_failed": [] }, …] }`.
 
 #### 3.5.1.1 Baseline extension set
 
-The baseline is the set of extensions bougie installs **and enables**
-on every interpreter without the user having to ask. It sits on top of
-the Debian-aligned core that already ships inside the interpreter
-tarball (see `DESIGN.md` §Interpreter tarball) and is chosen so that a
-freshly installed bougie can run the typical Composer-managed PHP
-project — Laravel, Symfony, framework-less apps with a MySQL or SQLite
-backend — without any further `bougie ext add` or `composer.json`
-edits. Project-level opt-out per extension is via the `[extensions]`
-table's `false` sentinel (§3.3 step 4).
+After REFACTOR_DEBIAN_ALIGNED.md (php-build-standalone, Phase A) the
+interpreter tarball ships zero `.so` files — it matches `dpkg -L
+php8.2-cli` literally. The baseline is what bougie installs **and
+enables** on top to reproduce the user experience of `apt install
+php8.2-cli` on Debian: the transitive closure of `php8.2-cli` →
+`php8.2-common` + `php8.2-opcache` + `php8.2-readline`.
 
-Baseline members:
+Project-level opt-out per extension is via the `[extensions]` table's
+`false` sentinel (§3.3 step 4); per-invocation skipping is via `--bare`
+or `--without <name>` (below).
 
-| Extension     | Why it's in the baseline                                              |
-|---------------|-----------------------------------------------------------------------|
-| `mbstring`    | Hard dep of Laravel, Symfony, WordPress, every i18n-aware library.   |
-| `curl`        | Universal HTTP client; assumed by Guzzle, Composer's mirror fallback. |
-| `intl`        | Hard dep of Symfony; used by every locale/number/date formatting lib. |
-| `zip`         | Composer uses it to unpack dist zips; PHPUnit/PHAR tooling expects it.|
-| `bcmath`      | Laravel hard dep (`Illuminate\Support\Number`, money handling).       |
-| `sqlite3`     | Zero-config dev/test DB; Laravel and Symfony test suites default here.|
-| `pdo_sqlite`  | PDO driver paired with `sqlite3`.                                    |
-| `pdo_mysql`   | The default Laravel/Symfony production driver; most common server DB. |
-| `mysqli`      | Legacy alternative to `pdo_mysql`; same `mysqlnd` backbone, cheap.    |
+Baseline members (mirror Debian's `php8.2-cli` transitive closure):
 
-Explicitly **not** in the baseline:
+| Extension    | Source Debian package | Notes                                            |
+|--------------|-----------------------|--------------------------------------------------|
+| `calendar`   | `php8.2-common`       |                                                  |
+| `ctype`      | `php8.2-common`       |                                                  |
+| `exif`       | `php8.2-common`       |                                                  |
+| `ffi`        | `php8.2-common`       |                                                  |
+| `fileinfo`   | `php8.2-common`       |                                                  |
+| `ftp`        | `php8.2-common`       |                                                  |
+| `gettext`    | `php8.2-common`       | Linux only — Apple's libc lacks libintl.         |
+| `iconv`      | `php8.2-common`       |                                                  |
+| `pdo`        | `php8.2-common`       |                                                  |
+| `phar`       | `php8.2-common`       |                                                  |
+| `posix`      | `php8.2-common`       |                                                  |
+| `shmop`      | `php8.2-common`       |                                                  |
+| `sockets`    | `php8.2-common`       |                                                  |
+| `sysvmsg`    | `php8.2-common`       |                                                  |
+| `sysvsem`    | `php8.2-common`       |                                                  |
+| `sysvshm`    | `php8.2-common`       |                                                  |
+| `tokenizer`  | `php8.2-common`       |                                                  |
+| `opcache`    | `php8.2-opcache`      | Per-ext on 8.1–8.4; static-built on 8.5+.        |
+| `readline`   | `php8.2-readline`     |                                                  |
 
-- `xdebug`, `pcov` — debugger / coverage tools. xdebug in particular
-  changes engine behavior at load time (opcode dispatch overhead even
-  when disabled per-request) and many users prefer it as an opt-in
-  per-project knob. Bougie will grow a dedicated developer-tools
-  affordance for these later; until then they are reachable via
-  `bougie ext add xdebug` or `bougie run --with ext-xdebug=…`.
-- `pdo_pgsql` / `pgsql` — Postgres driver. Project-specific; pulls
-  libpq into the closure. Resolved on demand from `composer.json`'s
-  `ext-pgsql` / `ext-pdo_pgsql`.
+Explicitly **not** in the baseline (each is reachable via `bougie ext
+add <name>` or by declaring `require.ext-<name>` in `composer.json`):
+
+- `xdebug`, `pcov` — debugger / coverage tools. xdebug is *pre-
+  downloaded* into the content-addressed store but not enabled by
+  default — `bougie server` activates it lazily, or `bougie ext add
+  xdebug` makes it explicit.
+- `mbstring`, `intl`, `curl`, `zip`, `bcmath`, `sqlite3`, `pdo_sqlite`,
+  `mysqli`, `pdo_mysql`, `mysqlnd` — extensions that real Composer
+  projects routinely need but that aren't in Debian's `php8.2-cli`
+  closure. `composer.json`'s `require.ext-*` entries materialize them
+  at `bougie sync` time; users who need a "just works for Composer"
+  experience get it from a future `--profile composer` flag.
 - `gd`, `imagick`, `vips` — image processing. Mutually substitutable;
   fattens the closure with image-codec libraries; not used by every
   project.
 - `redis`, `apcu`, `igbinary`, `msgpack` — caching / serialization
-  stacks. Almost always opt-in via composer.json.
-- `bz2`, `gmp`, `gettext`, `soap`, `exif`, `ftp`, `pcntl`, `shmop`,
-  `sysv*`, `calendar` — niche or single-use-case.
+  stacks. Opt-in via composer.json.
+- `bz2`, `gmp`, `soap`, `gd`, `pdo_pgsql`, `pgsql`, `xsl`, …  —
+  every other per-ext tarball in the index.
 
 Baseline membership is part of the bougie binary, not the index. A
 bougie release is what changes the baseline; an index publication
 cannot. This keeps `bougie php install` deterministic for a given
 bougie version even if the index later grows new extensions.
 
-`bougie php install --no-baseline` produces a "core only" install
-matching `php8.x-cli` on Debian Bookworm — useful for CI images
-that want to install only what `composer.json` lists. `bougie php
-install --baseline-only=mbstring,curl` is an escape hatch for users
-who want a narrower default; both flags affect only the current
-invocation and are not persisted.
+`bougie php install --bare` produces a minimum install — interpreter
+only, no baseline, no preinstalled xdebug. The bare interpreter's
+`php -m` matches Debian's `php8.2-cli` static set after removing all
+three hard-dep packages; `php -a` errors with `Interactive shell (-a)
+requires the readline extension.`. Useful for CI images that want
+nothing pre-bundled. `bougie php install --without opcache --without
+readline` keeps the rest of the baseline but skips the named entries;
+the flag is repeatable and only narrows from the baseline set (use
+`bougie ext remove` for anything else after install). Both flags
+affect only the current invocation and are not persisted.
 
 #### 3.5.2 `bougie php uninstall <request>… [--flavor <flavor>]`
 
