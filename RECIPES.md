@@ -60,6 +60,10 @@ start: app/etc/env.php
 	bougie up server
 ```
 
+(`bougie up server` assumes the project has declared `server` —
+`bougie services add server` or an `extra.bougie.services.server`
+entry; see SERVICES.md §2.1.)
+
 ### Supported features
 
 - `target: prereqs` — file targets and phony targets.
@@ -163,6 +167,11 @@ needed is a per-project question.
 
 ## 6. Builtin Magento recipe (concrete draft)
 
+Assumes `server` is declared in the project — typically via
+`bougie services add server` or an `extra.bougie.services.server`
+entry. Without it, `bougie up server` errors with `provision_failed`
+per SERVICES.md §3.2.
+
 ```make
 .PHONY: start services reindex
 
@@ -187,6 +196,7 @@ app/etc/env.php: vendor services
 	  --amqp-port="$BOUGIE_SERVICE_RABBITMQ_PORT" \
 	  --amqp-user="$BOUGIE_SERVICE_RABBITMQ_USER" \
 	  --amqp-password="$BOUGIE_SERVICE_RABBITMQ_PASSWORD" \
+	  --amqp-virtualhost="$BOUGIE_SERVICE_RABBITMQ_VHOST" \
 	  --admin-firstname=Admin --admin-lastname=Admin \
 	  --admin-email=admin@example.com --admin-user=admin \
 	  --admin-password=admin123 --language=en_US --currency=USD \
