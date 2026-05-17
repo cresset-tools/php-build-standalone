@@ -20,112 +20,132 @@ commands. From a freshly cloned repo, this requires:
    extensions (no PHP on disk yet).
 2. Bring up the services Magento needs (mariadb, redis, opensearch,
    rabbitmq).
-3. `composer install --no-dev` — pulls `vendor/` for the first time.
+3. `composer install` — pulls `vendor/` for the first time, including
+   dev dependencies (this is a dev workflow; CI/prod overrides the
+   `vendor` target to add `--no-dev`).
 4. `bin/magento setup:install …` — creates the DB schema (the
-   expensive, non-idempotent step).
-5. `setup:di:compile` → `setup:static-content:deploy -f` →
-   `indexer:reindex`.
+   expensive, non-idempotent step), followed by
+   `deploy:mode:set developer` so the app is in dev mode from birth.
+5. `indexer:reindex` — populate the indexes the storefront reads.
 6. Serve it.
+
+`setup:di:compile` and `setup:static-content:deploy -f` are
+deliberately omitted: in developer mode Magento generates DI proxies
+and static assets on demand. A `prod` recipe variant (Phase 4) or a
+user override can re-add them.
 
 This is a deliberate departure from uv's command surface (uv has no
 `start` equivalent). Justified because PHP frameworks have opaque,
-multi-step install procedures — Magento's setup is a four-command
+multi-step install procedures — Magento's setup is a multi-command
 sequence with non-trivial freshness gates — that need orchestration,
 unlike Python's near-universal `pip install -e .` path.
 
-## 2. Recipe format — Makefile subset
+## 2. Recipe format — `bougie.toml`
 
-One file `Bougiefile` at the project root, optional. Strict subset of
-Make syntax; no GNU-Make-isms.
+One file `bougie.toml` at the project root, optional. Targets are an
+array of tables.
 
-```make
-# Bougiefile
+```toml
+# bougie.toml
 
-.PHONY: start services
+[[target]]
+name = "services"
+run = """
+bougie services add mariadb redis opensearch rabbitmq
+bougie up mariadb redis opensearch rabbitmq
+"""
 
-services:
-	@check: bougie services status --quiet
-	bougie up
+[[target]]
+name = "vendor"
+creates = "vendor"
+deps = ["composer.lock", "composer.json"]
+run = "bougie run -- composer install"
 
-vendor: composer.lock composer.json
-	bougie run -- composer install --no-dev
+[[target]]
+name = "install"
+creates = "app/etc/env.php"
+deps = ["vendor", "services"]
+run = """
+bougie run -- php -d memory_limit=4G bin/magento setup:install \
+  --db-host="$BOUGIE_SERVICE_MARIADB_SOCKET" \
+  --db-name="$BOUGIE_SERVICE_MARIADB_DATABASE" \
+  ...
+bougie run -- bin/magento deploy:mode:set developer
+"""
 
-app/etc/env.php: vendor services
-	bougie run -- php -d memory_limit=4G bin/magento setup:install \
-	  --db-host="$BOUGIE_SERVICE_MARIADB_SOCKET" \
-	  --db-name="$BOUGIE_SERVICE_MARIADB_DATABASE" \
-	  …
-
-start: app/etc/env.php
-	bougie up server
+[[target]]
+name = "start"
+deps = ["install"]
+run = "bougie up server"
 ```
 
 (`bougie up server` assumes the project has declared `server` —
 `bougie services add server` or an `extra.bougie.services.server`
 entry; see SERVICES.md §2.1.)
 
-### Supported features
+### Schema
 
-- `target: prereqs` — file targets and phony targets.
-- Tab-indented recipe lines, one shell command per line; `\` at the
-  end of a line continues onto the next.
-- `$VAR` and `${VAR}` env expansion; `$$` to escape a literal dollar.
-- `.PHONY:` declarations.
-- Comments (`#`).
+Per `[[target]]`:
 
-### Explicitly not supported
+| Key | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `name` | string, required | — | Target identifier. Short kebab-case; need not be a path. |
+| `deps` | array of strings | `[]` | Other target names or file paths. Named-target-first resolution. |
+| `creates` | string or array of strings | none | File or directory the recipe produces. Presence opts this target into mtime-based freshness. Array form: oldest member wins. |
+| `check` | string | none | Shell snippet. Exit 0 ⇒ recipe is satisfied; skip and treat as clean. |
+| `run` | string | none | Shell script body, executed as one `sh -e -c`. Multi-line `"""…"""` welcome. |
 
-To keep the parser tiny and the mental model small:
+`$VAR` and `${VAR}` env expansion happens at the shell level (it's
+shell, not a custom interpolator). `BOUGIE_SERVICE_*` is inherited
+from `bougied`.
 
-- Pattern rules (`%.o: %.c`).
-- Automatic variables (`$@`, `$<`, `$^`).
-- Functions (`$(wildcard …)`, `$(shell …)`).
-- `include` directives.
-- `.SUFFIXES`, `vpath`, etc.
-- Submake (`$(MAKE)`).
-- Conditionals (`ifeq`, `ifdef`).
+### Why `creates` instead of `phony`
 
-### One extension beyond Make: `@check:`
-
-A line inside a recipe starting with `@check:` declares a "skip if
-this exits 0" gate. Make has no clean analogue — people abuse
-marker-file tricks — so we make it first-class. Examples: "is the
-service up?", "is `app/etc/env.php` present?", "are the indexes
-already valid?".
+The Bougiefile draft of this spec required explicit `.PHONY:`
+declarations to flip a target from file to non-file. With TOML we
+flip the default: **targets are phony unless they say what file they
+produce.** `creates` decouples the target's *name* (a friendly
+identifier the user types) from the *artifact* (a path on disk).
+`bougie start install` reads better than `bougie start app/etc/env.php`.
 
 ## 3. Freshness model
 
 For each target, in order:
 
-1. **`@check:` gate present** — run it. Exit 0 ⇒ target is satisfied,
+1. **`check` present** — run it. Exit 0 ⇒ target is satisfied,
    skip the recipe. Exit ≠ 0 ⇒ recipe runs.
-2. **File target with all-file prereqs** — standard Make mtime check.
-   Target older than any prereq, or absent ⇒ recipe runs.
-3. **Phony target (or any phony prereq)** — recipe always runs
-   (recursing into deps first), *except* see the next rule.
+2. **`creates` present** —
+   - Path missing ⇒ recipe runs.
+   - Else compare its mtime against (a) every file-path dep and
+     (b) the `creates` mtime of every named-target dep, recursively.
+     Older than any ⇒ recipe runs.
+3. **No `check`, no `creates`** — phony. Recipe always runs (after
+   deps), *except* see the next rule.
 
-### `@check:`-gated targets don't propagate dirtiness
+### `check`-gated targets don't propagate dirtiness
 
-A deliberate departure from Make. If a target's `@check:` exits 0,
-the target is treated as **clean** for downstream mtime comparisons —
-downstream targets compute their own dirtiness from their own file
-prereqs only, ignoring this target's phony-ness.
+A deliberate departure from Make. If a target's `check` exits 0, the
+target is treated as **clean** for downstream mtime comparisons —
+downstream targets compute their own dirtiness from their own deps
+only, ignoring this target.
 
-In strict Make, a phony target is implicitly always-newer-than-
-everything, which would force `vendor` to rebuild every time
-`services` ran. With this rule, `services` says "I'm up, don't worry
-about me," and `vendor` decides on its own prereqs.
+Without this rule, `check` would be near-useless: you'd skip the
+recipe but still re-trigger everything downstream.
 
-Without this rule, `@check:` would be near-useless on phony targets —
-you'd skip the recipe but still re-trigger everything downstream.
+### Dep resolution
+
+A dep string resolves as **named target first, falling back to a file
+path.** So `deps = ["vendor", "composer.lock"]` mixes the two without
+ceremony. A target named `vendor` with `creates = "vendor"` ties the
+identifier and the path together cleanly.
 
 ## 4. Where recipes live
 
 | Source | Location | Purpose |
 | --- | --- | --- |
-| Builtin | embedded `&'static str` in the `bougie` binary | Shipped recipes per project type |
-| Project override | `Bougiefile` at project root | Local extension or override |
-| Global user recipes | `$XDG_CONFIG_HOME/bougie/recipes/<name>` | Reusable across projects (deferred, Phase 4+) |
+| Builtin | `recipes/*.toml`, `include_str!` into the binary | Shipped recipes per project type |
+| Project override | `bougie.toml` at project root | Local extension or override |
+| Global user recipes | `$XDG_CONFIG_HOME/bougie/recipes/<name>.toml` | Reusable across projects (deferred, Phase 4+) |
 
 Builtin recipe selection sniffs `composer.json`:
 
@@ -135,14 +155,13 @@ Builtin recipe selection sniffs `composer.json`:
 - `symfony/framework-bundle` → `symfony`
 - otherwise → `generic` (just `services` + `vendor`)
 
-A project-local `Bougiefile` merges with the builtin per target: a
-target defined in `Bougiefile` fully replaces the builtin's version
-of that target; targets only in the builtin are unchanged; new
-targets in `Bougiefile` are added. Simpler than partial-line override
-and matches Make's "last definition wins" semantics.
+A project-local `bougie.toml` merges with the builtin **per target,
+keyed by `name`**: a target defined locally fully replaces the
+builtin's version of that target; builtin-only targets are unchanged;
+new local targets are added.
 
 `bougie start --no-builtin` ignores the builtin and runs only
-`Bougiefile`. `bougie start --recipe <name>` forces a specific
+`bougie.toml`. `bougie start --recipe <name>` forces a specific
 builtin (e.g. `--recipe magento` when sniffing would have picked
 something else).
 
@@ -150,8 +169,8 @@ something else).
 
 `bougie start` runs `bougie sync` as a prologue *before* parsing the
 recipe. Without sync, you can't even invoke the PHP that the recipe
-expects (`bougie run -- php` would fail). Making sync part of the
-DAG is awkward — every other target would have to depend on it, and
+expects (`bougie run -- php` would fail). Making sync part of the DAG
+is awkward — every other target would have to depend on it, and
 there's no clean file prereq.
 
 - `bougie start` (default): always runs `bougie sync` first.
@@ -172,49 +191,63 @@ Assumes `server` is declared in the project — typically via
 entry. Without it, `bougie up server` errors with `provision_failed`
 per SERVICES.md §3.2.
 
-```make
-.PHONY: start services reindex
+`bougie services add` and `bougie up` are both idempotent: re-adding
+a declared service is a no-op, and `up` on an already-running service
+is a no-op. The `services` target relies on that — no `check` needed,
+just declare-then-up.
 
-services:
-	@check: bougie services status --quiet mariadb redis opensearch rabbitmq
-	bougie up mariadb redis opensearch rabbitmq
+```toml
+# recipes/magento.toml
 
-vendor: composer.lock composer.json
-	bougie run -- composer install --no-dev
+[[target]]
+name = "services"
+run = """
+bougie services add mariadb redis opensearch rabbitmq
+bougie up mariadb redis opensearch rabbitmq
+"""
 
-app/etc/env.php: vendor services
-	bougie run -- php -d memory_limit=4G bin/magento setup:install \
-	  --base-url=http://localhost/ \
-	  --db-host="$BOUGIE_SERVICE_MARIADB_SOCKET" \
-	  --db-name="$BOUGIE_SERVICE_MARIADB_DATABASE" \
-	  --db-user="$BOUGIE_SERVICE_MARIADB_USER" \
-	  --db-password="$BOUGIE_SERVICE_MARIADB_PASSWORD" \
-	  --search-engine=opensearch \
-	  --opensearch-host="$BOUGIE_SERVICE_OPENSEARCH_HOST" \
-	  --opensearch-port="$BOUGIE_SERVICE_OPENSEARCH_PORT" \
-	  --amqp-host="$BOUGIE_SERVICE_RABBITMQ_HOST" \
-	  --amqp-port="$BOUGIE_SERVICE_RABBITMQ_PORT" \
-	  --amqp-user="$BOUGIE_SERVICE_RABBITMQ_USER" \
-	  --amqp-password="$BOUGIE_SERVICE_RABBITMQ_PASSWORD" \
-	  --amqp-virtualhost="$BOUGIE_SERVICE_RABBITMQ_VHOST" \
-	  --admin-firstname=Admin --admin-lastname=Admin \
-	  --admin-email=admin@example.com --admin-user=admin \
-	  --admin-password=admin123 --language=en_US --currency=USD \
-	  --timezone=UTC --use-rewrites=1
+[[target]]
+name = "vendor"
+creates = "vendor"
+deps = ["composer.lock", "composer.json"]
+run = "bougie run -- composer install"
 
-generated/code: app/etc/env.php
-	bougie run -- php -d memory_limit=4G bin/magento setup:di:compile
+[[target]]
+name = "install"
+creates = "app/etc/env.php"
+deps = ["vendor", "services"]
+run = """
+bougie run -- php -d memory_limit=4G bin/magento setup:install \
+  --base-url=http://localhost/ \
+  --db-host="$BOUGIE_SERVICE_MARIADB_SOCKET" \
+  --db-name="$BOUGIE_SERVICE_MARIADB_DATABASE" \
+  --db-user="$BOUGIE_SERVICE_MARIADB_USER" \
+  --db-password="$BOUGIE_SERVICE_MARIADB_PASSWORD" \
+  --search-engine=opensearch \
+  --opensearch-host="$BOUGIE_SERVICE_OPENSEARCH_HOST" \
+  --opensearch-port="$BOUGIE_SERVICE_OPENSEARCH_PORT" \
+  --amqp-host="$BOUGIE_SERVICE_RABBITMQ_HOST" \
+  --amqp-port="$BOUGIE_SERVICE_RABBITMQ_PORT" \
+  --amqp-user="$BOUGIE_SERVICE_RABBITMQ_USER" \
+  --amqp-password="$BOUGIE_SERVICE_RABBITMQ_PASSWORD" \
+  --amqp-virtualhost="$BOUGIE_SERVICE_RABBITMQ_VHOST" \
+  --admin-firstname=Admin --admin-lastname=Admin \
+  --admin-email=admin@example.com --admin-user=admin \
+  --admin-password=admin123 --language=en_US --currency=USD \
+  --timezone=UTC --use-rewrites=1
+bougie run -- bin/magento deploy:mode:set developer
+"""
 
-pub/static/frontend: generated/code
-	bougie run -- php -d memory_limit=4G bin/magento setup:static-content:deploy -f
+[[target]]
+name = "reindex"
+deps = ["install"]
+check = "bougie run -- bin/magento indexer:status --no-ansi | grep -qv 'invalid\\|reindex required'"
+run = "bougie run -- bin/magento indexer:reindex"
 
-reindex: generated/code
-	@check: bougie run -- bin/magento indexer:status --no-ansi \
-	  | grep -qv 'invalid\|reindex required'
-	bougie run -- bin/magento indexer:reindex
-
-start: pub/static/frontend reindex
-	bougie up server
+[[target]]
+name = "start"
+deps = ["reindex"]
+run = "bougie up server"
 ```
 
 Notes:
@@ -222,13 +255,16 @@ Notes:
 - Admin credentials and base URL are placeholders. Real recipes
   should read from `extra.bougie.recipe.magento.*` if present (Phase
   4).
-- `reindex` uses both an mtime prereq (`generated/code`) and an
-  `@check:` (`indexer:status`). Belt-and-braces — either gate
-  triggers the rebuild.
-- `setup:di:compile` and `setup:static-content:deploy` use directory
-  targets; Make treats those by directory mtime. Reasonable
-  approximation; for stricter checks the recipe can stamp a file
-  inside.
+- `install` runs `setup:install` and `deploy:mode:set developer` as
+  one `sh -e -c` script. The mode flip is gated by the same
+  `creates = "app/etc/env.php"`, so on re-runs both are skipped
+  together. `setup:install` has no `--mode` flag; this is the
+  supported way to be born in dev mode.
+- `setup:di:compile` and `setup:static-content:deploy -f` are
+  intentionally absent — developer mode generates both on demand.
+- `reindex` uses `check` rather than a `creates` path because the
+  indexes don't have a single representative file; `indexer:status`
+  is the authoritative source.
 
 ### Fresh-clone trace
 
@@ -238,16 +274,12 @@ $ bougie start
 [sync]     fetching index, validating closures…  ✓
 [sync]     installed: php-8.3.12-nts-linux-glibc-x86_64
 [recipe]   detected: magento (composer.json: magento/product-community-edition)
-[services] check failed → bougie up mariadb redis opensearch rabbitmq
-[services] ✓ mariadb redis opensearch rabbitmq up
-[vendor]   missing → composer install --no-dev
+[services] bougie services add mariadb redis opensearch rabbitmq
+[services] bougie up mariadb redis opensearch rabbitmq  ✓
+[vendor]   missing → composer install
 [vendor]   ✓
-[app/etc/env.php] missing → magento setup:install
-[app/etc/env.php] ✓ (900/900 steps)
-[generated/code]  missing → magento setup:di:compile
-[generated/code]  ✓
-[pub/static/frontend] missing → magento setup:static-content:deploy -f
-[pub/static/frontend] ✓
+[install]  app/etc/env.php missing → setup:install + deploy:mode:set developer
+[install]  ✓ (900/900 steps, mode=developer)
 [reindex]  check failed → magento indexer:reindex
 [reindex]  ✓
 [start]    bougie up server
@@ -260,26 +292,24 @@ $ bougie start
 $ bougie start
 [sync]     no changes  ✓
 [recipe]   detected: magento
-[services] check ✓ (already up) — skipping
+[services] bougie services add … (no-op); bougie up … (no-op)  ✓
 [vendor]   newer than composer.lock — skipping
-[app/etc/env.php] present — skipping
-[generated/code]  newer than vendor — skipping
-[pub/static/frontend] newer than generated/code — skipping
+[install]  app/etc/env.php present — skipping
 [reindex]  check ✓ (all indexes valid) — skipping
 [start]    bougie up server  ✓
 ```
 
 ## 7. Execution model
 
-- Parse `Bougiefile` (or merged builtin) into a target DAG.
+- Parse `bougie.toml` (or merged builtin) into a target DAG.
 - Topological sort; error on cycles.
 - Walk deps depth-first from the requested target.
-- Each recipe runs as a sequence of shell commands via
-  `/bin/sh -e -c`, inheriting `BOUGIE_SERVICE_*` env from `bougied`.
-- **No parallelism in v1.** Magento targets must run serially (di
-  compile after install, etc.); parallel execution can come later.
+- Each `run` body executes as one `/bin/sh -e -c` invocation,
+  inheriting `BOUGIE_SERVICE_*` env from `bougied`.
+- **No parallelism in v1.** Magento targets must run serially (install
+  before reindex, etc.); parallel execution can come later.
 - On any command failure: stop, report which target failed at which
-  recipe line, exit non-zero.
+  line of the script, exit non-zero.
 
 ## 8. CLI surface
 
@@ -289,7 +319,7 @@ bougie start --list                  # list available targets
 bougie start --dry-run [<target>]    # show what would run, don't execute
 bougie start --explain <target>      # explain why each step runs/skips
 bougie start --no-sync               # skip the sync prologue
-bougie start --no-builtin            # ignore builtin; use only Bougiefile
+bougie start --no-builtin            # ignore builtin; use only bougie.toml
 bougie start --recipe <name>         # force a specific builtin
 bougie start --print                 # print the effective merged recipe to stdout
 ```
@@ -304,8 +334,7 @@ string.
 ### Phase 1 — Parser and execution
 
 - New module `bougie::recipe::{parser, dag, run}`.
-- Hand-written, line-oriented parser. Tabs are tabs (lift Make's
-  rule rather than fight it).
+- Parser is `toml` crate deserializing into `Vec<TargetDef>`.
 - DAG via `petgraph` or a plain `HashMap<String, Target>` +
   adjacency. Cycle check.
 - Runner: `std::process::Command` with `/bin/sh -e -c`; env inherited.
@@ -313,8 +342,8 @@ string.
 
 ### Phase 2 — Builtin recipes embedded
 
-- `recipes/magento.bougiefile`, `recipes/laravel.bougiefile`,
-  `recipes/generic.bougiefile` in repo.
+- `recipes/magento.toml`, `recipes/laravel.toml`,
+  `recipes/generic.toml` in repo.
 - `include_str!` into a `BUILTINS: &[(&str, &str)]` const.
 - `recipe::detect(project) -> Option<&'static str>` reads
   `composer.json`, sniffs.
@@ -323,7 +352,7 @@ string.
 
 - `cli/commands/start.rs`.
 - `bougie sync` prologue (skippable with `--no-sync`).
-- Merge logic: local `Bougiefile` overrides builtin per target.
+- Merge logic: local `bougie.toml` overrides builtin per target name.
 - All flags from §8.
 
 ### Phase 4 — Polish
@@ -331,6 +360,8 @@ string.
 - `extra.bougie.recipe.<name>.*` config for parameterizing recipes
   (admin email, base URL, …).
 - JSON output (`--format json-v1`).
+- A `prod` recipe variant that adds `--no-dev`, `setup:di:compile`,
+  and `setup:static-content:deploy -f`.
 - Docs: §3.X in CLI.md; this file becomes the explainer companion.
 
 ### Out of scope for v1 (track separately)
@@ -345,23 +376,39 @@ string.
 
 Flagged here so they're easy to revisit:
 
-- **Filename is `Bougiefile`** (capital B, no extension), mirroring
-  `Makefile`/`Justfile`. Not `bougie.toml [recipes]` — Makefile-
-  shaped content inside TOML strings is awful to write.
-- **Tabs required for recipe lines**, like real Make. The famously
-  hated rule, still the right call: trivial parser, unambiguous
-  recipe-line-vs-continuation. Editors handle tabs in `Makefile`
-  fine; we'll add a `Bougiefile` filetype hint somewhere later.
+- **Filename is `bougie.toml`** (lowercase, TOML). Earlier drafts
+  proposed a Makefile-subset `Bougiefile`; TOML wins because parsing
+  is trivial (use the `toml` crate), multi-line shell is first-class
+  via `"""…"""`, and there's no tab-vs-space landmine.
+- **Targets default to phony; `creates` opts in to file-target
+  freshness.** Decouples the target's name from the artifact path so
+  CLI invocations stay short (`bougie start install`, not
+  `bougie start app/etc/env.php`).
+- **`run` is a single shell script, not an array of commands.** One
+  `sh -e -c` invocation per target gives users real shell semantics
+  (loops, redirects, heredocs) without the runner inventing its own
+  step model.
 - **No parallel execution in v1.** Magento can't use it; not worth
   the complexity yet.
-- **Merge granularity = per target, not per line.** A local
-  `vendor:` rule fully replaces the builtin's `vendor:`.
-- **`@check:` is a recipe-line annotation, not a separate keyword.**
-  Keeps the "everything below the target line is the recipe"
-  invariant intact.
+- **Merge granularity = per target, not per key.** A local `vendor`
+  target fully replaces the builtin's `vendor`. Simpler than
+  partial-key override and matches "last definition wins".
 - **`bougie start` requires services via the `services` target**,
   not as an auto-step. Keeps the DAG explicit — a recipe opts out
   by not depending on `services`.
 - **`bougie sync` runs as an implicit prologue, not as a recipe
   target.** No clean file prereq; depending on it from every other
   target would be noisy.
+- **Builtin dev recipe omits `setup:di:compile` and
+  `setup:static-content:deploy -f`** and instead runs
+  `deploy:mode:set developer` after `setup:install`. Dev mode
+  generates both on demand; the production-deploy steps belong in a
+  `prod` recipe variant (Phase 4).
+- **`composer install` runs without `--no-dev`.** This is a dev
+  workflow; CI/prod recipes override the `vendor` target to add the
+  flag.
+- **`services` target has no `check`** — it just runs
+  `bougie services add …` then `bougie up …`, both idempotent.
+  Relies on `services add` being a no-op when the service is already
+  declared; if it isn't today, fix that rather than working around
+  it in the recipe.
