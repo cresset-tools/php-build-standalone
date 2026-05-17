@@ -120,6 +120,22 @@ For each task, in order:
 3. **No `check`, no `creates`** — phony. Recipe always runs (after
    deps), *except* see the next rule.
 
+### Directory `creates` get touched after a successful run
+
+After a recipe completes successfully, the runner `touch`es every
+`creates` path that resolves to a directory. POSIX bumps a directory's
+mtime when entries are added, removed, or renamed in it directly, but
+**not** when an existing file's contents change and not when something
+changes in a nested subdirectory. So a recipe that, say, rewrites
+`vendor/composer/installed.json` in place would leave `vendor/`'s mtime
+untouched and the next run would incorrectly see the task as clean
+relative to a newly-touched `composer.lock`.
+
+Touching the directory after the recipe pins its mtime to "this
+recipe just finished," which is the semantics `creates` is really
+trying to express. File `creates` paths are left alone — the recipe
+itself is expected to write them.
+
 ### `check`-gated tasks don't propagate dirtiness
 
 A deliberate departure from Make. If a task's `check` exits 0, the
