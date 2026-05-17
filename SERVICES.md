@@ -154,7 +154,10 @@ JSON Lines (one record per line, append-then-fsync, no rewrite):
 `bougie run` queries `bougied` for the tenant's connection info and
 exports the following env vars into the child process. Variables
 appear only when the corresponding service is declared in the
-project's config.
+project's config. `_HOST` / `_PORT` entries are derived projections of
+the matching `_URL`, populated by the daemon for consumers (Magento
+`setup:install`, Symfony DSN assembly, …) that need the components
+discretely; the URL remains the source of truth.
 
 ```
 BOUGIE_SERVICE_MARIADB_SOCKET       # e.g. /home/u/.local/share/bougie/state/services/mariadb/run/mariadb.sock
@@ -164,8 +167,12 @@ BOUGIE_SERVICE_MARIADB_PASSWORD     # generated at provisioning, persisted in te
 BOUGIE_SERVICE_REDIS_SOCKET
 BOUGIE_SERVICE_REDIS_DB             # logical DB number 0..15
 BOUGIE_SERVICE_OPENSEARCH_URL       # http://127.0.0.1:<port>
+BOUGIE_SERVICE_OPENSEARCH_HOST      # 127.0.0.1 (derived from URL)
+BOUGIE_SERVICE_OPENSEARCH_PORT      # numeric, matches URL
 BOUGIE_SERVICE_OPENSEARCH_INDEX_PREFIX
 BOUGIE_SERVICE_RABBITMQ_URL         # amqp://<user>:<pw>@127.0.0.1:<port>/<vhost>
+BOUGIE_SERVICE_RABBITMQ_HOST        # 127.0.0.1 (derived from URL)
+BOUGIE_SERVICE_RABBITMQ_PORT        # numeric, matches URL
 BOUGIE_SERVICE_RABBITMQ_VHOST       # tenant name
 BOUGIE_SERVICE_RABBITMQ_USER        # tenant name (user matches vhost name)
 BOUGIE_SERVICE_RABBITMQ_PASSWORD    # generated at provisioning, persisted in tenants.json

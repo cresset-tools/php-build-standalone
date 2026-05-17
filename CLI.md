@@ -961,11 +961,18 @@ Atomic down + up for the named services in the current project.
 Global service is not necessarily restarted — only the project's
 tenant cycle.
 
-#### 3.8.7 `bougie services status [<name>]`
+#### 3.8.7 `bougie services status [<name>…]`
 
 Prints per-service status for the current project: state, PID,
 uptime, binding (socket path or `127.0.0.1:port`), tenant identifier,
 and the `BOUGIE_SERVICE_*` env vars that `bougie run` will export.
+With no names, reports on every service declared in the project; with
+one or more names, restricts the report to those services.
+
+With `--quiet`, prints nothing and exits 0 iff every listed service
+(or every declared service, if no names given) is in state `Running`
+for the current project; otherwise exits non-zero. Intended for use
+as a Bougiefile `@check:` gate.
 
 #### 3.8.8 `bougie services logs [-f] [-n N] <name>`
 
