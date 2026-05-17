@@ -6,11 +6,11 @@ CLI.md §3.X and this doc becomes an explainer.
 
 ## 1. Goal & shape
 
-`bougie start [target]` runs a target from the project's recipe,
-computing what's already done and skipping it. The default target is
+`bougie start [task]` runs a task from the project's recipe,
+computing what's already done and skipping it. The default task is
 `start`. Recipes are selected automatically by project type (Magento,
 Laravel, plain PHP) with builtin defaults shipped in the binary; users
-can override or extend per-target.
+can override or extend per-task.
 
 The motivating workflow is: clone a Magento repo on a fresh machine,
 run `bougie start`, and end up at a working storefront with no other
@@ -22,7 +22,7 @@ commands. From a freshly cloned repo, this requires:
    rabbitmq).
 3. `composer install` — pulls `vendor/` for the first time, including
    dev dependencies (this is a dev workflow; CI/prod overrides the
-   `vendor` target to add `--no-dev`).
+   `vendor` task to add `--no-dev`).
 4. `bin/magento setup:install …` — creates the DB schema (the
    expensive, non-idempotent step), followed by
    `deploy:mode:set developer` so the app is in dev mode from birth.
@@ -42,27 +42,24 @@ unlike Python's near-universal `pip install -e .` path.
 
 ## 2. Recipe format — `bougie.toml`
 
-One file `bougie.toml` at the project root, optional. Targets are an
-array of tables.
+One file `bougie.toml` at the project root, optional. Tasks are
+tables under `[task.<name>]`.
 
 ```toml
 # bougie.toml
 
-[[target]]
-name = "services"
+[task.services]
 run = """
 bougie services add mariadb redis opensearch rabbitmq
 bougie up mariadb redis opensearch rabbitmq
 """
 
-[[target]]
-name = "vendor"
+[task.vendor]
 creates = "vendor"
 deps = ["composer.lock", "composer.json"]
 run = "bougie run -- composer install"
 
-[[target]]
-name = "install"
+[task.install]
 creates = "app/etc/env.php"
 deps = ["vendor", "services"]
 run = """
@@ -73,8 +70,7 @@ bougie run -- php -d memory_limit=4G bin/magento setup:install \
 bougie run -- bin/magento deploy:mode:set developer
 """
 
-[[target]]
-name = "start"
+[task.start]
 deps = ["install"]
 run = "bougie up server"
 ```
@@ -85,13 +81,15 @@ entry; see SERVICES.md §2.1.)
 
 ### Schema
 
-Per `[[target]]`:
+Per `[task.<name>]` table. The task's name is the TOML key — short
+kebab-case, need not be a path. Quoted keys are legal
+(`[task."app/etc/env.php"]`) but discouraged; use `creates` to point
+at a path instead.
 
 | Key | Type | Default | Meaning |
 | --- | --- | --- | --- |
-| `name` | string, required | — | Target identifier. Short kebab-case; need not be a path. |
-| `deps` | array of strings | `[]` | Other target names or file paths. Named-target-first resolution. |
-| `creates` | string or array of strings | none | File or directory the recipe produces. Presence opts this target into mtime-based freshness. Array form: oldest member wins. |
+| `deps` | array of strings | `[]` | Other task names or file paths. Named-task-first resolution. |
+| `creates` | string or array of strings | none | File or directory the recipe produces. Presence opts this task into mtime-based freshness. Array form: oldest member wins. |
 | `check` | string | none | Shell snippet. Exit 0 ⇒ recipe is satisfied; skip and treat as clean. |
 | `run` | string | none | Shell script body, executed as one `sh -e -c`. Multi-line `"""…"""` welcome. |
 
@@ -102,41 +100,41 @@ from `bougied`.
 ### Why `creates` instead of `phony`
 
 The Bougiefile draft of this spec required explicit `.PHONY:`
-declarations to flip a target from file to non-file. With TOML we
-flip the default: **targets are phony unless they say what file they
-produce.** `creates` decouples the target's *name* (a friendly
+declarations to flip a task from file to non-file. With TOML we flip
+the default: **tasks are phony unless they say what file they
+produce.** `creates` decouples the task's *name* (a friendly
 identifier the user types) from the *artifact* (a path on disk).
 `bougie start install` reads better than `bougie start app/etc/env.php`.
 
 ## 3. Freshness model
 
-For each target, in order:
+For each task, in order:
 
-1. **`check` present** — run it. Exit 0 ⇒ target is satisfied,
+1. **`check` present** — run it. Exit 0 ⇒ task is satisfied,
    skip the recipe. Exit ≠ 0 ⇒ recipe runs.
 2. **`creates` present** —
    - Path missing ⇒ recipe runs.
    - Else compare its mtime against (a) every file-path dep and
-     (b) the `creates` mtime of every named-target dep, recursively.
+     (b) the `creates` mtime of every named-task dep, recursively.
      Older than any ⇒ recipe runs.
 3. **No `check`, no `creates`** — phony. Recipe always runs (after
    deps), *except* see the next rule.
 
-### `check`-gated targets don't propagate dirtiness
+### `check`-gated tasks don't propagate dirtiness
 
-A deliberate departure from Make. If a target's `check` exits 0, the
-target is treated as **clean** for downstream mtime comparisons —
-downstream targets compute their own dirtiness from their own deps
-only, ignoring this target.
+A deliberate departure from Make. If a task's `check` exits 0, the
+task is treated as **clean** for downstream mtime comparisons —
+downstream tasks compute their own dirtiness from their own deps
+only, ignoring this task.
 
 Without this rule, `check` would be near-useless: you'd skip the
 recipe but still re-trigger everything downstream.
 
 ### Dep resolution
 
-A dep string resolves as **named target first, falling back to a file
+A dep string resolves as **named task first, falling back to a file
 path.** So `deps = ["vendor", "composer.lock"]` mixes the two without
-ceremony. A target named `vendor` with `creates = "vendor"` ties the
+ceremony. A task named `vendor` with `creates = "vendor"` ties the
 identifier and the path together cleanly.
 
 ## 4. Where recipes live
@@ -155,22 +153,22 @@ Builtin recipe selection sniffs `composer.json`:
 - `symfony/framework-bundle` → `symfony`
 - otherwise → `generic` (just `services` + `vendor`)
 
-A project-local `bougie.toml` merges with the builtin **per target,
-keyed by `name`**: a target defined locally fully replaces the
-builtin's version of that target; builtin-only targets are unchanged;
-new local targets are added.
+A project-local `bougie.toml` merges with the builtin **per task,
+keyed by name**: a task defined locally fully replaces the builtin's
+version of that task; builtin-only tasks are unchanged; new local
+tasks are added.
 
 `bougie start --no-builtin` ignores the builtin and runs only
 `bougie.toml`. `bougie start --recipe <name>` forces a specific
 builtin (e.g. `--recipe magento` when sniffing would have picked
 something else).
 
-## 5. Sync as an implicit prologue, not a recipe target
+## 5. Sync as an implicit prologue, not a recipe task
 
 `bougie start` runs `bougie sync` as a prologue *before* parsing the
 recipe. Without sync, you can't even invoke the PHP that the recipe
 expects (`bougie run -- php` would fail). Making sync part of the DAG
-is awkward — every other target would have to depend on it, and
+is awkward — every other task would have to depend on it, and
 there's no clean file prereq.
 
 - `bougie start` (default): always runs `bougie sync` first.
@@ -193,27 +191,24 @@ per SERVICES.md §3.2.
 
 `bougie services add` and `bougie up` are both idempotent: re-adding
 a declared service is a no-op, and `up` on an already-running service
-is a no-op. The `services` target relies on that — no `check` needed,
+is a no-op. The `services` task relies on that — no `check` needed,
 just declare-then-up.
 
 ```toml
 # recipes/magento.toml
 
-[[target]]
-name = "services"
+[task.services]
 run = """
 bougie services add mariadb redis opensearch rabbitmq
 bougie up mariadb redis opensearch rabbitmq
 """
 
-[[target]]
-name = "vendor"
+[task.vendor]
 creates = "vendor"
 deps = ["composer.lock", "composer.json"]
 run = "bougie run -- composer install"
 
-[[target]]
-name = "install"
+[task.install]
 creates = "app/etc/env.php"
 deps = ["vendor", "services"]
 run = """
@@ -238,14 +233,12 @@ bougie run -- php -d memory_limit=4G bin/magento setup:install \
 bougie run -- bin/magento deploy:mode:set developer
 """
 
-[[target]]
-name = "reindex"
+[task.reindex]
 deps = ["install"]
 check = "bougie run -- bin/magento indexer:status --no-ansi | grep -qv 'invalid\\|reindex required'"
 run = "bougie run -- bin/magento indexer:reindex"
 
-[[target]]
-name = "start"
+[task.start]
 deps = ["reindex"]
 run = "bougie up server"
 ```
@@ -301,41 +294,42 @@ $ bougie start
 
 ## 7. Execution model
 
-- Parse `bougie.toml` (or merged builtin) into a target DAG.
+- Parse `bougie.toml` (or merged builtin) into a task DAG.
 - Topological sort; error on cycles.
-- Walk deps depth-first from the requested target.
+- Walk deps depth-first from the requested task.
 - Each `run` body executes as one `/bin/sh -e -c` invocation,
   inheriting `BOUGIE_SERVICE_*` env from `bougied`.
-- **No parallelism in v1.** Magento targets must run serially (install
+- **No parallelism in v1.** Magento tasks must run serially (install
   before reindex, etc.); parallel execution can come later.
-- On any command failure: stop, report which target failed at which
+- On any command failure: stop, report which task failed at which
   line of the script, exit non-zero.
 
 ## 8. CLI surface
 
 ```
-bougie start [<target>]              # run target (default: start)
-bougie start --list                  # list available targets
-bougie start --dry-run [<target>]    # show what would run, don't execute
-bougie start --explain <target>      # explain why each step runs/skips
-bougie start --no-sync               # skip the sync prologue
-bougie start --no-builtin            # ignore builtin; use only bougie.toml
-bougie start --recipe <name>         # force a specific builtin
-bougie start --print                 # print the effective merged recipe to stdout
+bougie start [<task>]              # run task (default: start)
+bougie start --list                # list available tasks
+bougie start --dry-run [<task>]    # show what would run, don't execute
+bougie start --explain <task>      # explain why each step runs/skips
+bougie start --no-sync             # skip the sync prologue
+bougie start --no-builtin          # ignore builtin; use only bougie.toml
+bougie start --recipe <name>       # force a specific builtin
+bougie start --print               # print the effective merged recipe to stdout
 ```
 
 Output discipline follows the `--format` convention from CLI.md §9.
 `--format text` is human; `--format json-v1` emits a structured run
-log with per-target `status: ran | skipped | failed` and a reason
-string.
+log with per-task `status: ran | skipped | failed` and a reason
+string. `--list` orders tasks alphabetically (TOML doesn't preserve
+table order, and the DAG is what determines execution order anyway).
 
 ## 9. Implementation phases
 
 ### Phase 1 — Parser and execution
 
 - New module `bougie::recipe::{parser, dag, run}`.
-- Parser is `toml` crate deserializing into `Vec<TargetDef>`.
-- DAG via `petgraph` or a plain `HashMap<String, Target>` +
+- Parser is `toml` crate deserializing into `HashMap<String, TaskDef>`.
+- DAG via `petgraph` or a plain `HashMap<String, Task>` +
   adjacency. Cycle check.
 - Runner: `std::process::Command` with `/bin/sh -e -c`; env inherited.
 - Off the default code path until Phase 3.
@@ -352,7 +346,7 @@ string.
 
 - `cli/commands/start.rs`.
 - `bougie sync` prologue (skippable with `--no-sync`).
-- Merge logic: local `bougie.toml` overrides builtin per target name.
+- Merge logic: local `bougie.toml` overrides builtin per task name.
 - All flags from §8.
 
 ### Phase 4 — Polish
@@ -380,34 +374,39 @@ Flagged here so they're easy to revisit:
   proposed a Makefile-subset `Bougiefile`; TOML wins because parsing
   is trivial (use the `toml` crate), multi-line shell is first-class
   via `"""…"""`, and there's no tab-vs-space landmine.
-- **Targets default to phony; `creates` opts in to file-target
-  freshness.** Decouples the target's name from the artifact path so
+- **Recipe entries are `[task.<name>]` tables, not `[[task]]`
+  arrays.** Cleaner syntax, the name lives in the header where you
+  read it, and no redundant `name = "…"` field. TOML table order
+  isn't preserved, but that doesn't matter — the DAG decides
+  execution order, and `--list` sorts alphabetically.
+- **Tasks default to phony; `creates` opts in to file-based
+  freshness.** Decouples the task's name from the artifact path so
   CLI invocations stay short (`bougie start install`, not
   `bougie start app/etc/env.php`).
 - **`run` is a single shell script, not an array of commands.** One
-  `sh -e -c` invocation per target gives users real shell semantics
+  `sh -e -c` invocation per task gives users real shell semantics
   (loops, redirects, heredocs) without the runner inventing its own
   step model.
 - **No parallel execution in v1.** Magento can't use it; not worth
   the complexity yet.
-- **Merge granularity = per target, not per key.** A local `vendor`
-  target fully replaces the builtin's `vendor`. Simpler than
+- **Merge granularity = per task, not per key.** A local `vendor`
+  task fully replaces the builtin's `vendor`. Simpler than
   partial-key override and matches "last definition wins".
-- **`bougie start` requires services via the `services` target**,
+- **`bougie start` requires services via the `services` task**,
   not as an auto-step. Keeps the DAG explicit — a recipe opts out
   by not depending on `services`.
 - **`bougie sync` runs as an implicit prologue, not as a recipe
-  target.** No clean file prereq; depending on it from every other
-  target would be noisy.
+  task.** No clean file prereq; depending on it from every other
+  task would be noisy.
 - **Builtin dev recipe omits `setup:di:compile` and
   `setup:static-content:deploy -f`** and instead runs
   `deploy:mode:set developer` after `setup:install`. Dev mode
   generates both on demand; the production-deploy steps belong in a
   `prod` recipe variant (Phase 4).
 - **`composer install` runs without `--no-dev`.** This is a dev
-  workflow; CI/prod recipes override the `vendor` target to add the
+  workflow; CI/prod recipes override the `vendor` task to add the
   flag.
-- **`services` target has no `check`** — it just runs
+- **`services` task has no `check`** — it just runs
   `bougie services add …` then `bougie up …`, both idempotent.
   Relies on `services add` being a no-op when the service is already
   declared; if it isn't today, fix that rather than working around
