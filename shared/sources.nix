@@ -189,9 +189,9 @@
   # is compiled and installed — see build-libpq.sh. Wired against our bundled
   # OpenSSL so libpq supports TLS connections (sslmode=require et al).
   libpq = {
-    url = "https://ftp.postgresql.org/pub/source/v18.3/postgresql-18.3.tar.bz2";
-    sha256 = "d95663fbbf3a80f81a9d98d895266bdcb74ba274bcc04ef6d76630a72dee016f";
-    version = "18.3";
+    url = "https://ftp.postgresql.org/pub/source/v18.4/postgresql-18.4.tar.bz2";
+    sha256 = "81a81ec695fb0c7901407defaa1d2f7973617154cf27ba74e3a7ab8e64436094";
+    version = "18.4";
   };
 
   # libtiff — TIFF reader/writer, an ImageMagick delegate. Depends on zlib
@@ -609,9 +609,9 @@
   # gmake-based build; depends on NSPR. NSS releases track Firefox;
   # any modern tag works for certutil's purposes.
   nss = {
-    url = "https://archive.mozilla.org/pub/security/nss/releases/NSS_3_123_RTM/src/nss-3.123.tar.gz";
-    sha256 = "2145113398a269779a7390515a1638800836b130248e33f93243268c026d4e49";
-    version = "3.123";
+    url = "https://archive.mozilla.org/pub/security/nss/releases/NSS_3_124_RTM/src/nss-3.124.tar.gz";
+    sha256 = "80da9f1cbcb267293b2248818d288bc02f874d6a34f1989a2828401d74a0bc9b";
+    version = "3.124";
   };
 
   # mkcert — FiloSottile's local-CA generator. Pure-Go static binary;
