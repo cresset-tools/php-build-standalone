@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.2.2](https://github.com/cresset-tools/php-build-standalone/compare/v0.2.1...v0.2.2) (2026-05-22)
+
+
+### Features
+
+* **php:** build ZTS variant alongside NTS for every PHP minor ([b885668](https://github.com/cresset-tools/php-build-standalone/commit/b885668990e1af233cdb6c6a7916f14112689fab))
+* **php:** build ZTS variant alongside NTS for every PHP minor ([d218cd9](https://github.com/cresset-tools/php-build-standalone/commit/d218cd9cc3b972aea6e761e0e14c5ca02c554a9f))
+
+
+### Dependencies
+
+* bump pinned upstreams via scripts/update.py ([c71707d](https://github.com/cresset-tools/php-build-standalone/commit/c71707d53041517c8ae8f6210a53a979013e9d00))
+
 ## [0.2.1](https://github.com/cresset-tools/php-build-standalone/compare/v0.2.0...v0.2.1) (2026-05-16)
 
 
