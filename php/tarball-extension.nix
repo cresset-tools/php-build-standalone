@@ -46,6 +46,7 @@
                      # each $out contains <storeName>.sha256 (sha256 of the
                      # actual tar.zst the CLI will download).
 , target ? if pkgs.stdenv.isDarwin then "aarch64-apple-darwin" else "x86_64-unknown-linux-gnu"
+, flavor ? "nts"  # "nts" | "zts"; must match the PHP variant the .so was built against.
 , confFragment ? null  # null → no conf.d; non-null → include this .ini content
 , confPrefix ? "20"    # numeric prefix on the conf.d filename (NN-<ext>.ini).
                        # Default 20 matches the regular-extension bucket
@@ -74,11 +75,9 @@ let
     then { family = "darwin"; min = "11.0"; }
     else { family = "gnu";    min = "2.17"; };
 
-  # Flavor: nts/zts × debug. Today this build emits nts only; the manifest's
-  # `flavor` and the section row's `flavor` must agree (DISTRIBUTION.md
-  # §Manifests-and-blobs). Bump this and add ts/debug to abi when the build
-  # matrix grows.
-  flavor = "nts";
+  # Flavor: nts/zts × debug. Passed in by the caller; manifest's `flavor`
+  # and the section row's `flavor` must agree (DISTRIBUTION.md
+  # §Manifests-and-blobs). Debug variants are still future work.
   # Tag uses the compact "+php83" form (no dot) per DISTRIBUTION.md
   # §Object-kinds. Section resolvers compare on this verbatim.
   phpMinorCompact = lib.replaceStrings [ "." ] [ "" ] phpMinor;

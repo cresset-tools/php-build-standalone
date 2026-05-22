@@ -11,6 +11,7 @@
 { pkgs, tree, sources, phpSpec, xdebugSpec
 , target ? if pkgs.stdenv.isDarwin then "aarch64-apple-darwin" else "x86_64-unknown-linux-gnu"
 , phpVersion ? "8.4"
+, flavor ? "nts"  # "nts" | "zts"; "*-debug" still future work (DISTRIBUTION.md §Object-kinds).
 , nixpkgsRev
 , coreExtensions  # list of extension names to keep in the interpreter
                   # tarball. Everything else built shared by PHP is pruned
@@ -48,10 +49,9 @@ let
     then { family = "darwin"; min = "@MIN_MACOS@"; }
     else { family = "gnu";    min = "@LIBC_MIN@"; };
 
-  # Flavor: nts/zts × debug. This build pipeline only emits nts at present
-  # (debug + zts variants are tracked as future work). The flavor token
-  # pins the section row so a resolver matches exactly.
-  flavor = "nts";
+  # Flavor: nts/zts × debug. Threaded into the manifest tag and section
+  # row so a resolver matches exactly. Debug variants are still future
+  # work and not produced by this pipeline.
   tag = "php-${phpVersion}-${target}-${flavor}";
   # PHP minor (e.g. "8.5"). phpVersion is the full PHP version (e.g. "8.5.5").
   phpMinor = lib.concatStringsSep "." (lib.take 2 (lib.splitString "." phpVersion));

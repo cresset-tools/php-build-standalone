@@ -13,16 +13,28 @@
 # `libiconv` is Darwin-only (apple-sdk strips legacy libiconv headers). On
 # Linux glibc provides iconv directly, so libiconv defaults to null and is
 # absent from the deps list.
+#
+# `flavor` is "nts" (default) or "zts". Drives --enable-zts in configure via
+# the PBS_PHP_FLAVOR env var read by build-php.sh; the same token lands in
+# the tarball/manifest tag (`php-<ver>-<triple>-<flavor>`). Debug variants
+# (`nts-debug`, `zts-debug` per DISTRIBUTION.md §Object-kinds) are future
+# work and not wired here.
 { mkDep, pkgs, phpSpec
 , zlib, openssl, libxml2, libxslt, sqlite, oniguruma, libsodium, bzip2
 , libpng, libjpeg-turbo, libwebp, freetype
 , nghttp2, libzip, icu, libcurl, ncurses, libedit, libpq, libgmp, libffi
 , libiconv ? null
+, flavor ? "nts"
 }:
 let
   inherit (pkgs) stdenv lib;
 in
 mkDep {
+  # Keep `name = "php"` even for ZTS so the build script's $PBS_SRC_PHP /
+  # $PBS_VER_PHP env-var lookups (auto-derived by mkDep from the upper-cased
+  # name) stay valid for both flavors. The two flavors still hash to distinct
+  # /nix/store paths because PBS_PHP_FLAVOR participates in the input
+  # derivation — Nix's content-addressing keeps them apart on disk.
   name = "php";
   buildScript = ./build-php.sh;
   version = phpSpec.version;
@@ -33,6 +45,8 @@ mkDep {
     nghttp2 libzip icu libcurl ncurses libedit libpq libgmp libffi
   ] ++ lib.optionals stdenv.isDarwin [ libiconv ];
   extraEnv = {
+    # "nts" | "zts" — build-php.sh appends --enable-zts when this is "zts".
+    PBS_PHP_FLAVOR = flavor;
     PBS_PHP_PREPARE_SCRIPT = ./prepare-php.sh;
     PBS_PHP_PATCHES_DIR = ./patches;
     # Consumed by prepare-php.sh to dispatch range-suffixed patches —

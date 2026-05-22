@@ -109,7 +109,7 @@ jobs:
         run: nix run .#lint-frozen-coverage
 
   build-tarball:
-    name: build PHP ${{ matrix.php }} (${{ matrix.target }})
+    name: build PHP ${{ matrix.php }} ${{ matrix.flavor }} (${{ matrix.target }})
     runs-on: ${{ matrix.os }}
     permissions:
       contents: read
@@ -123,24 +123,41 @@ jobs:
         #   - php / minor: dotted version + underscored flake attribute suffix
         #     (Nix CLI parses dots as attribute path separators, so the
         #     phpVariants schema keys minors as `8_5`, not 8.5).
+        #   - flavor: "nts" or "zts". The flake's phpVariants attribute uses
+        #     the bare minor key for NTS (`8_5`) and a "_zts" suffix for ZTS
+        #     (`8_5_zts`); variant_key below assembles it. The flavor token
+        #     also lands in the tarball filename / manifest tag via
+        #     tarball.nix.
+        #   - variant_key: minor + "_zts" for ZTS, just minor for NTS. Used
+        #     to address phpVariants outputs.
         #   - os: GitHub-hosted runner image. ubuntu-latest covers x86_64
         #     glibc; macos-26 (Tahoe) is the current Apple Silicon image
         #     (only macOS arch we ship — Apple dropped x86_64 in macOS 27).
         #   - system: Nix system tuple used to address phpVariants outputs
-        #     (`phpVariants.<system>.<minor>.<artifact>`).
+        #     (`phpVariants.<system>.<variant_key>.<artifact>`).
         #   - target: triple used in the tarball filename. Matches the
         #     value baked into the .json metadata by tarball.nix.
         include:
-          - { php: "8.1", minor: "8_1", os: ubuntu-latest, system: "x86_64-linux",   target: "x86_64-unknown-linux-gnu" }
-          - { php: "8.2", minor: "8_2", os: ubuntu-latest, system: "x86_64-linux",   target: "x86_64-unknown-linux-gnu" }
-          - { php: "8.3", minor: "8_3", os: ubuntu-latest, system: "x86_64-linux",   target: "x86_64-unknown-linux-gnu" }
-          - { php: "8.4", minor: "8_4", os: ubuntu-latest, system: "x86_64-linux",   target: "x86_64-unknown-linux-gnu" }
-          - { php: "8.5", minor: "8_5", os: ubuntu-latest, system: "x86_64-linux",   target: "x86_64-unknown-linux-gnu" }
-          - { php: "8.1", minor: "8_1", os: macos-26,      system: "aarch64-darwin", target: "aarch64-apple-darwin" }
-          - { php: "8.2", minor: "8_2", os: macos-26,      system: "aarch64-darwin", target: "aarch64-apple-darwin" }
-          - { php: "8.3", minor: "8_3", os: macos-26,      system: "aarch64-darwin", target: "aarch64-apple-darwin" }
-          - { php: "8.4", minor: "8_4", os: macos-26,      system: "aarch64-darwin", target: "aarch64-apple-darwin" }
-          - { php: "8.5", minor: "8_5", os: macos-26,      system: "aarch64-darwin", target: "aarch64-apple-darwin" }
+          - { php: "8.1", minor: "8_1", flavor: "nts", variant_key: "8_1",     os: ubuntu-latest, system: "x86_64-linux",   target: "x86_64-unknown-linux-gnu" }
+          - { php: "8.2", minor: "8_2", flavor: "nts", variant_key: "8_2",     os: ubuntu-latest, system: "x86_64-linux",   target: "x86_64-unknown-linux-gnu" }
+          - { php: "8.3", minor: "8_3", flavor: "nts", variant_key: "8_3",     os: ubuntu-latest, system: "x86_64-linux",   target: "x86_64-unknown-linux-gnu" }
+          - { php: "8.4", minor: "8_4", flavor: "nts", variant_key: "8_4",     os: ubuntu-latest, system: "x86_64-linux",   target: "x86_64-unknown-linux-gnu" }
+          - { php: "8.5", minor: "8_5", flavor: "nts", variant_key: "8_5",     os: ubuntu-latest, system: "x86_64-linux",   target: "x86_64-unknown-linux-gnu" }
+          - { php: "8.1", minor: "8_1", flavor: "zts", variant_key: "8_1_zts", os: ubuntu-latest, system: "x86_64-linux",   target: "x86_64-unknown-linux-gnu" }
+          - { php: "8.2", minor: "8_2", flavor: "zts", variant_key: "8_2_zts", os: ubuntu-latest, system: "x86_64-linux",   target: "x86_64-unknown-linux-gnu" }
+          - { php: "8.3", minor: "8_3", flavor: "zts", variant_key: "8_3_zts", os: ubuntu-latest, system: "x86_64-linux",   target: "x86_64-unknown-linux-gnu" }
+          - { php: "8.4", minor: "8_4", flavor: "zts", variant_key: "8_4_zts", os: ubuntu-latest, system: "x86_64-linux",   target: "x86_64-unknown-linux-gnu" }
+          - { php: "8.5", minor: "8_5", flavor: "zts", variant_key: "8_5_zts", os: ubuntu-latest, system: "x86_64-linux",   target: "x86_64-unknown-linux-gnu" }
+          - { php: "8.1", minor: "8_1", flavor: "nts", variant_key: "8_1",     os: macos-26,      system: "aarch64-darwin", target: "aarch64-apple-darwin" }
+          - { php: "8.2", minor: "8_2", flavor: "nts", variant_key: "8_2",     os: macos-26,      system: "aarch64-darwin", target: "aarch64-apple-darwin" }
+          - { php: "8.3", minor: "8_3", flavor: "nts", variant_key: "8_3",     os: macos-26,      system: "aarch64-darwin", target: "aarch64-apple-darwin" }
+          - { php: "8.4", minor: "8_4", flavor: "nts", variant_key: "8_4",     os: macos-26,      system: "aarch64-darwin", target: "aarch64-apple-darwin" }
+          - { php: "8.5", minor: "8_5", flavor: "nts", variant_key: "8_5",     os: macos-26,      system: "aarch64-darwin", target: "aarch64-apple-darwin" }
+          - { php: "8.1", minor: "8_1", flavor: "zts", variant_key: "8_1_zts", os: macos-26,      system: "aarch64-darwin", target: "aarch64-apple-darwin" }
+          - { php: "8.2", minor: "8_2", flavor: "zts", variant_key: "8_2_zts", os: macos-26,      system: "aarch64-darwin", target: "aarch64-apple-darwin" }
+          - { php: "8.3", minor: "8_3", flavor: "zts", variant_key: "8_3_zts", os: macos-26,      system: "aarch64-darwin", target: "aarch64-apple-darwin" }
+          - { php: "8.4", minor: "8_4", flavor: "zts", variant_key: "8_4_zts", os: macos-26,      system: "aarch64-darwin", target: "aarch64-apple-darwin" }
+          - { php: "8.5", minor: "8_5", flavor: "zts", variant_key: "8_5_zts", os: macos-26,      system: "aarch64-darwin", target: "aarch64-apple-darwin" }
     steps:
       - uses: actions/checkout@v6
 
@@ -154,7 +171,7 @@ jobs:
         # Each nix build uses its own -o symlink so subsequent builds
         # don't clobber prior results — the upload steps below need
         # both the interpreter tarball and the release tree to coexist.
-        run: nix build ".#phpVariants.${{ matrix.system }}.${{ matrix.minor }}.tarball" -o result-tarball --print-build-logs
+        run: nix build ".#phpVariants.${{ matrix.system }}.${{ matrix.variant_key }}.tarball" -o result-tarball --print-build-logs
 
       - name: Smoke-test the artifact
         # Extract to a fresh prefix and verify the basics: PHP runs, the
@@ -169,19 +186,19 @@ jobs:
         run: nix run .#smoke-test-tarball -- "$(ls result-tarball/php-*.tar.zst | head -1)" "${{ matrix.php }}"
 
       - name: Build closures
-        run: nix build ".#phpVariants.${{ matrix.system }}.${{ matrix.minor }}.closures" -o result-closures --print-build-logs
+        run: nix build ".#phpVariants.${{ matrix.system }}.${{ matrix.variant_key }}.closures" -o result-closures --print-build-logs
 
       - name: Build extension-xdebug
-        run: nix build ".#phpVariants.${{ matrix.system }}.${{ matrix.minor }}.extensions.xdebug" -o result-extension --print-build-logs
+        run: nix build ".#phpVariants.${{ matrix.system }}.${{ matrix.variant_key }}.extensions.xdebug" -o result-extension --print-build-logs
 
       - name: Build release
-        run: nix build ".#phpVariants.${{ matrix.system }}.${{ matrix.minor }}.release" -o result-release --print-build-logs
+        run: nix build ".#phpVariants.${{ matrix.system }}.${{ matrix.variant_key }}.release" -o result-release --print-build-logs
 
       - name: Upload tarball as workflow artifact
         uses: actions/upload-artifact@v7
         with:
-          # Per-(minor × target) name so the matrix legs don't collide.
-          name: php-tarball-${{ matrix.php }}-${{ matrix.target }}
+          # Per-(minor × flavor × target) name so the matrix legs don't collide.
+          name: php-tarball-${{ matrix.php }}-${{ matrix.flavor }}-${{ matrix.target }}
           path: |
             result-tarball/php-*.tar.zst
             result-tarball/php-*.json
@@ -191,9 +208,9 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           # Uploaded separately from the tarball so the assemble job can
-          # grab all five minors' release trees without needing the raw
+          # grab all minor × flavor release trees without needing the raw
           # interpreter tarballs again.
-          name: release-${{ matrix.php }}-${{ matrix.target }}
+          name: release-${{ matrix.php }}-${{ matrix.flavor }}-${{ matrix.target }}
           path: result-release/
           if-no-files-found: error
 
@@ -377,9 +394,13 @@ jobs:
       - uses: actions/checkout@v6
 
       - name: Download Linux tarball
+        # NTS only — the distro-matrix gate validates the build against
+        # the supported glibc range, which is flavor-agnostic. ZTS rides
+        # on the same dynamic-linker contract and adds no new portability
+        # surface, so we don't double this job.
         uses: actions/download-artifact@v8
         with:
-          name: php-tarball-${{ matrix.php }}-x86_64-unknown-linux-gnu
+          name: php-tarball-${{ matrix.php }}-nts-x86_64-unknown-linux-gnu
           path: artifacts/
 
       - name: Run distro matrix
