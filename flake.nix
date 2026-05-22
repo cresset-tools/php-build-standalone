@@ -189,7 +189,12 @@
             let names = builtins.attrNames attrs; in
             assert builtins.length names == 1; attrs.${builtins.head names};
 
-          mkPhpVariant = phpKey:
+          # `flavor` is "nts" (default) or "zts". Threaded through every
+          # downstream derivation so each PHP variant + its per-ext tarballs
+          # carry a self-consistent flavor token (manifest tag, section row,
+          # extension dir). Debug variants are still future work
+          # (DISTRIBUTION.md §Object-kinds).
+          mkPhpVariant = phpKey: flavor:
             let
               phpSpec      = sources.phpVersions.${phpKey};
               xdebugSpec   = pickOnly sources.xdebugVersions;
@@ -202,7 +207,7 @@
               pcovSpec     = pickOnly sources.pcovVersions;
 
               php = pkgs.callPackage ./php/php.nix ({
-                inherit mkDep phpSpec;
+                inherit mkDep phpSpec flavor;
                 inherit (deps)
                   zlib openssl libxml2 libxslt sqlite oniguruma libsodium bzip2
                   libpng libjpeg-turbo libwebp freetype
@@ -273,7 +278,7 @@
               ] ++ pkgs.lib.optional darwin "libiconv";
               tarball = pkgs.callPackage ./php/tarball.nix {
                 inherit tree sources nixpkgsRev phpSpec xdebugSpec
-                        coreExtensions coreDepNames deps;
+                        coreExtensions coreDepNames deps flavor;
                 phpVersion = phpSpec.version;
               };
 
@@ -295,7 +300,7 @@
               # PHP_VERSION). PECL exts (xdebug, imagick) have their own
               # version field.
               extArgs = {
-                inherit tree closures;
+                inherit tree closures flavor;
                 phpMinor = phpKey;
                 bundledDeps = sharedDeps;
                 storePathTarballs = builtins.attrValues storePathTarballs;
@@ -479,11 +484,20 @@
                       extensions storePathTarballs;
             };
 
-          # Fan out over every PHP minor. Inner key is the underscored
-          # form so attribute paths in `nix build` don't trip over dots.
-          variants = builtins.listToAttrs (map
-            (phpKey: { name = minorKey pkgs phpKey; value = mkPhpVariant phpKey; })
-            (builtins.attrNames sources.phpVersions));
+          # Fan out over every PHP minor × flavor (nts/zts). Inner key is
+          # the underscored minor (Nix CLI parses dots as attribute path
+          # separators), with the flavor suffixed for non-NTS variants
+          # — so `8_5` stays NTS (no breaking move) and `8_5_zts` is the
+          # new ZTS sibling. Future debug variants slot in as another
+          # entry in `flavors` below.
+          flavors = [ "nts" "zts" ];
+          flavorSuffix = flavor: if flavor == "nts" then "" else "_${flavor}";
+          variants = builtins.listToAttrs (pkgs.lib.flatten (map
+            (phpKey: map (flavor: {
+              name = "${minorKey pkgs phpKey}${flavorSuffix flavor}";
+              value = mkPhpVariant phpKey flavor;
+            }) flavors)
+            (builtins.attrNames sources.phpVersions)));
 
           # ---- MariaDB server bundle ----
           # One build per system (no version fan-out yet — only one

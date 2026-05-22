@@ -45,6 +45,21 @@ set -euo pipefail
 : "${PBS_PHP_AUDIT_EXTRA:?set by php.nix}"
 : "${PBS_PHP_ICONV_ARG:?set by php.nix}"
 : "${PBS_PHP_GETTEXT_ARG:?set by php.nix}"
+: "${PBS_PHP_FLAVOR:?set by php.nix}"
+
+# Thread-safety flavor. "nts" → default (no extra flag); "zts" → enable
+# Zend Thread Safety. PHP's configure rejects unknown --enable-zts values,
+# so we add the flag only when requested. The flavor also lands in the
+# extension dir name PHP generates (no-debug-zts-<api> vs
+# no-debug-non-zts-<api>); every find-based glob downstream is
+# dir-agnostic, so the rest of the pipeline picks up the new dir
+# transparently.
+zts_configure=()
+case "$PBS_PHP_FLAVOR" in
+  nts) ;;
+  zts) zts_configure+=(--enable-zts) ;;
+  *)   echo "FATAL: unsupported PBS_PHP_FLAVOR=$PBS_PHP_FLAVOR (want nts|zts)" >&2; exit 1 ;;
+esac
 
 src_dir="$PBS_SOURCES/php-${PBS_VER_PHP}"
 rm -rf "$src_dir"
@@ -148,6 +163,7 @@ source "$PBS_PHP_PRE_CONFIGURE"
   --with-libedit="shared,$PBS_DEP_LIBEDIT" \
   --with-ffi=shared \
   --enable-opcache \
+  "${zts_configure[@]}" \
   PKG_CONFIG_PATH="$PBS_DEP_LIBZIP/lib/pkgconfig:$PBS_DEP_ICU/lib/pkgconfig:$PBS_DEP_LIBPNG/lib/pkgconfig:$PBS_DEP_LIBWEBP/lib/pkgconfig:$PBS_DEP_FREETYPE/lib/pkgconfig:$PBS_DEP_LIBJPEG_TURBO/lib/pkgconfig:$PBS_DEP_OPENSSL/lib/pkgconfig:$PBS_DEP_LIBCURL/lib/pkgconfig:$PBS_DEP_LIBXML2/lib/pkgconfig:$PBS_DEP_LIBXSLT/lib/pkgconfig:$PBS_DEP_ONIGURUMA/lib/pkgconfig:$PBS_DEP_ZLIB/lib/pkgconfig:$PBS_DEP_SQLITE/lib/pkgconfig:$PBS_DEP_LIBSODIUM/lib/pkgconfig:$PBS_DEP_BZIP2/lib/pkgconfig:$PBS_DEP_NGHTTP2/lib/pkgconfig:$PBS_DEP_LIBEDIT/lib/pkgconfig:$PBS_DEP_NCURSES/lib/pkgconfig:$PBS_DEP_LIBPQ/lib/pkgconfig:$PBS_DEP_LIBFFI/lib/pkgconfig"
 
 # Detoxify build-defs.h BEFORE compile. configure has just substituted

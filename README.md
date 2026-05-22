@@ -35,12 +35,16 @@ Build a specific PHP minor instead with the typed schema (underscore, not dot
 — the Nix CLI treats `.` as an attribute-path separator):
 
 ```sh
-nix build .#phpVariants.x86_64-linux.8_1.tarball   # → php-8.1.34-<target>.tar.zst
-nix build .#phpVariants.x86_64-linux.8_5.tarball   # → 8.5.6 (latest)
+nix build .#phpVariants.x86_64-linux.8_1.tarball       # → php-8.1.34-<target>.tar.zst (NTS, default)
+nix build .#phpVariants.x86_64-linux.8_5.tarball       # → 8.5.6 (latest, NTS)
+nix build .#phpVariants.x86_64-linux.8_5_zts.tarball   # → 8.5.6 Zend Thread-Safe variant
 ```
 
 `<target>` is `x86_64-unknown-linux-gnu` on Linux or `aarch64-apple-darwin`
-on macOS. Extract anywhere, run `bin/php`.
+on macOS. Extract anywhere, run `bin/php`. Every PHP minor ships as both
+non-thread-safe (`<minor>`) and Zend Thread-Safe (`<minor>_zts`) variants;
+the latter carry the `zts` flavor token in their manifest `tag` and ship
+their `.so`s under `lib/extensions/no-debug-zts-<api>/`.
 
 Beyond the core interpreter, the per-extension distribution layer
 (content-addressed `store/<name>-<ver>-<hash>/` layout, per-extension
