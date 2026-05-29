@@ -172,8 +172,9 @@ try_files = ["$uri"]                             # no front-controller fallthrou
 hostname = "blog-staging.bougie.run"             # second hostname, same project
 ```
 
-Each `[[host]]` resolves the PHP version from the project per CLI.md §3.6 —
-no per-host PHP version field; the project's own pin is authoritative.
+Each `[[host]]` resolves the PHP version from the project per bougie's
+PHP-version resolution rules — no per-host PHP version field; the project's
+own pin is authoritative.
 
 ### 4.3 Helpers
 
@@ -327,8 +328,8 @@ for live pool status. Absent socket → `list` prints config-only.
 ## 9. Logging
 
 `tracing` + `tracing-subscriber`. Default `text` format = one line per
-event. `--log-format json-v1` = NDJSON on stderr (matches CLI.md §9
-convention; `schema_version: 1`).
+event. `--log-format json-v1` = NDJSON on stderr (matches bougie's
+versioned-`--format` convention; `schema_version: 1`).
 
 Per-request event:
 

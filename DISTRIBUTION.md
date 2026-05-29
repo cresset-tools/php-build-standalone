@@ -2,10 +2,10 @@
 
 This document specifies how V2 artifacts (interpreter tarballs,
 per-extension manifests + `.so` tarballs, per-store-path tarballs)
-are laid out on the server and how the `php-up` CLI keeps its local
-view of the index up to date. It supersedes the "Distribution
-channel" paragraph and the "Index sharding" open question in
-`DESIGN.md`.
+are laid out on the server and how the bougie CLI keeps its local
+view of the index up to date. The architectural model — content-
+addressed store, closure-coherence, build authority — is summarized
+in `CLAUDE.md`.
 
 The protocol-level goal: **the CLI must be able to learn what
 changed since its last sync without re-downloading the full index**,
@@ -38,7 +38,7 @@ Tags:
   is a deliberate parser cue distinguishing extension version from
   PHP ABI.
 - Store-path blob: `<name>-<version>-<hash>` where `<hash>` is the
-  derivation hash from `DESIGN.md`'s "Architectural core".
+  Nix derivation hash (see `CLAUDE.md`'s content-addressed-store section).
 
 `<target>` is a Rust-style target triple
 (`<arch>-<vendor>-<os>-<env>`) — the same identifier used by the
@@ -528,7 +528,7 @@ Extension-only:
 - **`extension.path`** — the path the extension's `.so` lives at
   *inside* the blob tarball, relative to the extracted store root.
   The CLI uses this to write the `extension=` / `zend_extension=`
-  line into the per-project `conf.d/` (CLI.md §6.2).
+  line into the per-project `conf.d/`.
 - **`extension.sha256`** — sha256 of the extracted `.so` itself
   (not the tarball). Independent of `blob.sha256`; lets the CLI
   detect on-disk corruption of an installed extension without
@@ -566,7 +566,7 @@ install(section_row):
 
 Both manifests and blobs are content-addressed and cached forever
 (modulo GC). A client that already has a closure entry's store path
-on disk skips that fetch entirely — this is `DESIGN.md`'s
+on disk skips that fetch entirely — this is `CLAUDE.md`'s
 closure-coherence model exposed at the wire layer.
 
 ### Why absolute manifest paths (no hostname)
