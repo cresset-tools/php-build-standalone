@@ -26,10 +26,9 @@ result/
 
 The interpreter tarball is **Debian-aligned**: it ships only the core set of
 extensions and bundled C libraries (everything `php8.x-cli` provides on Debian
-Bookworm — see [`REFACTOR_DEBIAN_ALIGNED.md`](REFACTOR_DEBIAN_ALIGNED.md)).
-Every other extension ships as a separately-addressable per-extension download
-that the [bougie](https://github.com/cresset-tools/bougie) CLI installs on top
-— the same model uv uses for Python's optional stdlib bits.
+Bookworm). Every other extension ships as a separately-addressable
+per-extension download that the [bougie](https://github.com/cresset-tools/bougie)
+CLI installs on top — the same model uv uses for Python's optional stdlib bits.
 
 Build a specific PHP minor instead with the typed schema (underscore, not dot
 — the Nix CLI treats `.` as an attribute-path separator):
@@ -59,9 +58,9 @@ nix build .#phpVariants.x86_64-linux.8_5.extensions.intl
 
 `nix build .#release-bundle` emits the full cross-variant directory tree
 (`index.json` + every artifact) ready to rsync to a static host. See
-[`DESIGN.md`](DESIGN.md) for the distribution model and
-[`REFACTOR_DEBIAN_ALIGNED.md`](REFACTOR_DEBIAN_ALIGNED.md) for the rationale
-behind the core / optional split.
+[`CLAUDE.md`](CLAUDE.md) for the architecture (content-addressed store,
+closure-coherence, Debian-aligned interpreter) and [`DISTRIBUTION.md`](DISTRIBUTION.md)
+for the index wire format.
 
 ### Host requirements
 
@@ -378,8 +377,9 @@ flake.nix                      fans out one variant per phpVersions entry
                                interpreter tarball; everything else is
                                pruned at staging and ships per-ext.
 flake.lock                     pinned nixpkgs revision
-DESIGN.md                      content-addressed store + extension
-                               distribution model
+CLAUDE.md                      repo state + architecture (content-addressed
+                               store, closure-coherence, build authority)
+DISTRIBUTION.md                index wire format consumed by the bougie CLI
 shared/                        component-agnostic build infra: toolchain,
                                sysroot, mkDep, finalize, generic tarball
                                + bundled C-library sources reused across

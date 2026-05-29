@@ -48,8 +48,8 @@ rm -f "$script"
 [ "$out" = "ok" ] || die "php script.php produced unexpected output: $out"
 
 # 3. php -m must list the Debian-faithful static set that the bare
-#    interpreter ships with (REFACTOR_DEBIAN_ALIGNED.md). After Phase A
-#    the interpreter tarball contains ZERO .so files — every loadable
+#    interpreter ships with. The interpreter tarball contains ZERO .so
+#    files — every loadable
 #    extension travels via its own per-ext tarball. The set below is the
 #    intersection of modules statically linked into bin/php across every
 #    supported PHP minor (8.1–8.5); 8.2+ also has random, and PHP 8.5+

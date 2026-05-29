@@ -255,8 +255,8 @@
                 inherit toolchain;
                 phpVersion = phpSpec.version;
               };
-              # Phase A (REFACTOR_DEBIAN_ALIGNED.md): the interpreter
-              # tarball ships zero .so files. The Debian-faithful static
+              # Debian-aligned interpreter tarball: ships zero .so files.
+              # The Debian-faithful static
               # set (openssl, sodium, session, filter, pcntl, zlib, libxml,
               # plus PHP's unconditional core) is linked directly into
               # bin/php by configure flag flips in build-php.sh — none of
@@ -390,8 +390,8 @@
                 soap        = mkBuiltinExt "soap";
                 gmp         = mkBuiltinExt "gmp";
                 xsl         = mkBuiltinExt "xsl";
-                # Phase A completion: the remainder of Debian's
-                # `apt install php8.2-cli` transitive closure. build-php.sh
+                # The remainder of Debian's `apt install php8.2-cli`
+                # transitive closure. build-php.sh
                 # already passes --enable-<X>=shared for every name below
                 # (see lines 104–134), so the .so files exist in the
                 # pre-prune tree; before v0.2.1 the flake just didn't

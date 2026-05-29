@@ -158,7 +158,7 @@ pkgs.stdenvNoCC.mkDerivation {
     # so it needs write permission, even when the parent is unchanged).
     chmod -R u+w "$staging/install"
 
-    # Debian-aligned split (REFACTOR_DEBIAN_ALIGNED.md Phase A): the
+    # Debian-aligned split: the
     # interpreter tarball ships zero .so files. coreExtensions is `[]`,
     # so this loop prunes every shared extension PHP's configure emitted
     # into lib/extensions/<api>/. The build-php.sh side no longer generates

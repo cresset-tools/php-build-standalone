@@ -12,7 +12,7 @@
 # → openssl), relocation (move install/ → relocated/, verify
 # extension_dir tracks).
 #
-# The interpreter tarball is Debian-aligned (REFACTOR_DEBIAN_ALIGNED.md):
+# The interpreter tarball is Debian-aligned:
 # zero .so files ship — every extension travels via its own per-ext
 # tarball. The probes here only exercise modules statically linked
 # into bin/php (sodium, libxml, openssl, etc. — the Debian php8.2-cli

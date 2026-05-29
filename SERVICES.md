@@ -4,8 +4,9 @@ This document specifies the bougie service supervisor: the
 `bougied` daemon, the built-in service catalog (mariadb, redis,
 opensearch, rabbitmq, bougie-server), and the multi-tenant model by
 which a single global service instance serves every project on the
-machine. CLI surface is in `CLI.md` §3.8; this document covers
-everything not natural to the CLI reference.
+machine. The CLI surface (`bougie services …`) is documented in the
+bougie repo; this document covers everything not natural to the CLI
+reference.
 
 ## 1. Why a service supervisor
 
@@ -447,8 +448,8 @@ schema_version; removed or semantically-changed methods MUST bump it.
 walk; this section describes the intended behavior once that
 lands.)
 
-The reachable set defined in `CLI.md` §3.6.2 (cache prune) is
-extended: a service tarball is reachable when at least one tracked
+The reachable set defined by `bougie cache prune` is extended:
+a service tarball is reachable when at least one tracked
 project declares the service in its config. `bougied` does not itself
 hold a reference — the project-level declaration is what counts. This
 matches the existing convention where the interpreter's reachable set
