@@ -513,9 +513,9 @@
   # bundled-dep set the PHP build uses is reused — no new shared/<dep>.nix
   # files are needed for MariaDB itself.
   mariadb = {
-    url = "https://archive.mariadb.org/mariadb-11.4.10/source/mariadb-11.4.10.tar.gz";
-    sha256 = "14783ddc5edd966ff05aa0efd5ed6d3d369ed5b9e4080a448f00f87a9f0a4a6b";
-    version = "11.4.10";
+    url = "https://archive.mariadb.org/mariadb-11.4.12/source/mariadb-11.4.12.tar.gz";
+    sha256 = "5ab7883db519bfcebfdd2aac09bc5544a12ce328f39edd46d0bf01690615ef6c";
+    version = "11.4.12";
   };
 
   # Redis server. 8.x is the current stable line and is tri-licensed
@@ -532,9 +532,9 @@
   # shared/<dep>.nix files needed beyond what the PHP build already pulls
   # in.
   redis = {
-    url = "https://github.com/redis/redis/archive/refs/tags/8.6.3.tar.gz";
-    sha256 = "58d0d1eb49a1ea6c2179659707fec171b1e2e2b8d5157ed2ec59d1d66ad5a654";
-    version = "8.6.3";
+    url = "https://github.com/redis/redis/archive/refs/tags/8.8.0.tar.gz";
+    sha256 = "19736ce6117d90b3df032504c6e5c1ce41667ae47f073281b40d2f274c200a74";
+    version = "8.8.0";
   };
 
   # Erlang/OTP. Built from source — there's no Temurin-equivalent prebuilt
