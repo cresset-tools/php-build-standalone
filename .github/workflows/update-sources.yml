@@ -37,6 +37,11 @@ on:
 permissions:
   contents: write
   pull-requests: write
+  # Required for determinate-nix-action to mint an OIDC token for
+  # FlakeHub Cache. Without it the action prints "FlakeHub is disabled
+  # because the workflow is misconfigured" and silently runs without
+  # cache — the weekly bump then pays a full /nix/store miss.
+  id-token: write
 
 concurrency:
   group: update-sources
@@ -60,7 +65,7 @@ jobs:
         id: app-token
         uses: actions/create-github-app-token@v3
         with:
-          app-id: ${{ secrets.BOT_APP_ID }}
+          client-id: ${{ secrets.BOT_APP_ID }}
           private-key: ${{ secrets.BOT_APP_PRIVATE_KEY }}
 
       # auto-freeze-superseded diffs shared/sources.nix against
