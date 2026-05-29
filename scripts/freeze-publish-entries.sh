@@ -177,16 +177,18 @@ while IFS= read -r target; do
       manifest_body="$(fetch_json "$manifest_abs")"
 
       # Verify the served manifest bytes against the section's recorded
-      # sha256. The publisher (shared/index.nix `stage_manifest`) hashes
-      # the substituted file as-is — no canonicalization — so we hash the
-      # raw served bytes the same way.
-      served_sha256_computed="$(printf '%s' "$manifest_body" | sha256sum | awk '{print $1}')"
+      # sha256. The publisher (shared/index.nix) writes manifests via
+      # `echo "$body" > file` and hashes via `echo "$body" | sha256sum`,
+      # so the bytes carry a trailing newline. `manifest_body` came from
+      # $(curl …) which strips trailing newlines, so re-append one via
+      # `echo` to match the publisher's hash convention.
+      served_sha256_computed="$(echo "$manifest_body" | sha256sum | awk '{print $1}')"
       manifest_sha256_section="$(echo "$artifact" | jq -r '.manifest.sha256')"
 
       if [[ "$served_sha256_computed" != "$manifest_sha256_section" ]]; then
         echo "FAIL: manifest sha256 mismatch for tag '$tag'" >&2
         echo "  section entry says: $manifest_sha256_section" >&2
-        echo "  computed (jq -S):   $served_sha256_computed" >&2
+        echo "  computed (served):  $served_sha256_computed" >&2
         exit 1
       fi
 
