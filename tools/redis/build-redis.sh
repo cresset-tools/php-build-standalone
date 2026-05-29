@@ -49,33 +49,52 @@ mkdir -p "$PBS_SOURCES"
 tar -xf "$PBS_SRC_REDIS" -C "$PBS_SOURCES"
 cd "$src_dir"
 
-# Platform branch: pick the right C++ runtime spelling for the link line.
-# src/Makefile hardcodes `FINAL_LIBS=-lm -lstdc++` (line ~152 on 8.6.x);
-# we sed it rather than overriding FINAL_LIBS from the command line
-# because the Makefile composes FINAL_LIBS *internally* with platform-
-# specific append rules (-ldl, -pthread, -lrt on Linux) and overriding
-# would clobber those.
-if [ -n "${MACOSX_DEPLOYMENT_TARGET:-}" ]; then
-  # Darwin: swap -lstdc++ for -lc++. Idempotent — only matches the exact
-  # `FINAL_LIBS=-lm -lstdc++` line, leaves other appends alone.
-  perl -i -pe 's/^FINAL_LIBS=-lm -lstdc\+\+$/FINAL_LIBS=-lm -lc++/' src/Makefile
-  grep -q '^FINAL_LIBS=-lm -lc++$' src/Makefile || { echo "FATAL: src/Makefile -lstdc++ → -lc++ patch did not apply" >&2; exit 1; }
+# C++ runtime handling. Pre-8.8.0 src/Makefile shipped a literal
+# `FINAL_LIBS=-lm -lstdc++` line because fast_float_strtod.cpp pulled
+# in the libstdc++ runtime; 8.8.0 reimplemented that translation unit
+# in C (src/fast_float_strtod.c) and dropped the link-line dependency,
+# so upstream now ships a bare `FINAL_LIBS=-lm`.
+#
+# Auto-detect: if the old form is still there, run the original platform
+# fixups (Darwin needs `-lc++` instead of `-lstdc++`; Linux drops the
+# flag and injects libstdc++.a positionally to avoid a
+# DT_NEEDED libstdc++.so.6 leak). If upstream already shipped the bare
+# form, both fixups become no-ops — verify the file is in the expected
+# shape and skip.
+needs_cxx_runtime=0
+if grep -q '^FINAL_LIBS=-lm -lstdc++$' src/Makefile; then
+  needs_cxx_runtime=1
+fi
+
+if [ "$needs_cxx_runtime" -eq 1 ]; then
+  if [ -n "${MACOSX_DEPLOYMENT_TARGET:-}" ]; then
+    # Darwin: swap -lstdc++ for -lc++. Apple's clang ships only the
+    # LLVM C++ runtime (libc++); there is no libstdc++.6.dylib.
+    perl -i -pe 's/^FINAL_LIBS=-lm -lstdc\+\+$/FINAL_LIBS=-lm -lc++/' src/Makefile
+    grep -q '^FINAL_LIBS=-lm -lc++$' src/Makefile || { echo "FATAL: src/Makefile -lstdc++ → -lc++ patch did not apply" >&2; exit 1; }
+  else
+    # Linux: drop -lstdc++ entirely; we resolve C++ symbols via the
+    # positional libstdc++.a injected in LDFLAGS below. Without the
+    # drop, --as-needed still considers `-lstdc++` a request for the
+    # dynamic libstdc++.so.6 and emits a DT_NEEDED, defeating the
+    # static-link trick.
+    perl -i -pe 's/^FINAL_LIBS=-lm -lstdc\+\+$/FINAL_LIBS=-lm/' src/Makefile
+    grep -q '^FINAL_LIBS=-lm$' src/Makefile || { echo "FATAL: src/Makefile -lstdc++ removal patch did not apply" >&2; exit 1; }
+  fi
 else
-  # Linux: drop -lstdc++ entirely; we'll resolve C++ symbols via the
-  # positional libstdc++.a injected in LDFLAGS below. Without the drop,
-  # --as-needed still considers `-lstdc++` a request for the dynamic
-  # libstdc++.so.6 and emits a DT_NEEDED, defeating the static-link
-  # trick.
-  perl -i -pe 's/^FINAL_LIBS=-lm -lstdc\+\+$/FINAL_LIBS=-lm/' src/Makefile
-  grep -q '^FINAL_LIBS=-lm$' src/Makefile || { echo "FATAL: src/Makefile -lstdc++ removal patch did not apply" >&2; exit 1; }
+  grep -q '^FINAL_LIBS=-lm$' src/Makefile || { echo "FATAL: src/Makefile FINAL_LIBS is neither '-lm -lstdc++' nor bare '-lm'; the C++ runtime handling needs to be re-checked for this Redis release" >&2; exit 1; }
 fi
 
 # Linux: positional libstdc++.a + override --no-as-needed → --as-needed.
 # Same pattern as build-php-pre-configure-linux.sh; statically pulls the
-# C++ runtime symbols fast_float_strtod.cpp needs so the resulting binary
-# has no libstdc++.so.6 DT_NEEDED. The clang-toolchain stages
+# C++ runtime symbols fast_float_strtod.cpp needed so the resulting
+# binary has no libstdc++.so.6 DT_NEEDED. The clang-toolchain stages
 # libstdc++.a from devtoolset-11's sysroot at $PBS_TOOLCHAIN/lib/.
-if [ -z "${MACOSX_DEPLOYMENT_TARGET:-}" ]; then
+#
+# Skipped on 8.8.0+ where upstream no longer links C++ at all
+# (needs_cxx_runtime=0). The libstdc++ DT_NEEDED assertion further down
+# stays armed regardless and protects against a future regression.
+if [ -z "${MACOSX_DEPLOYMENT_TARGET:-}" ] && [ "$needs_cxx_runtime" -eq 1 ]; then
   libstdcxx_a="${PBS_TOOLCHAIN}/lib/libstdc++.a"
   if [ ! -e "$libstdcxx_a" ]; then
     echo "FATAL: $libstdcxx_a not present in toolchain" >&2
