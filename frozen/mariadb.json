@@ -1,6 +1,198 @@
 {
   "entries": [
     {
+      "frozen_at": "2026-05-29T09:44:58Z",
+      "kind": "tool",
+      "manifest": {
+        "binaries": [
+          "mariadbd",
+          "mariadb",
+          "mariadb-dump",
+          "mariadb-admin",
+          "mariadb-install-db"
+        ],
+        "blob": {
+          "sha256": "be3ded251ade093cdf04dc2749425d1c385b6e831d98c1425e10c0cdf33a4ba9",
+          "size": 20885179,
+          "url": "{BLOB_BASE}/blobs/be/be3ded251ade093cdf04dc2749425d1c385b6e831d98c1425e10c0cdf33a4ba9"
+        },
+        "build_info": {
+          "nixpkgs_rev": "549bd84d6279f9852cae6225e372cc67fb91a4c1",
+          "output_tree_sha256": "fbb5a3414cc9d772021d6c87b3b7e04bf75a01122cdde77fbd5b78374f0b379c"
+        },
+        "bundled_libraries": {
+          "mariadb": "11.4.10"
+        },
+        "closure": [
+          {
+            "hash": "4wf8hnwf",
+            "name": "zlib",
+            "sha256": "a2f067a231636e4f20bc046c3f2015dbbb7bda650e7319bfdc62415e15ab0479",
+            "size": 69025,
+            "url": "{BLOB_BASE}/blobs/a2/a2f067a231636e4f20bc046c3f2015dbbb7bda650e7319bfdc62415e15ab0479",
+            "version": "1.3.2"
+          },
+          {
+            "hash": "d8n1n4hq",
+            "name": "openssl",
+            "sha256": "937337ddf84665754ea4c1b59182b8dbc627166c3cb89693837b92bc35666fce",
+            "size": 2666744,
+            "url": "{BLOB_BASE}/blobs/93/937337ddf84665754ea4c1b59182b8dbc627166c3cb89693837b92bc35666fce",
+            "version": "3.5.6"
+          },
+          {
+            "hash": "liyaj8a2",
+            "name": "ncurses",
+            "sha256": "40f49adb68c1902bc35408419f617c308fc4989b6dc1c231461d817f3d295eaa",
+            "size": 222441,
+            "url": "{BLOB_BASE}/blobs/40/40f49adb68c1902bc35408419f617c308fc4989b6dc1c231461d817f3d295eaa",
+            "version": "6.6"
+          },
+          {
+            "hash": "lw4kv25r",
+            "name": "libedit",
+            "sha256": "b01c3af1eb45d93186968c3c7aa82053788fb5b0afeb7a5bb8795cf6a53324ba",
+            "size": 72524,
+            "url": "{BLOB_BASE}/blobs/b0/b01c3af1eb45d93186968c3c7aa82053788fb5b0afeb7a5bb8795cf6a53324ba",
+            "version": "20260512-3.1"
+          },
+          {
+            "hash": "ayq3fv5k",
+            "name": "pcre2",
+            "sha256": "f5cbc78d297162851c120db2297e32750e25b060dfc9539d3d35f84142ae085c",
+            "size": 643567,
+            "url": "{BLOB_BASE}/blobs/f5/f5cbc78d297162851c120db2297e32750e25b060dfc9539d3d35f84142ae085c",
+            "version": "10.45"
+          }
+        ],
+        "flavor": "default",
+        "kind": "tool",
+        "libc": {
+          "family": "darwin",
+          "min": "11.0"
+        },
+        "name": "mariadb",
+        "schema": 1,
+        "tag": "mariadb-11.4.10-aarch64-apple-darwin-default",
+        "target": "aarch64-apple-darwin",
+        "version": "11.4.10"
+      },
+      "name": "mariadb",
+      "reason": "superseded by 11.4.12",
+      "section_entry": {
+        "flavor": "default",
+        "manifest": {
+          "path": "/versions/r26285260033/targets/aarch64-apple-darwin/manifests/tool/mariadb/11.4.10/mariadb-11.4.10-aarch64-apple-darwin-default.json",
+          "sha256": "23b4f78ac38d3cdf8a8a8a22fcc66873c574ec2969b51b40ef071c5eba6318b8"
+        },
+        "tag": "mariadb-11.4.10-aarch64-apple-darwin-default",
+        "version": "11.4.10",
+        "yanked": false
+      },
+      "tag": "mariadb-11.4.10-aarch64-apple-darwin-default",
+      "target": "aarch64-apple-darwin"
+    },
+    {
+      "frozen_at": "2026-05-29T09:44:58Z",
+      "kind": "tool",
+      "manifest": {
+        "binaries": [
+          "mariadbd",
+          "mariadb",
+          "mariadb-dump",
+          "mariadb-admin",
+          "mariadb-install-db"
+        ],
+        "blob": {
+          "sha256": "163237e5e919bbd71279f79852dfd512b99c49822d00449982dab38dae8c8a2d",
+          "size": 21644946,
+          "url": "{BLOB_BASE}/blobs/16/163237e5e919bbd71279f79852dfd512b99c49822d00449982dab38dae8c8a2d"
+        },
+        "build_info": {
+          "nixpkgs_rev": "549bd84d6279f9852cae6225e372cc67fb91a4c1",
+          "output_tree_sha256": "5f1b26b94fa1ba3445b66fb635040052ab26521aa063211404d52d59dd5630ac"
+        },
+        "bundled_libraries": {
+          "mariadb": "11.4.10"
+        },
+        "closure": [
+          {
+            "hash": "jbmj2bcm",
+            "name": "zlib",
+            "sha256": "9d0007fda79fb60526d6764ac0cff8235d8ee49a33cc73c119c55fb6c0222f20",
+            "size": 81375,
+            "url": "{BLOB_BASE}/blobs/9d/9d0007fda79fb60526d6764ac0cff8235d8ee49a33cc73c119c55fb6c0222f20",
+            "version": "1.3.2"
+          },
+          {
+            "hash": "99hgd6kn",
+            "name": "openssl",
+            "sha256": "7834a45ee89c9692b9dc6630849a032f5a6b2c5a4b7fa21f45cc22a4ed95abe9",
+            "size": 2368388,
+            "url": "{BLOB_BASE}/blobs/78/7834a45ee89c9692b9dc6630849a032f5a6b2c5a4b7fa21f45cc22a4ed95abe9",
+            "version": "3.5.6"
+          },
+          {
+            "hash": "grpadm5y",
+            "name": "ncurses",
+            "sha256": "26f1d5624ff7fe2b71b4eea4d63c7e638ddd3c1f87986f0634371bfa76319eaa",
+            "size": 245294,
+            "url": "{BLOB_BASE}/blobs/26/26f1d5624ff7fe2b71b4eea4d63c7e638ddd3c1f87986f0634371bfa76319eaa",
+            "version": "6.6"
+          },
+          {
+            "hash": "a2wsf4nv",
+            "name": "libedit",
+            "sha256": "45344aeb579d0c0d7f7c9784d819e133c9195f8d5e5f3025e900d2a3bcae37ca",
+            "size": 84516,
+            "url": "{BLOB_BASE}/blobs/45/45344aeb579d0c0d7f7c9784d819e133c9195f8d5e5f3025e900d2a3bcae37ca",
+            "version": "20260512-3.1"
+          },
+          {
+            "hash": "y79lgxr0",
+            "name": "pcre2",
+            "sha256": "0b75406a0af031481a8f7c49ac683fee0651d921c7572732311d0ea403c32809",
+            "size": 652308,
+            "url": "{BLOB_BASE}/blobs/0b/0b75406a0af031481a8f7c49ac683fee0651d921c7572732311d0ea403c32809",
+            "version": "10.45"
+          },
+          {
+            "hash": "fjj4l9i5",
+            "name": "libxcrypt",
+            "sha256": "56e3f9c23f352f6756d3efa1632980055536a5955755f92ded2eba3d72a821af",
+            "size": 83764,
+            "url": "{BLOB_BASE}/blobs/56/56e3f9c23f352f6756d3efa1632980055536a5955755f92ded2eba3d72a821af",
+            "version": "4.4.36"
+          }
+        ],
+        "flavor": "default",
+        "kind": "tool",
+        "libc": {
+          "family": "gnu",
+          "min": "2.17"
+        },
+        "name": "mariadb",
+        "schema": 1,
+        "tag": "mariadb-11.4.10-x86_64-unknown-linux-gnu-default",
+        "target": "x86_64-unknown-linux-gnu",
+        "version": "11.4.10"
+      },
+      "name": "mariadb",
+      "reason": "superseded by 11.4.12",
+      "section_entry": {
+        "flavor": "default",
+        "manifest": {
+          "path": "/versions/r26285260033/targets/x86_64-unknown-linux-gnu/manifests/tool/mariadb/11.4.10/mariadb-11.4.10-x86_64-unknown-linux-gnu-default.json",
+          "sha256": "e89cc9e7add32098c332bad4d2783529a4c8dd83a029b92f34c8941bc11e8f1f"
+        },
+        "tag": "mariadb-11.4.10-x86_64-unknown-linux-gnu-default",
+        "version": "11.4.10",
+        "yanked": false
+      },
+      "tag": "mariadb-11.4.10-x86_64-unknown-linux-gnu-default",
+      "target": "x86_64-unknown-linux-gnu"
+    },
+    {
       "frozen_at": "2026-05-13T17:06:13Z",
       "kind": "tool",
       "manifest": {
