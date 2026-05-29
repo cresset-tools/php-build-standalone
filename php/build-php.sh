@@ -202,7 +202,7 @@ if [ ! -f "$PBS_DEPS/bin/phar.phar" ]; then
 fi
 
 # No conf.d generation: the interpreter tarball ships zero auto-loading
-# fragments (REFACTOR_DEBIAN_ALIGNED.md). Each per-ext tarball emits its
+# fragments. Each per-ext tarball emits its
 # own conf.d/*.ini at consumer-install time, so the bare interpreter starts
 # with the Debian-faithful static set only.
 ext_dir=$(find "$PBS_DEPS/lib/extensions" -maxdepth 1 -mindepth 1 -type d | head -n1)
