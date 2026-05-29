@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.2.3](https://github.com/cresset-tools/php-build-standalone/compare/v0.2.2...v0.2.3) (2026-05-29)
+
+
+### Bug Fixes
+
+* **freeze:** hash served manifest bytes with trailing newline ([2a0fbc9](https://github.com/cresset-tools/php-build-standalone/commit/2a0fbc9178c86cab9b9725616ebb157bcc769979))
+* **freeze:** hash served manifest bytes with trailing newline ([b34eb34](https://github.com/cresset-tools/php-build-standalone/commit/b34eb34bbb6e8974e44a4e8b84c8bd425229a9c2))
+* **redis:** auto-adapt to upstream dropping -lstdc++ in 8.8.0 ([3a9fad4](https://github.com/cresset-tools/php-build-standalone/commit/3a9fad49de6efac1f1b60ac7e33c73a0bb0ea966))
+* **redis:** auto-adapt to upstream dropping -lstdc++ in 8.8.0 ([36ca3f2](https://github.com/cresset-tools/php-build-standalone/commit/36ca3f2ac643769716116dc45f259e975053cce4))
+
+
+### Dependencies
+
+* bump pinned upstreams via scripts/update.py ([bc22391](https://github.com/cresset-tools/php-build-standalone/commit/bc22391000c6857a7e97515951d5488da750dfbe))
+
+
+### CI
+
+* fix FlakeHub OIDC + rename deprecated app-id input ([9c2f88c](https://github.com/cresset-tools/php-build-standalone/commit/9c2f88c690e2536ddfa259f339f6c65d136810d6))
+* grant id-token write to update-sources and rename app-id input ([23f17c2](https://github.com/cresset-tools/php-build-standalone/commit/23f17c255dc502a1577ff861df42a781730d0538))
+
 ## [0.2.2](https://github.com/cresset-tools/php-build-standalone/compare/v0.2.1...v0.2.2) (2026-05-22)
 
 
