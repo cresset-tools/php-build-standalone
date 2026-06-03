@@ -9,7 +9,10 @@
 # glibc must meet). Darwin probes the LC_BUILD_VERSION minos field on every
 # Mach-O via `otool -l` (the macOS version floor).
 { pkgs, tree, sources, phpSpec, xdebugSpec
-, target ? if pkgs.stdenv.isDarwin then "aarch64-apple-darwin" else "x86_64-unknown-linux-gnu"
+, pbsMusl ? false   # named to avoid callPackage auto-fill from pkgs.musl
+, target ? if pkgs.stdenv.isDarwin then "aarch64-apple-darwin"
+           else if pbsMusl then "x86_64-unknown-linux-musl"
+           else "x86_64-unknown-linux-gnu"
 , phpVersion ? "8.4"
 , flavor ? "nts"  # "nts" | "zts"; "*-debug" still future work (DISTRIBUTION.md §Object-kinds).
 , nixpkgsRev
@@ -47,7 +50,8 @@ let
   # libc/macOS must meet (sed-filled).
   libcAttr = if stdenv.isDarwin
     then { family = "darwin"; min = "@MIN_MACOS@"; }
-    else { family = "gnu";    min = "@LIBC_MIN@"; };
+    else if pbsMusl then { family = "musl"; min = "@LIBC_MIN@"; }
+    else { family = "gnu"; min = "@LIBC_MIN@"; };
 
   # Flavor: nts/zts × debug. Threaded into the manifest tag and section
   # row so a resolver matches exactly. Debug variants are still future
@@ -113,6 +117,12 @@ let
         | sort -V | tail -1; } || true )
     min_macos=''${min_macos:-11.0}
     libc_sed=(-e "s/@MIN_MACOS@/$min_macos/")
+  '' else if pbsMusl then ''
+    # musl has no GLIBC_-style per-symbol versioning, so there's no symbol
+    # floor to probe. The floor is simply the musl version we linked against
+    # (nixpkgs pkgsMusl — musl 1.2.5), matching python-build-standalone's
+    # "minimum required musl version" metadata.
+    libc_sed=(-e "s/@LIBC_MIN@/1.2.5/")
   '' else ''
     # Compute the highest GLIBC_x.y symbol referenced by any shipped ELF
     # — that's the floor a consumer's glibc must meet to load this build.

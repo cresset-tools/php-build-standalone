@@ -10,7 +10,7 @@
 # patchelf + audit gates; finalize-darwin.sh: install_name_tool + codesign +
 # audit gates). Both drivers source finalize-common.sh for the shared
 # .la / .pc / text-file detoxification phases.
-{ pkgs, bundledDeps, interpreterDeps, toolchain, phpVersion ? "0.0.0-unknown" }:
+{ pkgs, bundledDeps, interpreterDeps, toolchain, phpVersion ? "0.0.0-unknown", pbsMusl ? false }:
 let
   inherit (pkgs) stdenv lib;
   finalizer = if stdenv.isDarwin then ./finalize-darwin.sh else ./finalize-linux.sh;
@@ -64,6 +64,7 @@ pkgs.stdenvNoCC.mkDerivation {
     export PBS_INSTALL="$out"
     export PBS_FINALIZE_COMMON="${./finalize-common.sh}"
     export PBS_STORE_MANIFEST="${storeManifestFile}"
+    export PBS_LIBC="${if pbsMusl then "musl" else "gnu"}"
     mkdir -p "$PBS_INSTALL"
 
     # NOTE: we do NOT bundle libstdc++.so.6 / libgcc_s.so.1 from the

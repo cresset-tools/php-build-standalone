@@ -32,10 +32,30 @@ is_elf() {
 
 declare -A PBS_SONAME_STORE
 
+# libc family for this leg: "gnu" (glibc) or "musl". Set by tree.nix /
+# tarball-store-path.nix from the flake's musl flag. Controls the baked
+# interpreter path and which libc sonames count as consumer-provided.
+PBS_LIBC="${PBS_LIBC:-gnu}"
+if [ "$PBS_LIBC" = "musl" ]; then
+  # musl ships one combined libc/loader; the consumer-standard path is
+  # /lib/ld-musl-x86_64.so.1 (Alpine et al.). The dynamically-linked musl
+  # build links shared against it (python-build-standalone's post-20250311
+  # model) — finalize bakes the relocatable interpreter here.
+  PBS_INTERP="/lib/ld-musl-x86_64.so.1"
+else
+  PBS_INTERP="/lib64/ld-linux-x86-64.so.2"
+fi
+
 SYSTEM_SONAMES=(
+  # glibc
   libc.so.6 libm.so.6 libdl.so.2 libpthread.so.0 librt.so.1
   libresolv.so.2 libutil.so.1 "ld-linux-x86-64.so.2"
   libgcc_s.so.1 libstdc++.so.6
+  # musl (the loader resolves bare libc.so itself; libc.musl-… is the
+  # Alpine filename; libstdc++/libgcc_s are consumer-provided on musl too,
+  # already listed above). Disjoint from the glibc set per binary, so
+  # listing both legs' sonames unconditionally is safe.
+  libc.so "libc.musl-x86_64.so.1" "ld-musl-x86_64.so.1"
 )
 
 _is_system_soname() {
@@ -170,7 +190,7 @@ _patchelf_one() {
   fi
   # Set interpreter on every ELF that has an INTERP segment.
   if readelf -l "$f" 2>/dev/null | grep -q INTERP; then
-    patchelf --set-interpreter /lib64/ld-linux-x86-64.so.2 "$f"
+    patchelf --set-interpreter "$PBS_INTERP" "$f"
   fi
   patched=$((patched + 1))
 }
@@ -253,7 +273,7 @@ _check_interp() {
   if readelf -l "$1" 2>/dev/null | grep -q INTERP; then
     local interp
     interp="$(readelf -p .interp "$1" 2>/dev/null | awk '/\[/{print $NF}' | head -1)"
-    if [ "$interp" != "/lib64/ld-linux-x86-64.so.2" ]; then
+    if [ "$interp" != "$PBS_INTERP" ]; then
       bad+="$1: $interp"$'\n'
     fi
   fi

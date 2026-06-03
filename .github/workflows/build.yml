@@ -158,6 +158,21 @@ jobs:
           - { php: "8.3", minor: "8_3", flavor: "zts", variant_key: "8_3_zts", os: macos-26,      system: "aarch64-darwin", target: "aarch64-apple-darwin" }
           - { php: "8.4", minor: "8_4", flavor: "zts", variant_key: "8_4_zts", os: macos-26,      system: "aarch64-darwin", target: "aarch64-apple-darwin" }
           - { php: "8.5", minor: "8_5", flavor: "zts", variant_key: "8_5_zts", os: macos-26,      system: "aarch64-darwin", target: "aarch64-apple-darwin" }
+          # musl leg: built on the glibc ubuntu runner (the toolchain
+          # cross-targets musl via pkgsMusl; see shared/toolchain-musl.nix),
+          # addressed through the `x86_64-linux-musl` flake leg key. The
+          # musl artifacts can't run on the glibc runner, so the smoke-test
+          # step below runs them in an Alpine container instead.
+          - { php: "8.1", minor: "8_1", flavor: "nts", variant_key: "8_1",     os: ubuntu-latest, system: "x86_64-linux-musl", target: "x86_64-unknown-linux-musl" }
+          - { php: "8.2", minor: "8_2", flavor: "nts", variant_key: "8_2",     os: ubuntu-latest, system: "x86_64-linux-musl", target: "x86_64-unknown-linux-musl" }
+          - { php: "8.3", minor: "8_3", flavor: "nts", variant_key: "8_3",     os: ubuntu-latest, system: "x86_64-linux-musl", target: "x86_64-unknown-linux-musl" }
+          - { php: "8.4", minor: "8_4", flavor: "nts", variant_key: "8_4",     os: ubuntu-latest, system: "x86_64-linux-musl", target: "x86_64-unknown-linux-musl" }
+          - { php: "8.5", minor: "8_5", flavor: "nts", variant_key: "8_5",     os: ubuntu-latest, system: "x86_64-linux-musl", target: "x86_64-unknown-linux-musl" }
+          - { php: "8.1", minor: "8_1", flavor: "zts", variant_key: "8_1_zts", os: ubuntu-latest, system: "x86_64-linux-musl", target: "x86_64-unknown-linux-musl" }
+          - { php: "8.2", minor: "8_2", flavor: "zts", variant_key: "8_2_zts", os: ubuntu-latest, system: "x86_64-linux-musl", target: "x86_64-unknown-linux-musl" }
+          - { php: "8.3", minor: "8_3", flavor: "zts", variant_key: "8_3_zts", os: ubuntu-latest, system: "x86_64-linux-musl", target: "x86_64-unknown-linux-musl" }
+          - { php: "8.4", minor: "8_4", flavor: "zts", variant_key: "8_4_zts", os: ubuntu-latest, system: "x86_64-linux-musl", target: "x86_64-unknown-linux-musl" }
+          - { php: "8.5", minor: "8_5", flavor: "zts", variant_key: "8_5_zts", os: ubuntu-latest, system: "x86_64-linux-musl", target: "x86_64-unknown-linux-musl" }
     steps:
       - uses: actions/checkout@v6
 
@@ -181,9 +196,35 @@ jobs:
         # Phase 3 ships xdebug as a separate per-extension tarball; the
         # distro-matrix job covers xdebug end-to-end via tests/smoke.sh.
         # These gates are version- and platform-agnostic; one script
-        # handles both Linux and Darwin matrix legs (same tarball layout,
-        # same relocation contract — pbs_relocate.h switches on __APPLE__).
+        # handles both Linux-glibc and Darwin matrix legs (same tarball
+        # layout, same relocation contract — pbs_relocate.h switches on
+        # __APPLE__). The musl leg runs on a glibc runner that can't exec a
+        # musl binary, so it's smoke-tested in an Alpine container below.
+        if: ${{ matrix.target != 'x86_64-unknown-linux-musl' }}
         run: nix run .#smoke-test-tarball -- "$(ls result-tarball/php-*.tar.zst | head -1)" "${{ matrix.php }}"
+
+      - name: Smoke-test the artifact (musl / Alpine)
+        # The musl tarball targets /lib/ld-musl-x86_64.so.1, which the glibc
+        # ubuntu runner lacks. Extract + run it on real Alpine musl instead:
+        # confirm PHP runs, reports the expected version, and loads a
+        # bundled-C-lib extension (openssl) through the $ORIGIN store RPATHs.
+        if: ${{ matrix.target == 'x86_64-unknown-linux-musl' }}
+        run: |
+          tarball="$(ls result-tarball/php-*.tar.zst | head -1)"
+          docker run --rm --platform linux/amd64 \
+            -v "$PWD/$tarball":/php.tar.zst:ro \
+            -e EXPECT_VER="${{ matrix.php }}" \
+            alpine:3.22 sh -euc '
+              apk add --no-cache zstd tar >/dev/null
+              mkdir /opt/php && tar -C /opt/php -xf /php.tar.zst
+              php="$(find /opt/php -name php -path "*/bin/*" -type f | head -1)"
+              "$php" --version
+              "$php" --version | head -1 | grep -q "PHP $EXPECT_VER" \
+                || { echo "FATAL: version mismatch (expected $EXPECT_VER)" >&2; exit 1; }
+              "$php" -r "exit(extension_loaded(\"openssl\") ? 0 : 1);" \
+                || { echo "FATAL: openssl extension not loaded" >&2; exit 1; }
+              echo "Alpine musl smoke OK"
+            '
 
       - name: Build closures
         run: nix build ".#phpVariants.${{ matrix.system }}.${{ matrix.variant_key }}.closures" -o result-closures --print-build-logs
@@ -424,9 +465,13 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        # The musl leg assembles its own release-bundle on the same ubuntu
+        # runner (separate flake output `release-bundle-musl`), merged into
+        # the unified tree alongside linux-glibc + darwin in `publish`.
         include:
-          - { os: ubuntu-latest, artifact: linux }
-          - { os: macos-26,      artifact: darwin }
+          - { os: ubuntu-latest, artifact: linux,  bundle_attr: "release-bundle" }
+          - { os: ubuntu-latest, artifact: musl,   bundle_attr: "release-bundle-musl" }
+          - { os: macos-26,      artifact: darwin, bundle_attr: "release-bundle" }
     steps:
       - uses: actions/checkout@v6
 
@@ -440,9 +485,9 @@ jobs:
         # FlakeHub Cache hits all per-minor inputs already built in
         # build-tarball, so this is fast on a warm cache.
         # --impure lets index.nix read INDEX_HOST/BLOB_HOST via getEnv.
-        # Both matrix legs see the workflow-level env, so the merged tree
+        # All legs see the workflow-level env, so the merged tree
         # is internally consistent.
-        run: nix build .#release-bundle --impure --print-build-logs
+        run: nix build ".#${{ matrix.bundle_attr }}" --impure --print-build-logs
 
       - name: Upload release-bundle artifact
         uses: actions/upload-artifact@v7
@@ -518,20 +563,26 @@ jobs:
           name: release-bundle-linux
           path: bundles/linux/
 
+      - name: Download Linux musl release-bundle
+        uses: actions/download-artifact@v8
+        with:
+          name: release-bundle-musl
+          path: bundles/musl/
+
       - name: Download Darwin release-bundle
         uses: actions/download-artifact@v8
         with:
           name: release-bundle-darwin
           path: bundles/darwin/
 
-      - name: Merge Linux + Darwin trees
-        # Both bundles share the same index.json schema (generated is the
-        # reproducible per-leg sentinel) but have disjoint targets/<triple>
-        # subtrees. The merge unions targets/ and blobs/, deep-merges the
-        # two index.json roots, stamps `generated` with wall-clock-now, then
-        # splits into merged/ and index_tree/ (the latter excludes blobs/,
-        # ready for signing).
-        run: nix run .#merge-publish-tree -- bundles/linux bundles/darwin .
+      - name: Merge per-leg trees
+        # Each leg's bundle shares the same index.json schema (generated is
+        # the reproducible per-leg sentinel) but has a disjoint
+        # targets/<triple> subtree. The merge unions versions/ and blobs/,
+        # deep-merges the index.json .targets maps, stamps `generated` with
+        # wall-clock-now, then splits into merged/ and index_tree/ (the
+        # latter excludes blobs/, ready for signing).
+        run: nix run .#merge-publish-tree -- bundles/linux bundles/musl bundles/darwin .
 
       - name: Validate tree locally
         # Each leg's release-bundle was built with the workflow-level

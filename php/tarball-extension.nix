@@ -45,7 +45,10 @@
 , storePathTarballs  # list of pbs-store-* derivations parallel to bundledDeps;
                      # each $out contains <storeName>.sha256 (sha256 of the
                      # actual tar.zst the CLI will download).
-, target ? if pkgs.stdenv.isDarwin then "aarch64-apple-darwin" else "x86_64-unknown-linux-gnu"
+, pbsMusl ? false   # named to avoid callPackage auto-fill from pkgs.musl
+, target ? if pkgs.stdenv.isDarwin then "aarch64-apple-darwin"
+           else if pbsMusl then "x86_64-unknown-linux-musl"
+           else "x86_64-unknown-linux-gnu"
 , flavor ? "nts"  # "nts" | "zts"; must match the PHP variant the .so was built against.
 , confFragment ? null  # null → no conf.d; non-null → include this .ini content
 , confPrefix ? "20"    # numeric prefix on the conf.d filename (NN-<ext>.ini).
@@ -73,7 +76,8 @@ let
   # a conservative manylinux-style floor; tightening the probe is future work.
   libcAttr = if stdenv.isDarwin
     then { family = "darwin"; min = "11.0"; }
-    else { family = "gnu";    min = "2.17"; };
+    else if pbsMusl then { family = "musl"; min = "1.2.5"; }
+    else { family = "gnu"; min = "2.17"; };
 
   # Flavor: nts/zts × debug. Passed in by the caller; manifest's `flavor`
   # and the section row's `flavor` must agree (DISTRIBUTION.md

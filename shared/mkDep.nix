@@ -65,7 +65,7 @@
 #   - PBS_SYSROOT export (Linux only)
 #   - postBuildHook default (Darwin gets the install_name normalization;
 #     Linux gets an empty default)
-{ pkgs, sources, toolchain }:
+{ pkgs, sources, toolchain, pbsMusl ? false }:
 { name
 , builder ? null
 , buildScript ? if builder == null then ./. + "/build-${name}.sh" else null
@@ -87,13 +87,25 @@
 let
   inherit (pkgs) lib stdenv;
   darwin = stdenv.isDarwin;
+  # musl leg: `pbsMusl` is passed explicitly (the build pkgs stay glibc —
+  # host tools are cached — and musl-ness comes only from the toolchain
+  # wrapper targeting a musl sysroot, so we can't infer it from `stdenv`).
+  # It's ELF/Linux (the `darwin` branches stay false) but has no custom
+  # old-libc sysroot — shaped like Darwin in that respect. Branch on it only
+  # where the glibc-sysroot logic must be skipped. (Named `pbsMusl`, not
+  # `musl`, to avoid callPackage auto-filling it from pkgs.musl.)
 
   toolchainPkgs =
     if darwin
     then import ./toolchain-pkgs-darwin.nix { inherit pkgs toolchain; }
+    else if pbsMusl
+    then import ./toolchain-pkgs-musl.nix   { inherit pkgs toolchain; }
     else import ./toolchain.nix             { inherit pkgs toolchain; };
 
-  setupEnv = if darwin then ./setup-env-darwin.sh else ./setup-env-linux.sh;
+  setupEnv =
+    if darwin then ./setup-env-darwin.sh
+    else if pbsMusl then ./setup-env-musl.sh
+    else ./setup-env-linux.sh;
 
   envName = lib.toUpper (lib.replaceStrings [ "-" ] [ "_" ] name);
 
@@ -225,9 +237,9 @@ let
     else if builder == null then "bash ${buildScript}"
     else throw "mkDep: unknown builder ${builder}";
 
-  # Linux exports PBS_SYSROOT (used by build-php.sh's libstdc++.a path);
-  # Darwin has no sysroot.
-  exportSysroot = lib.optionalString (!darwin) ''
+  # The glibc Linux leg exports PBS_SYSROOT (used by build-php.sh's
+  # libstdc++.a path). Darwin and musl have no custom sysroot.
+  exportSysroot = lib.optionalString (!darwin && !pbsMusl) ''
     export PBS_SYSROOT="${toolchain.passthru.sysroot}"
   '';
 

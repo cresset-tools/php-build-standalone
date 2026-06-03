@@ -1,78 +1,81 @@
 #!/usr/bin/env bash
-# Merge Linux and Darwin release-bundle trees into a unified distribution tree.
+# Merge per-leg release-bundle trees into a unified distribution tree.
 #
-# Usage: merge-publish-tree.sh <linux-bundle-dir> <darwin-bundle-dir> <output-dir>
+# Usage: merge-publish-tree.sh <bundle-dir>... <output-dir>
 #
 # Inputs:
-#   $1  directory containing the Linux release-bundle (index.json, targets/, blobs/)
-#   $2  directory containing the Darwin release-bundle (same layout)
-#   $3  output directory (created if absent)
+#   one or more directories, each a per-leg release-bundle (index.json,
+#   versions/, blobs/) — e.g. the Linux-glibc, Linux-musl, and Darwin legs.
+#   The last argument is the output directory (created if absent).
+#
+# Each leg populates a disjoint set of target triples; the merge unions
+# their versions/ + blobs/ subtrees and deep-merges the index.json
+# .targets maps. The first leg is the authoritative base.
 #
 # Outputs:
-#   <output-dir>/merged/       unified tree (targets/ + blobs/ + merged index.json)
+#   <output-dir>/merged/       unified tree (versions/ + blobs/ + merged index.json)
 #   <output-dir>/index_tree/   like merged/ but without blobs/ (ready for signing)
 
 set -euo pipefail
 
-if [ $# -lt 3 ]; then
-  echo "usage: $0 <linux-bundle-dir> <darwin-bundle-dir> <output-dir>" >&2
+if [ $# -lt 2 ]; then
+  echo "usage: $0 <bundle-dir>... <output-dir>" >&2
   exit 1
 fi
 
-LINUX_DIR="$1"
-DARWIN_DIR="$2"
-OUTPUT_DIR="$3"
+# Last arg is the output dir; everything before it is an input leg.
+OUTPUT_DIR="${!#}"
+BUNDLE_DIRS=("${@:1:$#-1}")
 
 mkdir -p "$OUTPUT_DIR/merged/blobs"
 
-# Both legs must share the same publish version — the workflow sets
-# PUBLISH_VERSION at the env level so both matrix legs see the same
-# value, which means versions/<V>/ paths are mergeable. Mismatch is a
-# pipeline bug, not an artifact-set difference.
-linux_version="$(jq -r '.version' "$LINUX_DIR/index.json")"
-darwin_version="$(jq -r '.version' "$DARWIN_DIR/index.json")"
-if [ "$linux_version" != "$darwin_version" ]; then
-  echo "FATAL: leg version mismatch — Linux=$linux_version Darwin=$darwin_version" >&2
-  echo "       Both legs must build with the same PUBLISH_VERSION env." >&2
-  exit 1
-fi
+# All legs must share the same publish version — the workflow sets
+# PUBLISH_VERSION at the env level so every leg sees the same value, which
+# means versions/<V>/ paths are mergeable. Mismatch is a pipeline bug, not
+# an artifact-set difference.
+base_version="$(jq -r '.version' "${BUNDLE_DIRS[0]}/index.json")"
+for d in "${BUNDLE_DIRS[@]}"; do
+  v="$(jq -r '.version' "$d/index.json")"
+  if [ "$v" != "$base_version" ]; then
+    echo "FATAL: leg version mismatch — $d=$v vs base=$base_version" >&2
+    echo "       All legs must build with the same PUBLISH_VERSION env." >&2
+    exit 1
+  fi
+done
 
-# Copy Linux tree first (authoritative base). Brings index.json,
-# versions/<V>/targets/<linux-target>/ (sections + manifests), and
-# blobs/ along.
-cp -r "$LINUX_DIR/." "$OUTPUT_DIR/merged/"
+# Copy the first leg as authoritative base (index.json, versions/<V>/, blobs/).
+cp -r "${BUNDLE_DIRS[0]}/." "$OUTPUT_DIR/merged/"
 
-# Merge Darwin versions/<V>/ — same V across legs (asserted above), so
-# the only thing under versions/<V>/ that differs is which target dirs
-# (and the manifests beneath them) each leg populated. cp -rn is the
-# merge: matching subpaths from Darwin land alongside Linux's, no
-# overwrites. Manifests used to live in a separate top-level
-# `targets/` tree that was merged in its own pass; consolidating them
-# under versions/<V>/ collapses that into this single cp.
-if [ -d "$DARWIN_DIR/versions" ]; then
-  mkdir -p "$OUTPUT_DIR/merged/versions"
-  cp -rn "$DARWIN_DIR/versions/." "$OUTPUT_DIR/merged/versions/"
-fi
+# Merge each subsequent leg's versions/<V>/ + blobs/. Same V across legs
+# (asserted), so the only differences under versions/<V>/ are which target
+# dirs (and manifests) each leg populated; cp -rn unions without overwrites.
+# blobs/ are content-addressed, so any collision is the same bytes.
+for d in "${BUNDLE_DIRS[@]:1}"; do
+  if [ -d "$d/versions" ]; then
+    mkdir -p "$OUTPUT_DIR/merged/versions"
+    cp -rn "$d/versions/." "$OUTPUT_DIR/merged/versions/"
+  fi
+  if [ -d "$d/blobs" ]; then
+    # shellcheck disable=SC2015
+    cp -rn "$d/blobs/." "$OUTPUT_DIR/merged/blobs/" 2>/dev/null || true
+  fi
+done
 
-# Merge Darwin blobs/ — content-addressed, collisions are the same bytes.
-if [ -d "$DARWIN_DIR/blobs" ]; then
-  # shellcheck disable=SC2015
-  cp -rn "$DARWIN_DIR/blobs/." "$OUTPUT_DIR/merged/blobs/" 2>/dev/null || true
-fi
-
-# Deep-merge the two index.json roots: .targets maps are disjoint by triple.
-# .version is identical (asserted) so $linux.version carries through.
+# Deep-merge all index.json roots: .targets maps are disjoint by triple.
+# .version is identical (asserted) so the base's carries through.
 # `generated` is rewritten to wall-clock-now: each per-leg index.json holds
 # the reproducible per-leg default (1704067200) from index.nix; the merge
 # step is the natural place to stamp the actual publish time on the unified
 # index. Allow GENERATED_AT to override for tests/manual runs.
 generated_at="${GENERATED_AT:-$(date -u '+%Y-%m-%dT%H:%M:%SZ')}"
+index_files=()
+for d in "${BUNDLE_DIRS[@]}"; do index_files+=("$d/index.json"); done
 jq -s --arg generated "$generated_at" '
-  .[0] as $linux | .[1] as $darwin |
-  $linux
-    | .targets = ($linux.targets + $darwin.targets)
+  . as $all
+  | $all[0]
+    | .targets = (reduce $all[] as $o ({}; . + $o.targets))
     | .generated = $generated
-' "$LINUX_DIR/index.json" "$DARWIN_DIR/index.json" > "$OUTPUT_DIR/merged/index.json"
+' "${index_files[@]}" > "$OUTPUT_DIR/merged/index.json"
 
 echo "Merged tree:"
 echo "  targets: $(jq '.targets | keys | length' "$OUTPUT_DIR/merged/index.json")"

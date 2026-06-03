@@ -45,31 +45,57 @@
       # variant, and the cross-variant index. Materialized once per
       # system; consumed by `packages`, `phpVariants`, `bundledDeps`,
       # `toolchain`, `sysroot`, and `devShells` below.
-      contextFor = system:
+      # contextForLeg builds a context for one (system, libc) build leg.
+      # `system` is the real Nix system (selects the runner + nixpkgs
+      # stdenv); `libc` distinguishes legs that share a system — today
+      # x86_64-linux carries both a "gnu" leg (CentOS-7 glibc-2.17 sysroot)
+      # and a "musl" leg (nixpkgs pkgsMusl, dynamically linked against
+      # system musl, like python-build-standalone's post-20250311 builds).
+      # `contextFor system` keeps the original system->ctx shape (so
+      # `forEach contextFor` is unchanged); the musl leg is built explicitly.
+      contextForLeg = { system, libc }:
         let
+          # All legs build with glibc-hosted nixpkgs (host tools are cached
+          # and run on the build host). musl-ness comes from the toolchain
+          # targeting a musl sysroot, NOT from a musl stdenv — building the
+          # whole musl toolchain/tooling from source would be hours of
+          # uncached compilation.
           pkgs = import nixpkgs { inherit system; };
           sources = import ./shared/sources.nix;
           nixpkgsRev = nixpkgs.rev or "dirty";
           darwin = isDarwin system;
+          musl = libc == "musl";
 
-          # Toolchain wiring. Linux uses a clang wrapper against an old
-          # CentOS 7 / glibc 2.17 sysroot (the python-build-standalone
-          # trick). Darwin uses a thin wrapper around nixpkgs's clang +
-          # MACOSX_DEPLOYMENT_TARGET=11.0 (Big Sur) — system libc is
-          # ABI-stable so no sysroot is needed.
-          sysroot = if darwin then null else pkgs.callPackage ./shared/sysroot.nix {};
-          toolchain = if darwin
+          # Toolchain wiring. The glibc Linux leg uses a clang wrapper
+          # against an old CentOS 7 / glibc 2.17 sysroot (the
+          # python-build-standalone trick). Darwin uses a thin wrapper
+          # around nixpkgs's clang + MACOSX_DEPLOYMENT_TARGET=11.0. The musl
+          # leg uses the same glibc-hosted clang but re-pointed at nixpkgs's
+          # `pkgsMusl.musl` as a sysroot (toolchain-musl.nix) — dynamically
+          # linked, like python-build-standalone's post-20250311 builds.
+          sysroot = if (darwin || musl) then null else pkgs.callPackage ./shared/sysroot.nix {};
+          toolchain =
+            if darwin
             then pkgs.callPackage ./shared/toolchain-darwin.nix {
               clang = pkgs.clang;
               llvmPackages = pkgs.llvmPackages;
             }
+            else if musl
+            then pkgs.callPackage ./shared/toolchain-musl.nix {
+              # glibc-hosted clang-18 (cached, same as the gnu leg) targeting
+              # musl; musl libc/headers/crt come from pkgsMusl.musl, and the
+              # C++ runtime (libstdc++) from pkgsMusl's gcc — both cached.
+              muslOut = pkgs.pkgsMusl.musl;
+              muslDev = pkgs.pkgsMusl.musl.dev;
+              cxxGcc = pkgs.pkgsMusl.stdenv.cc.cc;
+              cxxGccLib = pkgs.pkgsMusl.stdenv.cc.cc.lib;
+            }
             else pkgs.callPackage ./shared/clang-toolchain.nix { inherit sysroot; };
 
           # mkDep is the derivation factory used by every per-dep wrapper.
-          # Single file, branches internally on stdenv.isDarwin to pick
-          # toolchain pkg list, sysroot exports, and the post-build
-          # install_name normalization hook.
-          mkDep = pkgs.callPackage ./shared/mkDep.nix { inherit sources toolchain; };
+          # Branches internally on darwin/musl to pick the toolchain pkg
+          # list, sysroot export, and post-build install_name hook.
+          mkDep = pkgs.callPackage ./shared/mkDep.nix { inherit sources toolchain; pbsMusl = musl; };
 
           # Every bundled C-lib derivation, keyed by short name. Built
           # once and shared across all PHP variants. Wrappers live in
@@ -175,7 +201,7 @@
           # PHP extension closure walker emits — they dedupe at the blob
           # layer when index.nix runs.
           storePathTarballs = builtins.mapAttrs
-            (_: dep: pkgs.callPackage ./shared/tarball-store-path.nix { inherit dep; })
+            (_: dep: pkgs.callPackage ./shared/tarball-store-path.nix { inherit dep; pbsMusl = musl; })
             deps;
 
           # Build one complete PHP variant from a phpVersions key.
@@ -208,6 +234,7 @@
 
               php = pkgs.callPackage ./php/php.nix ({
                 inherit mkDep phpSpec flavor;
+                pbsMusl = musl;
                 inherit (deps)
                   zlib openssl libxml2 libxslt sqlite oniguruma libsodium bzip2
                   libpng libjpeg-turbo libwebp freetype
@@ -253,6 +280,7 @@
                   php xdebug imagick vips redis igbinary msgpack apcu pcov
                 ];
                 inherit toolchain;
+                pbsMusl = musl;
                 phpVersion = phpSpec.version;
               };
               # Debian-aligned interpreter tarball: ships zero .so files.
@@ -279,6 +307,7 @@
               tarball = pkgs.callPackage ./php/tarball.nix {
                 inherit tree sources nixpkgsRev phpSpec xdebugSpec
                         coreExtensions coreDepNames deps flavor;
+                pbsMusl = musl;
                 phpVersion = phpSpec.version;
               };
 
@@ -301,6 +330,7 @@
               # version field.
               extArgs = {
                 inherit tree closures flavor;
+                pbsMusl = musl;
                 phpMinor = phpKey;
                 bundledDeps = sharedDeps;
                 storePathTarballs = builtins.attrValues storePathTarballs;
@@ -421,10 +451,11 @@
                 ffi         = mkBuiltinExt "ffi";
                 readline    = mkBuiltinExt "readline";
                 mysqlnd     = mkBuiltinExt "mysqlnd";
-              } // pkgs.lib.optionalAttrs (!darwin) {
-                # gettext is Linux-only (apple-sdk_14 + Apple's libc don't
-                # provide a real libintl implementation; build-php.sh sets
-                # --without-gettext on Darwin and produces no gettext.so).
+              } // pkgs.lib.optionalAttrs (!darwin && !musl) {
+                # gettext is glibc-Linux-only: apple-sdk_14 + Apple's libc
+                # don't provide a real libintl, and musl provides none either,
+                # so build-php.sh sets --without-gettext on both Darwin and
+                # musl and produces no gettext.so to package here.
                 gettext = mkBuiltinExt "gettext";
               } // pkgs.lib.optionalAttrs (phpKey != "8.5") {
                 # opcache: --enable-opcache produces opcache.so on 8.1–8.4.
@@ -833,9 +864,13 @@
           # + interpreter manifests, reads .sha256 sidecars, and emits a
           # single index.json. Deduplication of store-path entries across
           # variants is enforced inside index.nix (collision = build error).
+          # The musl leg ships PHP + per-extension tarballs only. The
+          # service/tool bundles (mariadb, redis, erlang, …) aren't ported
+          # to musl yet (and have no musl CI matrix rows), so they're
+          # excluded from the musl index; the glibc + darwin legs keep them.
           allReleases =
             (map (v: v.release) (builtins.attrValues variants))
-            ++ [ mariadbRelease redisServerRelease erlangRelease mkcertRelease jdkRelease opensearchRelease rabbitmqRelease ];
+            ++ pkgs.lib.optionals (!musl) [ mariadbRelease redisServerRelease erlangRelease mkcertRelease jdkRelease opensearchRelease rabbitmqRelease ];
           frozenFiles =
             let allFiles = pkgs.lib.filesystem.listFilesRecursive ./frozen;
             in builtins.filter
@@ -864,6 +899,19 @@
                   opensearch opensearchTarball opensearchRelease
                   rabbitmq rabbitmqTarball rabbitmqRelease;
         };
+
+      # The native legs, keyed by real Nix system (gnu on linux, darwin on
+      # mac). `forEach contextFor` is unchanged from before the musl split.
+      contextFor = system:
+        contextForLeg { inherit system; libc = if isDarwin system then "darwin" else "gnu"; };
+
+      # The musl leg: a second context on the x86_64-linux system, built
+      # with pkgsMusl. Exposed under the custom flake outputs
+      # (phpVariants/bundledDeps/toolchain) at the leg key below, and as
+      # `packages.x86_64-linux.release-bundle-musl`, so the reserved
+      # `packages.<system>` schema stays keyed by real Nix systems.
+      muslLegKey = "x86_64-linux-musl";
+      ctxMusl = contextForLeg { system = "x86_64-linux"; libc = "musl"; };
 
       ctx = forEach contextFor;
     in
@@ -1013,11 +1061,20 @@
           rabbitmq           = c.rabbitmq;
           rabbitmq-tarball   = c.rabbitmqTarball;
           rabbitmq-release   = c.rabbitmqRelease;
+        } // nixpkgs.lib.optionalAttrs (system == "x86_64-linux") {
+          # The musl leg's publishable tree. CI builds this on the same
+          # ubuntu runner as the gnu leg, and merge-publish-tree unions it
+          # in (like the darwin leg). Kept under x86_64-linux so the
+          # reserved packages.<system> schema stays valid-system-keyed.
+          release-bundle-musl = ctxMusl.index;
         });
 
-      phpVariants  = forEach (system: ctx.${system}.variants);
-      bundledDeps  = forEach (system: ctx.${system}.deps);
-      toolchain    = forEach (system: ctx.${system}.toolchain);
+      # Custom outputs (flake-schemas, not the reserved packages.<system>)
+      # can use the musl leg key directly, so musl variants/deps/toolchain
+      # are addressable as e.g. `.#bundledDeps.x86_64-linux-musl.zlib`.
+      phpVariants  = forEach (system: ctx.${system}.variants) // { ${muslLegKey} = ctxMusl.variants; };
+      bundledDeps  = forEach (system: ctx.${system}.deps)      // { ${muslLegKey} = ctxMusl.deps; };
+      toolchain    = forEach (system: ctx.${system}.toolchain) // { ${muslLegKey} = ctxMusl.toolchain; };
 
       # Linux-only — Darwin uses the system SDK, no sysroot derivation.
       sysroot = builtins.listToAttrs
