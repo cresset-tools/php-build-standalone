@@ -48,6 +48,7 @@ let
     blob = {
       url = "{BLOB_BASE}/blobs/@TARBALL_SHA256_PFX@/@TARBALL_SHA256@";
       sha256 = "@TARBALL_SHA256@";
+      size = "@TARBALL_SIZE@";
     };
     closure = [];
     binaries = [ "java" "javac" "jar" "jshell" "keytool" "jlink" "jdeps" ];
@@ -121,12 +122,14 @@ pkgs.stdenvNoCC.mkDerivation {
     tree_hash=$(zstd -dc "$out/$base.tar.zst" | sha256sum | awk '{print $1}')
     tarball_sha256=$(sha256sum "$out/$base.tar.zst" | awk '{print $1}')
     tarball_sha256_pfx="''${tarball_sha256:0:2}"
+    tarball_size=$(stat -c %s "$out/$base.tar.zst")
 
     ${libcProbeAndSub}
 
     sed -e "s/@TREE_HASH@/$tree_hash/" \
         -e "s/@TARBALL_SHA256@/$tarball_sha256/g" \
         -e "s/@TARBALL_SHA256_PFX@/$tarball_sha256_pfx/g" \
+        -e "s|\"@TARBALL_SIZE@\"|$tarball_size|g" \
         "''${libc_sed[@]}" \
         ${metadataFile} > "$out/$base.json"
 
