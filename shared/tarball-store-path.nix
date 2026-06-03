@@ -25,7 +25,7 @@
 # variant that resolves DT_NEEDED against the SONAME map (peer deps
 # aren't physically present in this staging tree — they ship in their
 # own per-store-path tarballs).
-{ pkgs, dep }:
+{ pkgs, dep, pbsMusl ? false }:   # pbsMusl: avoid callPackage auto-fill from pkgs.musl
 let
   inherit (pkgs) stdenv lib;
   storeName = dep.passthru.storeName;
@@ -70,6 +70,7 @@ pkgs.stdenvNoCC.mkDerivation {
     export PBS_FINALIZE_COMMON="${./finalize-common.sh}"
     export PBS_STORE_MANIFEST="${storeManifestFile}"
     export PBS_FINALIZE_MODE=store-path
+    export PBS_LIBC="${if pbsMusl then "musl" else "gnu"}"
 
     mkdir -p "$PBS_INSTALL/store/${storeName}"
     cp -a ${dep}/. "$PBS_INSTALL/store/${storeName}/"

@@ -25,6 +25,7 @@
 , nghttp2, libzip, icu, libcurl, ncurses, libedit, libpq, libgmp, libffi
 , libiconv ? null
 , flavor ? "nts"
+, pbsMusl ? false   # named to avoid callPackage auto-fill from pkgs.musl
 }:
 let
   inherit (pkgs) stdenv lib;
@@ -59,6 +60,7 @@ mkDep {
     # side so the script itself stays OS-agnostic.
     PBS_PHP_PRE_CONFIGURE = if stdenv.isDarwin
       then ./build-php-pre-configure-darwin.sh
+      else if pbsMusl then ./build-php-pre-configure-musl.sh
       else ./build-php-pre-configure-linux.sh;
     PBS_PHP_POST_INSTALL = if stdenv.isDarwin
       then ./build-php-post-install-darwin.sh
@@ -79,6 +81,9 @@ mkDep {
     # the Darwin leg opts out entirely.
     PBS_PHP_GETTEXT_ARG = if stdenv.isDarwin
       then "--without-gettext"
+      # musl provides no libintl/gettext (it's a glibc feature); opt out
+      # entirely, same as Darwin, until/unless we bundle GNU gettext.
+      else if pbsMusl then "--without-gettext"
       else "--with-gettext=shared,__PBS_SYSROOT__/usr";
   } // lib.optionalAttrs stdenv.isDarwin {
     # nixpkgs darwin.libresolv provides build-time -L/<store>/lib +
