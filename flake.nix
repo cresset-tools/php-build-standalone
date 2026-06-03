@@ -451,11 +451,11 @@
                 ffi         = mkBuiltinExt "ffi";
                 readline    = mkBuiltinExt "readline";
                 mysqlnd     = mkBuiltinExt "mysqlnd";
-              } // pkgs.lib.optionalAttrs (!darwin && !musl) {
-                # gettext is glibc-Linux-only: apple-sdk_14 + Apple's libc
-                # don't provide a real libintl, and musl provides none either,
-                # so build-php.sh sets --without-gettext on both Darwin and
-                # musl and produces no gettext.so to package here.
+              } // pkgs.lib.optionalAttrs (!darwin) {
+                # gettext is Linux-only (glibc + musl): both implement the
+                # gettext family in libc. Darwin opts out (apple-sdk_14 +
+                # Apple's libc lack a real libintl), so no gettext.so to
+                # package there.
                 gettext = mkBuiltinExt "gettext";
               } // pkgs.lib.optionalAttrs (phpKey != "8.5") {
                 # opcache: --enable-opcache produces opcache.so on 8.1–8.4.

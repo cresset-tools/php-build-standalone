@@ -81,9 +81,16 @@ mkDep {
     # the Darwin leg opts out entirely.
     PBS_PHP_GETTEXT_ARG = if stdenv.isDarwin
       then "--without-gettext"
-      # musl provides no libintl/gettext (it's a glibc feature); opt out
-      # entirely, same as Darwin, until/unless we bundle GNU gettext.
-      else if pbsMusl then "--without-gettext"
+      # musl implements the full gettext family in libc and ships libintl.h,
+      # so ext/gettext builds against it like glibc (bindtextdomain resolves
+      # in libc). PHP's config.m4 file-checks for libintl.h under DIR/include
+      # (it ignores the compiler's -isystem path), so point DIR at musl's
+      # headers — exposed by the toolchain at $PBS_TOOLCHAIN/musl-sysroot,
+      # surfaced here via PBS_SYSROOT (set in build-php-pre-configure-musl.sh).
+      # Routing through the pbs-toolchain-musl store path (not the raw nixpkgs
+      # musl-dev path) lets finalize's detox scrub it from build-defs.h, same
+      # as the glibc leg's CentOS sysroot.
+      else if pbsMusl then "--with-gettext=shared,__PBS_SYSROOT__"
       else "--with-gettext=shared,__PBS_SYSROOT__/usr";
   } // lib.optionalAttrs stdenv.isDarwin {
     # nixpkgs darwin.libresolv provides build-time -L/<store>/lib +

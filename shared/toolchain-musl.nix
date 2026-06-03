@@ -148,6 +148,14 @@ stdenvNoCC.mkDerivation {
     mkdir -p $out/lib
     ln -s ${cxxGcc}/lib/libstdc++.a $out/lib/libstdc++.a
 
+    # Expose the musl headers tree (it has include/libintl.h). PHP's
+    # ext/gettext config.m4 file-checks for libintl.h under a `--with-gettext`
+    # DIR/include (it ignores the -isystem path), so the musl PHP build points
+    # it here via PBS_SYSROOT. Surfacing it under this pbs-toolchain-musl store
+    # path (rather than the raw nixpkgs musl-dev path) means finalize's detox
+    # scrubs the recorded path out of build-defs.h — same as the glibc sysroot.
+    ln -s ${muslDev} $out/musl-sysroot
+
     ln -s ${lld}/bin/ld.lld $out/bin/ld
     ln -s ${lld}/bin/lld $out/bin/lld
     for t in ar nm strip objdump ranlib objcopy readelf; do

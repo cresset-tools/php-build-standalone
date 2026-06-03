@@ -25,6 +25,13 @@ export CC="${PBS_TOOLCHAIN}/bin/cc -Wl,--as-needed"
 export CXX="${PBS_TOOLCHAIN}/bin/c++ -Wl,--as-needed"
 export LDFLAGS="$LDFLAGS ${libstdcxx_a}"
 
+# ext/gettext config.m4 file-checks for libintl.h under the --with-gettext DIR
+# (it doesn't consult the compiler include path). musl ships libintl.h in its
+# headers tree, exposed by the toolchain at $PBS_TOOLCHAIN/musl-sysroot;
+# PBS_PHP_GETTEXT_ARG references it as __PBS_SYSROOT__ (build-php.sh subs in
+# $PBS_SYSROOT). bindtextdomain itself resolves from musl libc.
+export PBS_SYSROOT="${PBS_TOOLCHAIN}/musl-sysroot"
+
 # PHP 8.1's main/streams/cast.c casts its stream seeker to musl's
 # cookie_seek_function_t with a mismatched signature (musl's fopencookie
 # seek takes off_t* where PHP's older code assumed otherwise). clang 16+
