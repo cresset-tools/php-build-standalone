@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.5](https://github.com/cresset-tools/php-build-standalone/compare/v0.2.4...v0.2.5) (2026-06-03)
+
+
+### Features
+
+* add x86_64-unknown-linux-musl target (PHP + extensions) ([#64](https://github.com/cresset-tools/php-build-standalone/issues/64)) ([4cedd45](https://github.com/cresset-tools/php-build-standalone/commit/4cedd45bec29b3c1cc6230363cde38db09b1bf7e))
+
 ## [0.2.4](https://github.com/cresset-tools/php-build-standalone/compare/v0.2.3...v0.2.4) (2026-06-03)
 
 
