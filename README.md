@@ -39,8 +39,10 @@ nix build .#phpVariants.x86_64-linux.8_5.tarball       # → 8.5.6 (latest, NTS)
 nix build .#phpVariants.x86_64-linux.8_5_zts.tarball   # → 8.5.6 Zend Thread-Safe variant
 ```
 
-`<target>` is `x86_64-unknown-linux-gnu` on Linux or `aarch64-apple-darwin`
-on macOS. Extract anywhere, run `bin/php`. Every PHP minor ships as both
+`<target>` is `x86_64-unknown-linux-gnu` on Linux (or
+`x86_64-unknown-linux-musl` for the musl/Alpine build —
+`nix build .#phpVariants.x86_64-linux-musl.8_5.tarball`) or
+`aarch64-apple-darwin` on macOS. Extract anywhere, run `bin/php`. Every PHP minor ships as both
 non-thread-safe (`<minor>`) and Zend Thread-Safe (`<minor>_zts`) variants;
 the latter carry the `zts` flavor token in their manifest `tag` and ship
 their `.so`s under `lib/extensions/no-debug-zts-<api>/`.
@@ -72,9 +74,12 @@ for the index wire format.
   CentOS 7, Rocky 8/9, Debian 9+ (stretch), Ubuntu 18.04+, Fedora,
   Arch — verified across 14 distros in [`tests/`](tests/). The `tests/run-matrix.sh`
   harness extracts the tarball once and mounts it read-only into each container.
-- **glibc-based distro** — not musl. Alpine fails at the loader gate as
-  designed; void-musl etc. need a glibc shim (e.g. `gcompat`).
-- **System dynamic loader at `/lib64/ld-linux-x86-64.so.2`** — every
+- **glibc *or* musl** — the `x86_64-unknown-linux-gnu` build runs on glibc
+  distros (the manylinux2014 floor above); the `x86_64-unknown-linux-musl`
+  build runs on musl distros like **Alpine** (musl 1.2.5+). Each links its
+  own loader (see the next bullet); use the build matching the host's libc.
+- **System dynamic loader** — `/lib64/ld-linux-x86-64.so.2` for the glibc
+  build (`/lib/ld-musl-x86_64.so.1` for the musl build); every
   mainstream glibc distro has this. The exception is **NixOS**, where the
   loader lives in `/nix/store/<hash>-glibc/lib/`. NixOS users need
   [`programs.nix-ld.enable = true`](https://nixos.wiki/wiki/Nix-ld) (or
@@ -149,7 +154,7 @@ fetches the matching per-store-path tarballs on demand:
 | **apcu** | — |
 | **gmp** | libgmp |
 | **pcov** | — |
-| **gettext** *(Linux)* | — (uses glibc's libintl in libc) |
+| **gettext** *(glibc Linux only)* | — (uses glibc's libintl; musl has none) |
 
 Each per-store-path tarball lives at `store/<name>-<ver>-<hash>/` after
 extraction; PHP and the extensions reach them via per-binary RPATHs that
@@ -360,8 +365,10 @@ text-file gate.
 - **NixOS doesn't work out of the box** — interpreter is hardcoded to
   `/lib64/ld-linux-x86-64.so.2`, which doesn't exist on NixOS. Use
   `nix-ld`, `steam-run`, or rerun patchelf locally.
-- **No musl, no aarch64-linux** — Alpine fails at the loader gate as
-  designed. macOS (`aarch64-apple-darwin`) is built in CI alongside Linux.
+- **musl (Alpine) supported on x86_64** — `x86_64-unknown-linux-musl` ships
+  PHP + extensions, dynamically linked against system musl (1.2.5+), so they
+  run on Alpine. No aarch64-linux yet (glibc or musl). macOS
+  (`aarch64-apple-darwin`) is built in CI alongside Linux.
 
 ## Project tree
 
