@@ -19,9 +19,10 @@
 # rewrites the interpreter to /lib/ld-musl-x86_64.so.1 and RPATHs to the
 # relocatable $ORIGIN form.
 #
-# C++ (libc++) for the C++ deps (ICU/intl, ImageMagick, libheif) is wired
-# in a follow-up: the cxx wrapper below selects -stdlib=libc++ but the
-# libc++ search paths are still TODO, so C-only deps build today.
+# C++ (for ICU/intl, ImageMagick, libheif, …) uses libstdc++ from pkgsMusl's
+# gcc — clang with -stdlib=libstdc++, the same shape as the glibc leg's
+# clang+devtoolset pairing (libc++ via pkgsMusl.llvmPackages would force
+# building LLVM from source). See cxxFlags + the cxxGcc inputs below.
 { stdenvNoCC
 , lib
 , llvmPackages_18
