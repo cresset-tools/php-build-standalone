@@ -32,7 +32,15 @@ export STRIP="${PBS_TOOLCHAIN}/bin/strip"
 # musl build links everything shared.
 export CFLAGS="-O2 -fPIC"
 export CXXFLAGS="$CFLAGS"
-export CPPFLAGS=""
+# Define __MUSL__: musl deliberately ships no identifying predefined macro,
+# but PHP (and other projects) gate musl-correct behavior on `__MUSL__` —
+# most importantly TSRM.h, which uses it to drop the `initial-exec` TLS
+# model on the TSRMLS cache. initial-exec TLS can't be satisfied for a
+# dlopen'd library on musl ("initial-exec TLS resolves to dynamic
+# definition"), which breaks loading every ZTS extension (intl, xdebug, …).
+# Defining it here makes the build honestly report musl, activating those
+# guards (also opcache's JIT musl path). Truthful — we are building musl.
+export CPPFLAGS="-D__MUSL__"
 
 # RPATH: deliberately NOT set here — finalize-linux.sh rewrites every ELF's
 # RPATH to the relocatable '$ORIGIN/...' form. --disable-new-dtags keeps any

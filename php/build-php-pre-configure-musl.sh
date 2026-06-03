@@ -25,6 +25,15 @@ export CC="${PBS_TOOLCHAIN}/bin/cc -Wl,--as-needed"
 export CXX="${PBS_TOOLCHAIN}/bin/c++ -Wl,--as-needed"
 export LDFLAGS="$LDFLAGS ${libstdcxx_a}"
 
+# PHP 8.1's main/streams/cast.c casts its stream seeker to musl's
+# cookie_seek_function_t with a mismatched signature (musl's fopencookie
+# seek takes off_t* where PHP's older code assumed otherwise). clang 16+
+# promotes -Wincompatible-function-pointer-types to a hard error. PHP 8.2+
+# fixed this (COOKIE_SEEKER_USES_OFF64_T detection); 8.1 needs the warning
+# demoted. The cast is ABI-safe on musl (both are pointers to a 64-bit
+# off_t), and Alpine builds php81 on musl the same way.
+export CFLAGS="$CFLAGS -Wno-error=incompatible-function-pointer-types"
+
 # musl's dynamic linker does not support GNU ifunc (R_X86_64_IRELATIVE,
 # reloc type 37) — it aborts at load with "unsupported relocation type 37".
 # PHP/Zend uses __attribute__((ifunc)) resolvers for its SSE/AVX string
