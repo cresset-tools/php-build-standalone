@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.2.4](https://github.com/cresset-tools/php-build-standalone/compare/v0.2.3...v0.2.4) (2026-06-03)
+
+
+### Bug Fixes
+
+* **jdk:** emit blob.size in the tool manifest ([914026e](https://github.com/cresset-tools/php-build-standalone/commit/914026e737f5d0fdb6c0c0b47b87e4a8e2bc6997))
+* **jdk:** emit blob.size in the tool manifest ([ac093cc](https://github.com/cresset-tools/php-build-standalone/commit/ac093ccbfc4871daa9ce77228c6afbe02c1d07ae))
+
 ## [0.2.3](https://github.com/cresset-tools/php-build-standalone/compare/v0.2.2...v0.2.3) (2026-05-29)
 
 
