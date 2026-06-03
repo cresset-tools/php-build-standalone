@@ -154,7 +154,7 @@ fetches the matching per-store-path tarballs on demand:
 | **apcu** | — |
 | **gmp** | libgmp |
 | **pcov** | — |
-| **gettext** *(glibc Linux only)* | — (uses glibc's libintl; musl has none) |
+| **gettext** *(Linux)* | — (glibc + musl both implement gettext in libc) |
 
 Each per-store-path tarball lives at `store/<name>-<ver>-<hash>/` after
 extraction; PHP and the extensions reach them via per-binary RPATHs that
