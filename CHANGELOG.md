@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.2.6](https://github.com/cresset-tools/php-build-standalone/compare/v0.2.5...v0.2.6) (2026-06-04)
+
+
+### Bug Fixes
+
+* **build:** capture php -m before grep in load-audit (pipefail SIGPIPE race) ([#69](https://github.com/cresset-tools/php-build-standalone/issues/69)) ([7a3487d](https://github.com/cresset-tools/php-build-standalone/commit/7a3487d606671062e443522056b35d9b1664fa2b))
+* **musl:** enable gettext (musl implements it in libc) ([#67](https://github.com/cresset-tools/php-build-standalone/issues/67)) ([79bb380](https://github.com/cresset-tools/php-build-standalone/commit/79bb3805f59f72506a7816b2c54a8076788625f0))
+
 ## [0.2.5](https://github.com/cresset-tools/php-build-standalone/compare/v0.2.4...v0.2.5) (2026-06-03)
 
 
