@@ -19,9 +19,10 @@
 # rewrites the interpreter to /lib/ld-musl-x86_64.so.1 and RPATHs to the
 # relocatable $ORIGIN form.
 #
-# C++ (libc++) for the C++ deps (ICU/intl, ImageMagick, libheif) is wired
-# in a follow-up: the cxx wrapper below selects -stdlib=libc++ but the
-# libc++ search paths are still TODO, so C-only deps build today.
+# C++ (for ICU/intl, ImageMagick, libheif, …) uses libstdc++ from pkgsMusl's
+# gcc — clang with -stdlib=libstdc++, the same shape as the glibc leg's
+# clang+devtoolset pairing (libc++ via pkgsMusl.llvmPackages would force
+# building LLVM from source). See cxxFlags + the cxxGcc inputs below.
 { stdenvNoCC
 , lib
 , llvmPackages_18
@@ -147,6 +148,14 @@ stdenvNoCC.mkDerivation {
     # glibc toolchain's $out/lib/libstdc++.a.
     mkdir -p $out/lib
     ln -s ${cxxGcc}/lib/libstdc++.a $out/lib/libstdc++.a
+
+    # Expose the musl headers tree (it has include/libintl.h). PHP's
+    # ext/gettext config.m4 file-checks for libintl.h under a `--with-gettext`
+    # DIR/include (it ignores the -isystem path), so the musl PHP build points
+    # it here via PBS_SYSROOT. Surfacing it under this pbs-toolchain-musl store
+    # path (rather than the raw nixpkgs musl-dev path) means finalize's detox
+    # scrubs the recorded path out of build-defs.h — same as the glibc sysroot.
+    ln -s ${muslDev} $out/musl-sysroot
 
     ln -s ${lld}/bin/ld.lld $out/bin/ld
     ln -s ${lld}/bin/lld $out/bin/lld
