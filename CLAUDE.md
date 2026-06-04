@@ -18,8 +18,10 @@ for the distribution wire format see `DISTRIBUTION.md`.
   ZTS** flavors (ZTS was added on `feat/zts-build`, commit `d218cd9`).
   CLI + FPM SAPIs.
 - **Targets:** `x86_64-unknown-linux-gnu` (glibc 2.17 floor, manylinux2014
-  baseline via CentOS 7 sysroot + clang 18) and `aarch64-apple-darwin`
-  (macOS 11+). No musl, no aarch64-linux.
+  baseline via CentOS 7 sysroot + clang 18), `x86_64-unknown-linux-musl`
+  (musl 1.2.5 via nixpkgs `pkgsMusl`, dynamically linked against system musl —
+  runs on Alpine; PHP + extensions only, no service/tool bundles — added 0.2.5),
+  and `aarch64-apple-darwin` (macOS 11+). No aarch64-linux yet.
 - **Per-ext tarballs:** xdebug, imagick, redis, vips *(Linux only)*,
   igbinary, msgpack, apcu, pcov, plus every shared extension PHP's configure
   produces (curl, gd, intl, mbstring, mysqli, pdo_mysql, pdo, pgsql,
@@ -383,11 +385,14 @@ pipeline. Server and services spec docs live here for stability — see
 
 ## Open questions (active)
 
-- **musl variant.** Both static-php-cli and the PBS musl-before-March-2025
-  history say the same thing: fully static gives up `dlopen`, which gives
-  up xdebug. PBS's `20250311` release switched musl to dynamic-against-
-  system-musl. A PHP musl variant would likely follow that pattern. Not
-  started.
+- **musl variant.** *Shipped in 0.2.5* (`x86_64-unknown-linux-musl`).
+  Dynamic-against-system-musl (not static — keeps `dlopen`/extensions),
+  matching python-build-standalone's `20250311` switch. Built with the
+  glibc clang-18 re-pointed at nixpkgs `pkgsMusl.musl` as a sysroot
+  (`shared/toolchain-musl.nix`); `-D__MUSL__` activates PHP's musl guards
+  (TSRM drops initial-exec TLS — required for ZTS extension `dlopen`).
+  Remaining: `aarch64-unknown-linux-musl`, and the service/tool bundles on
+  musl (currently excluded from the musl index).
 - **ABI tagging.** PHP has no manylinux-equivalent ABI policy. The
   `target_triple` field in manifests is currently `<arch>-<vendor>-<os>-<libc>`
   (e.g. `x86_64-unknown-linux-gnu`), but a proper PEP-513-equivalent
