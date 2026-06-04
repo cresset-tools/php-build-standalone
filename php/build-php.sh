@@ -275,11 +275,22 @@ _load_test() {
       *)       args+=(-d "extension=$ext_dir/$so.so") ;;
     esac
   done
-  if ! env "$PBS_RPATH_VAR=$PBS_DEPS/lib${PBS_DEPS_LDPATH:+:$PBS_DEPS_LDPATH}" \
-       "$PBS_DEPS/bin/php" -n "${args[@]}" -m 2>&1 | grep -qiE "^${probe_name}$"; then
+  # Capture `php -m` into a variable, THEN grep — do NOT pipe php directly
+  # into `grep -q`. Under `set -o pipefail`, `grep -q` exits the moment it
+  # matches and closes the pipe; php, still writing later modules, then dies
+  # with SIGPIPE (exit 141), and pipefail propagates that 141 as the
+  # pipeline's status — so the `if !` fires a false FATAL *even though the
+  # module was found*. Whether php has unwritten modules left when grep
+  # closes is a timing race, which is exactly why this flaked on random
+  # musl jobs. Capturing first lets php run to completion (no SIGPIPE); the
+  # grep then reads a here-string with no producer to signal. `|| true`
+  # keeps a non-zero php (e.g. a startup warning) from tripping set -e.
+  local modules
+  modules=$(env "$PBS_RPATH_VAR=$PBS_DEPS/lib${PBS_DEPS_LDPATH:+:$PBS_DEPS_LDPATH}" \
+       "$PBS_DEPS/bin/php" -n "${args[@]}" -m 2>/dev/null || true)
+  if ! grep -qiE "^${probe_name}$" <<<"$modules"; then
     echo "FATAL: ad-hoc load failed for $probe_name (loaded: $*)" >&2
-    env "$PBS_RPATH_VAR=$PBS_DEPS/lib${PBS_DEPS_LDPATH:+:$PBS_DEPS_LDPATH}" \
-       "$PBS_DEPS/bin/php" -n "${args[@]}" -m >&2 || true
+    printf '%s\n' "$modules" >&2
     exit 1
   fi
   echo "  ad-hoc load OK: $probe_name"
