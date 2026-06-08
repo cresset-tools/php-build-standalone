@@ -177,12 +177,20 @@ while IFS= read -r target; do
       manifest_body="$(fetch_json "$manifest_abs")"
 
       # Verify the served manifest bytes against the section's recorded
-      # sha256. The publisher (shared/index.nix) writes manifests via
-      # `echo "$body" > file` and hashes via `echo "$body" | sha256sum`,
-      # so the bytes carry a trailing newline. `manifest_body` came from
-      # $(curl …) which strips trailing newlines, so re-append one via
-      # `echo` to match the publisher's hash convention.
-      served_sha256_computed="$(echo "$manifest_body" | sha256sum | awk '{print $1}')"
+      # sha256. The publisher (shared/index.nix) hashes the staged file
+      # byte-exactly via `sha256sum "$staged_manifest"`, so the recorded
+      # sha is over the served bytes as-is. Crucially, manifests do NOT
+      # all carry a trailing newline: extension manifests (tarball-
+      # extension.nix) end in "\n" but interpreter manifests (tarball.nix)
+      # do not. So we must hash the raw served bytes — not round-trip
+      # through `echo "$manifest_body"`, which strips then re-appends a
+      # single newline and thus mis-hashes the newline-free interpreter
+      # manifests. Hash the bytes directly (no command substitution).
+      if [[ -n "$LOCAL_DIR" ]]; then
+        served_sha256_computed="$(sha256sum "$manifest_abs" | awk '{print $1}')"
+      else
+        served_sha256_computed="$(curl -fsSL "$manifest_abs" | sha256sum | awk '{print $1}')"
+      fi
       manifest_sha256_section="$(echo "$artifact" | jq -r '.manifest.sha256')"
 
       if [[ "$served_sha256_computed" != "$manifest_sha256_section" ]]; then
