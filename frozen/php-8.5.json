@@ -1,0 +1,888 @@
+{
+  "entries": [
+    {
+      "frozen_at": "2026-06-08T12:33:07Z",
+      "kind": "interpreter",
+      "manifest": {
+        "abi": {
+          "php": "8.5",
+          "zend_extension_api_no": "420250925",
+          "zend_module_api_no": "20250925"
+        },
+        "blob": {
+          "sha256": "01a2a4a9646c6132f673342fb7a1f87ca58f2f7f1ab1a53d635c452801506d0a",
+          "size": 10618193,
+          "url": "{BLOB_BASE}/blobs/01/01a2a4a9646c6132f673342fb7a1f87ca58f2f7f1ab1a53d635c452801506d0a"
+        },
+        "build_info": {
+          "nixpkgs_rev": "549bd84d6279f9852cae6225e372cc67fb91a4c1",
+          "output_tree_sha256": "1465b4961b0710cf2302d0ea593c328152257e7bf663939414d4b0f24d0fee1b"
+        },
+        "bundled_libraries": {
+          "bzip2": "1.0.8",
+          "erlang": "27.3.4.11",
+          "expat": "2.7.2",
+          "freetype": "2.14.3",
+          "glib": "2.82.5",
+          "icu": "77.1",
+          "imagemagick": "7.1.2-21",
+          "jdk": "21.0.11+10",
+          "lcms2": "2.17",
+          "libcurl": "8.20.0",
+          "libde265": "1.0.16",
+          "libedit": "20260512-3.1",
+          "libffi": "3.4.8",
+          "libgmp": "6.3.0",
+          "libheif": "1.20.1",
+          "libiconv": "1.19",
+          "libjpeg-turbo": "3.1.4.1",
+          "libpng": "1.6.58",
+          "libpq": "18.4",
+          "libsodium": "1.0.22",
+          "libtiff": "4.7.0",
+          "libvips": "8.16.1",
+          "libwebp": "1.6.0",
+          "libxcrypt": "4.4.36",
+          "libxml2": "2.13.9",
+          "libxslt": "1.1.43",
+          "libzip": "1.11.4",
+          "mariadb": "11.4.12",
+          "mkcert": "1.4.4",
+          "ncurses": "6.6",
+          "nghttp2": "1.69.0",
+          "nspr": "4.39",
+          "nss": "3.124",
+          "oniguruma": "6.9.10",
+          "openjpeg": "2.5.3",
+          "opensearch": "2.19.5",
+          "opensearch-analysis-icu": "2.19.5",
+          "opensearch-analysis-phonetic": "2.19.5",
+          "openssl": "3.5.6",
+          "pcre2": "10.45",
+          "php": "8.5.6",
+          "proxy-libintl": "0.4",
+          "rabbitmq": "4.2.6",
+          "redis": "8.8.0",
+          "sqlite": "3.53.1",
+          "xdebug": "3.5.1",
+          "zlib": "1.3.2"
+        },
+        "closure": [],
+        "flavor": "nts",
+        "kind": "interpreter",
+        "libc": {
+          "family": "darwin",
+          "min": "11.0"
+        },
+        "name": "php",
+        "sapis": [
+          "cli",
+          "fpm"
+        ],
+        "schema": 1,
+        "tag": "php-8.5.6-aarch64-apple-darwin-nts",
+        "target": "aarch64-apple-darwin",
+        "version": "8.5.6"
+      },
+      "name": "php",
+      "reason": "superseded by 8.5.7",
+      "section_entry": {
+        "flavor": "nts",
+        "manifest": {
+          "path": "/versions/r26940405359/targets/aarch64-apple-darwin/manifests/php/8.5/php-8.5.6-aarch64-apple-darwin-nts.json",
+          "sha256": "09a6e592fe3258d1211cb5ed77b94477800787a7e7532f6a7d764186afacd253"
+        },
+        "tag": "php-8.5.6-aarch64-apple-darwin-nts",
+        "version": "8.5.6",
+        "yanked": false
+      },
+      "tag": "php-8.5.6-aarch64-apple-darwin-nts",
+      "target": "aarch64-apple-darwin"
+    },
+    {
+      "frozen_at": "2026-06-08T12:33:07Z",
+      "kind": "interpreter",
+      "manifest": {
+        "abi": {
+          "php": "8.5",
+          "zend_extension_api_no": "420250925",
+          "zend_module_api_no": "20250925"
+        },
+        "blob": {
+          "sha256": "e4d0a7446bda72137b8549d717b020467d05397bcc8471de304f58e95026c3a4",
+          "size": 10039892,
+          "url": "{BLOB_BASE}/blobs/e4/e4d0a7446bda72137b8549d717b020467d05397bcc8471de304f58e95026c3a4"
+        },
+        "build_info": {
+          "nixpkgs_rev": "549bd84d6279f9852cae6225e372cc67fb91a4c1",
+          "output_tree_sha256": "6f3e9588a96d8189419ea795b5c47d302abdad9d59ebdb666ffe76abd3cd704c"
+        },
+        "bundled_libraries": {
+          "bzip2": "1.0.8",
+          "erlang": "27.3.4.11",
+          "expat": "2.7.2",
+          "freetype": "2.14.3",
+          "glib": "2.82.5",
+          "icu": "77.1",
+          "imagemagick": "7.1.2-21",
+          "jdk": "21.0.11+10",
+          "lcms2": "2.17",
+          "libcurl": "8.20.0",
+          "libde265": "1.0.16",
+          "libedit": "20260512-3.1",
+          "libffi": "3.4.8",
+          "libgmp": "6.3.0",
+          "libheif": "1.20.1",
+          "libiconv": "1.19",
+          "libjpeg-turbo": "3.1.4.1",
+          "libpng": "1.6.58",
+          "libpq": "18.4",
+          "libsodium": "1.0.22",
+          "libtiff": "4.7.0",
+          "libvips": "8.16.1",
+          "libwebp": "1.6.0",
+          "libxcrypt": "4.4.36",
+          "libxml2": "2.13.9",
+          "libxslt": "1.1.43",
+          "libzip": "1.11.4",
+          "mariadb": "11.4.12",
+          "mkcert": "1.4.4",
+          "ncurses": "6.6",
+          "nghttp2": "1.69.0",
+          "nspr": "4.39",
+          "nss": "3.124",
+          "oniguruma": "6.9.10",
+          "openjpeg": "2.5.3",
+          "opensearch": "2.19.5",
+          "opensearch-analysis-icu": "2.19.5",
+          "opensearch-analysis-phonetic": "2.19.5",
+          "openssl": "3.5.6",
+          "pcre2": "10.45",
+          "php": "8.5.6",
+          "proxy-libintl": "0.4",
+          "rabbitmq": "4.2.6",
+          "redis": "8.8.0",
+          "sqlite": "3.53.1",
+          "xdebug": "3.5.1",
+          "zlib": "1.3.2"
+        },
+        "closure": [],
+        "flavor": "zts",
+        "kind": "interpreter",
+        "libc": {
+          "family": "darwin",
+          "min": "11.0"
+        },
+        "name": "php",
+        "sapis": [
+          "cli",
+          "fpm"
+        ],
+        "schema": 1,
+        "tag": "php-8.5.6-aarch64-apple-darwin-zts",
+        "target": "aarch64-apple-darwin",
+        "version": "8.5.6"
+      },
+      "name": "php",
+      "reason": "superseded by 8.5.7",
+      "section_entry": {
+        "flavor": "zts",
+        "manifest": {
+          "path": "/versions/r26940405359/targets/aarch64-apple-darwin/manifests/php/8.5/php-8.5.6-aarch64-apple-darwin-zts.json",
+          "sha256": "6dc40a55a8b8facb031803649cd6801a7dcfa692fb5e250b2d00d3e0920a6e09"
+        },
+        "tag": "php-8.5.6-aarch64-apple-darwin-zts",
+        "version": "8.5.6",
+        "yanked": false
+      },
+      "tag": "php-8.5.6-aarch64-apple-darwin-zts",
+      "target": "aarch64-apple-darwin"
+    },
+    {
+      "frozen_at": "2026-06-08T12:33:07Z",
+      "kind": "interpreter",
+      "manifest": {
+        "abi": {
+          "php": "8.5",
+          "zend_extension_api_no": "420250925",
+          "zend_module_api_no": "20250925"
+        },
+        "blob": {
+          "sha256": "074196865e72d9740da219853f1ecf91c6361d4dea06a29fa9c349727f418015",
+          "size": 10318145,
+          "url": "{BLOB_BASE}/blobs/07/074196865e72d9740da219853f1ecf91c6361d4dea06a29fa9c349727f418015"
+        },
+        "build_info": {
+          "nixpkgs_rev": "549bd84d6279f9852cae6225e372cc67fb91a4c1",
+          "output_tree_sha256": "0090ea3fb0200d82bb3e00548f22676b8ce8e2ed0eed1651c57eb2aa1b909d46"
+        },
+        "bundled_libraries": {
+          "bzip2": "1.0.8",
+          "erlang": "27.3.4.11",
+          "expat": "2.7.2",
+          "freetype": "2.14.3",
+          "glib": "2.82.5",
+          "icu": "77.1",
+          "imagemagick": "7.1.2-21",
+          "jdk": "21.0.11+10",
+          "lcms2": "2.17",
+          "libcurl": "8.20.0",
+          "libde265": "1.0.16",
+          "libedit": "20260512-3.1",
+          "libffi": "3.4.8",
+          "libgmp": "6.3.0",
+          "libheif": "1.20.1",
+          "libiconv": "1.19",
+          "libjpeg-turbo": "3.1.4.1",
+          "libpng": "1.6.58",
+          "libpq": "18.4",
+          "libsodium": "1.0.22",
+          "libtiff": "4.7.0",
+          "libvips": "8.16.1",
+          "libwebp": "1.6.0",
+          "libxcrypt": "4.4.36",
+          "libxml2": "2.13.9",
+          "libxslt": "1.1.43",
+          "libzip": "1.11.4",
+          "mariadb": "11.4.12",
+          "mkcert": "1.4.4",
+          "ncurses": "6.6",
+          "nghttp2": "1.69.0",
+          "nspr": "4.39",
+          "nss": "3.124",
+          "oniguruma": "6.9.10",
+          "openjpeg": "2.5.3",
+          "opensearch": "2.19.5",
+          "opensearch-analysis-icu": "2.19.5",
+          "opensearch-analysis-phonetic": "2.19.5",
+          "openssl": "3.5.6",
+          "pcre2": "10.45",
+          "php": "8.5.6",
+          "proxy-libintl": "0.4",
+          "rabbitmq": "4.2.6",
+          "redis": "8.8.0",
+          "sqlite": "3.53.1",
+          "xdebug": "3.5.1",
+          "zlib": "1.3.2"
+        },
+        "closure": [],
+        "flavor": "nts",
+        "kind": "interpreter",
+        "libc": {
+          "family": "gnu",
+          "min": "2.17"
+        },
+        "name": "php",
+        "sapis": [
+          "cli",
+          "fpm"
+        ],
+        "schema": 1,
+        "tag": "php-8.5.6-x86_64-unknown-linux-gnu-nts",
+        "target": "x86_64-unknown-linux-gnu",
+        "version": "8.5.6"
+      },
+      "name": "php",
+      "reason": "superseded by 8.5.7",
+      "section_entry": {
+        "flavor": "nts",
+        "manifest": {
+          "path": "/versions/r26940405359/targets/x86_64-unknown-linux-gnu/manifests/php/8.5/php-8.5.6-x86_64-unknown-linux-gnu-nts.json",
+          "sha256": "613d114e500dcf4ca33c27b5e64f50bada9b0e36136673de343c672e05de4ecf"
+        },
+        "tag": "php-8.5.6-x86_64-unknown-linux-gnu-nts",
+        "version": "8.5.6",
+        "yanked": false
+      },
+      "tag": "php-8.5.6-x86_64-unknown-linux-gnu-nts",
+      "target": "x86_64-unknown-linux-gnu"
+    },
+    {
+      "frozen_at": "2026-06-08T12:33:07Z",
+      "kind": "interpreter",
+      "manifest": {
+        "abi": {
+          "php": "8.5",
+          "zend_extension_api_no": "420250925",
+          "zend_module_api_no": "20250925"
+        },
+        "blob": {
+          "sha256": "cb5dbcf854b71999b6fcdf17d42ab91fc82f0b101a4859f3c39787b924924d33",
+          "size": 10375668,
+          "url": "{BLOB_BASE}/blobs/cb/cb5dbcf854b71999b6fcdf17d42ab91fc82f0b101a4859f3c39787b924924d33"
+        },
+        "build_info": {
+          "nixpkgs_rev": "549bd84d6279f9852cae6225e372cc67fb91a4c1",
+          "output_tree_sha256": "64051e519f66df8a34e203f996bbfbf2c1abd7627cbddff48c6ecca71adc3e33"
+        },
+        "bundled_libraries": {
+          "bzip2": "1.0.8",
+          "erlang": "27.3.4.11",
+          "expat": "2.7.2",
+          "freetype": "2.14.3",
+          "glib": "2.82.5",
+          "icu": "77.1",
+          "imagemagick": "7.1.2-21",
+          "jdk": "21.0.11+10",
+          "lcms2": "2.17",
+          "libcurl": "8.20.0",
+          "libde265": "1.0.16",
+          "libedit": "20260512-3.1",
+          "libffi": "3.4.8",
+          "libgmp": "6.3.0",
+          "libheif": "1.20.1",
+          "libiconv": "1.19",
+          "libjpeg-turbo": "3.1.4.1",
+          "libpng": "1.6.58",
+          "libpq": "18.4",
+          "libsodium": "1.0.22",
+          "libtiff": "4.7.0",
+          "libvips": "8.16.1",
+          "libwebp": "1.6.0",
+          "libxcrypt": "4.4.36",
+          "libxml2": "2.13.9",
+          "libxslt": "1.1.43",
+          "libzip": "1.11.4",
+          "mariadb": "11.4.12",
+          "mkcert": "1.4.4",
+          "ncurses": "6.6",
+          "nghttp2": "1.69.0",
+          "nspr": "4.39",
+          "nss": "3.124",
+          "oniguruma": "6.9.10",
+          "openjpeg": "2.5.3",
+          "opensearch": "2.19.5",
+          "opensearch-analysis-icu": "2.19.5",
+          "opensearch-analysis-phonetic": "2.19.5",
+          "openssl": "3.5.6",
+          "pcre2": "10.45",
+          "php": "8.5.6",
+          "proxy-libintl": "0.4",
+          "rabbitmq": "4.2.6",
+          "redis": "8.8.0",
+          "sqlite": "3.53.1",
+          "xdebug": "3.5.1",
+          "zlib": "1.3.2"
+        },
+        "closure": [],
+        "flavor": "zts",
+        "kind": "interpreter",
+        "libc": {
+          "family": "gnu",
+          "min": "2.17"
+        },
+        "name": "php",
+        "sapis": [
+          "cli",
+          "fpm"
+        ],
+        "schema": 1,
+        "tag": "php-8.5.6-x86_64-unknown-linux-gnu-zts",
+        "target": "x86_64-unknown-linux-gnu",
+        "version": "8.5.6"
+      },
+      "name": "php",
+      "reason": "superseded by 8.5.7",
+      "section_entry": {
+        "flavor": "zts",
+        "manifest": {
+          "path": "/versions/r26940405359/targets/x86_64-unknown-linux-gnu/manifests/php/8.5/php-8.5.6-x86_64-unknown-linux-gnu-zts.json",
+          "sha256": "cc16f5ddf1f1fa304d423f7d9a05018527ebde83a82f72c0e97acb85792c7ae5"
+        },
+        "tag": "php-8.5.6-x86_64-unknown-linux-gnu-zts",
+        "version": "8.5.6",
+        "yanked": false
+      },
+      "tag": "php-8.5.6-x86_64-unknown-linux-gnu-zts",
+      "target": "x86_64-unknown-linux-gnu"
+    },
+    {
+      "frozen_at": "2026-06-08T12:33:07Z",
+      "kind": "interpreter",
+      "manifest": {
+        "abi": {
+          "php": "8.5",
+          "zend_extension_api_no": "420250925",
+          "zend_module_api_no": "20250925"
+        },
+        "blob": {
+          "sha256": "ef491256d354d6636f557090d06dab15aab98f0e60cf317b7d391b7d9b4eefaa",
+          "size": 10315135,
+          "url": "{BLOB_BASE}/blobs/ef/ef491256d354d6636f557090d06dab15aab98f0e60cf317b7d391b7d9b4eefaa"
+        },
+        "build_info": {
+          "nixpkgs_rev": "549bd84d6279f9852cae6225e372cc67fb91a4c1",
+          "output_tree_sha256": "ace3da839ba2476718a5aabbe6f6e52a85d82ee78603d2f96f2b39d277d4519a"
+        },
+        "bundled_libraries": {
+          "bzip2": "1.0.8",
+          "erlang": "27.3.4.11",
+          "expat": "2.7.2",
+          "freetype": "2.14.3",
+          "glib": "2.82.5",
+          "icu": "77.1",
+          "imagemagick": "7.1.2-21",
+          "jdk": "21.0.11+10",
+          "lcms2": "2.17",
+          "libcurl": "8.20.0",
+          "libde265": "1.0.16",
+          "libedit": "20260512-3.1",
+          "libffi": "3.4.8",
+          "libgmp": "6.3.0",
+          "libheif": "1.20.1",
+          "libiconv": "1.19",
+          "libjpeg-turbo": "3.1.4.1",
+          "libpng": "1.6.58",
+          "libpq": "18.4",
+          "libsodium": "1.0.22",
+          "libtiff": "4.7.0",
+          "libvips": "8.16.1",
+          "libwebp": "1.6.0",
+          "libxcrypt": "4.4.36",
+          "libxml2": "2.13.9",
+          "libxslt": "1.1.43",
+          "libzip": "1.11.4",
+          "mariadb": "11.4.12",
+          "mkcert": "1.4.4",
+          "ncurses": "6.6",
+          "nghttp2": "1.69.0",
+          "nspr": "4.39",
+          "nss": "3.124",
+          "oniguruma": "6.9.10",
+          "openjpeg": "2.5.3",
+          "opensearch": "2.19.5",
+          "opensearch-analysis-icu": "2.19.5",
+          "opensearch-analysis-phonetic": "2.19.5",
+          "openssl": "3.5.6",
+          "pcre2": "10.45",
+          "php": "8.5.6",
+          "proxy-libintl": "0.4",
+          "rabbitmq": "4.2.6",
+          "redis": "8.8.0",
+          "sqlite": "3.53.1",
+          "xdebug": "3.5.1",
+          "zlib": "1.3.2"
+        },
+        "closure": [],
+        "flavor": "nts",
+        "kind": "interpreter",
+        "libc": {
+          "family": "musl",
+          "min": "1.2.5"
+        },
+        "name": "php",
+        "sapis": [
+          "cli",
+          "fpm"
+        ],
+        "schema": 1,
+        "tag": "php-8.5.6-x86_64-unknown-linux-musl-nts",
+        "target": "x86_64-unknown-linux-musl",
+        "version": "8.5.6"
+      },
+      "name": "php",
+      "reason": "superseded by 8.5.7",
+      "section_entry": {
+        "flavor": "nts",
+        "manifest": {
+          "path": "/versions/r26940405359/targets/x86_64-unknown-linux-musl/manifests/php/8.5/php-8.5.6-x86_64-unknown-linux-musl-nts.json",
+          "sha256": "b1da9fab367cb5210ba8edf1ac7e428710cd0d8ed19920c3a920a73f15e54eac"
+        },
+        "tag": "php-8.5.6-x86_64-unknown-linux-musl-nts",
+        "version": "8.5.6",
+        "yanked": false
+      },
+      "tag": "php-8.5.6-x86_64-unknown-linux-musl-nts",
+      "target": "x86_64-unknown-linux-musl"
+    },
+    {
+      "frozen_at": "2026-06-08T12:33:07Z",
+      "kind": "interpreter",
+      "manifest": {
+        "abi": {
+          "php": "8.5",
+          "zend_extension_api_no": "420250925",
+          "zend_module_api_no": "20250925"
+        },
+        "blob": {
+          "sha256": "7818464432be6e057ffbea73b28f7d9cdbaceaaf8c4552043b91503e7c3db2b6",
+          "size": 10381505,
+          "url": "{BLOB_BASE}/blobs/78/7818464432be6e057ffbea73b28f7d9cdbaceaaf8c4552043b91503e7c3db2b6"
+        },
+        "build_info": {
+          "nixpkgs_rev": "549bd84d6279f9852cae6225e372cc67fb91a4c1",
+          "output_tree_sha256": "c1479efc2358dec21ad910c723b96812dbd549daf518ae90eb9dcbd6fc04def8"
+        },
+        "bundled_libraries": {
+          "bzip2": "1.0.8",
+          "erlang": "27.3.4.11",
+          "expat": "2.7.2",
+          "freetype": "2.14.3",
+          "glib": "2.82.5",
+          "icu": "77.1",
+          "imagemagick": "7.1.2-21",
+          "jdk": "21.0.11+10",
+          "lcms2": "2.17",
+          "libcurl": "8.20.0",
+          "libde265": "1.0.16",
+          "libedit": "20260512-3.1",
+          "libffi": "3.4.8",
+          "libgmp": "6.3.0",
+          "libheif": "1.20.1",
+          "libiconv": "1.19",
+          "libjpeg-turbo": "3.1.4.1",
+          "libpng": "1.6.58",
+          "libpq": "18.4",
+          "libsodium": "1.0.22",
+          "libtiff": "4.7.0",
+          "libvips": "8.16.1",
+          "libwebp": "1.6.0",
+          "libxcrypt": "4.4.36",
+          "libxml2": "2.13.9",
+          "libxslt": "1.1.43",
+          "libzip": "1.11.4",
+          "mariadb": "11.4.12",
+          "mkcert": "1.4.4",
+          "ncurses": "6.6",
+          "nghttp2": "1.69.0",
+          "nspr": "4.39",
+          "nss": "3.124",
+          "oniguruma": "6.9.10",
+          "openjpeg": "2.5.3",
+          "opensearch": "2.19.5",
+          "opensearch-analysis-icu": "2.19.5",
+          "opensearch-analysis-phonetic": "2.19.5",
+          "openssl": "3.5.6",
+          "pcre2": "10.45",
+          "php": "8.5.6",
+          "proxy-libintl": "0.4",
+          "rabbitmq": "4.2.6",
+          "redis": "8.8.0",
+          "sqlite": "3.53.1",
+          "xdebug": "3.5.1",
+          "zlib": "1.3.2"
+        },
+        "closure": [],
+        "flavor": "zts",
+        "kind": "interpreter",
+        "libc": {
+          "family": "musl",
+          "min": "1.2.5"
+        },
+        "name": "php",
+        "sapis": [
+          "cli",
+          "fpm"
+        ],
+        "schema": 1,
+        "tag": "php-8.5.6-x86_64-unknown-linux-musl-zts",
+        "target": "x86_64-unknown-linux-musl",
+        "version": "8.5.6"
+      },
+      "name": "php",
+      "reason": "superseded by 8.5.7",
+      "section_entry": {
+        "flavor": "zts",
+        "manifest": {
+          "path": "/versions/r26940405359/targets/x86_64-unknown-linux-musl/manifests/php/8.5/php-8.5.6-x86_64-unknown-linux-musl-zts.json",
+          "sha256": "bb146b17c8d787985124438c6f4c994ad3310818bbbc6eeee4adfaf958e9f2fe"
+        },
+        "tag": "php-8.5.6-x86_64-unknown-linux-musl-zts",
+        "version": "8.5.6",
+        "yanked": false
+      },
+      "tag": "php-8.5.6-x86_64-unknown-linux-musl-zts",
+      "target": "x86_64-unknown-linux-musl"
+    },
+    {
+      "frozen_at": "2026-06-08T12:33:07Z",
+      "kind": "extension",
+      "manifest": {
+        "abi": {
+          "php": "8.5",
+          "zend_extension_api_no": "420250925",
+          "zend_module_api_no": "20250925"
+        },
+        "blob": {
+          "sha256": "fd6133aa5b5ead7adad854affbc5e8b13c0279e0eced12790ab5e3cdcf87cb02",
+          "size": 123639,
+          "url": "{BLOB_BASE}/blobs/fd/fd6133aa5b5ead7adad854affbc5e8b13c0279e0eced12790ab5e3cdcf87cb02"
+        },
+        "closure": [],
+        "extension": {
+          "load": "zend-extension",
+          "path": "lib/extensions/no-debug-non-zts-20250925/xdebug.so",
+          "sha256": "b6b01f396708bdb67fd3ee852df17ccac04f0068e60cde971eb3318ffbfeca59"
+        },
+        "flavor": "nts",
+        "kind": "extension",
+        "libc": {
+          "family": "darwin",
+          "min": "11.0"
+        },
+        "name": "xdebug",
+        "schema": 1,
+        "tag": "xdebug-3.5.1+php85-aarch64-apple-darwin-nts",
+        "target": "aarch64-apple-darwin",
+        "version": "3.5.1"
+      },
+      "name": "xdebug",
+      "reason": "superseded by 8.5.7",
+      "section_entry": {
+        "flavor": "nts",
+        "manifest": {
+          "path": "/versions/r26940405359/targets/aarch64-apple-darwin/manifests/ext/xdebug/3.5.1/xdebug-3.5.1+php85-aarch64-apple-darwin-nts.json",
+          "sha256": "4a76ebea835bd98b3b847aa3159b6254ce21d67f916c8662ed278c843e21bff7"
+        },
+        "php_minor": "8.5",
+        "tag": "xdebug-3.5.1+php85-aarch64-apple-darwin-nts",
+        "version": "3.5.1",
+        "yanked": false
+      },
+      "tag": "xdebug-3.5.1+php85-aarch64-apple-darwin-nts",
+      "target": "aarch64-apple-darwin"
+    },
+    {
+      "frozen_at": "2026-06-08T12:33:07Z",
+      "kind": "extension",
+      "manifest": {
+        "abi": {
+          "php": "8.5",
+          "zend_extension_api_no": "420250925",
+          "zend_module_api_no": "20250925"
+        },
+        "blob": {
+          "sha256": "3a2d9d7b7468fc0bf647fefb73729325a11e05a71b4238dfa6b0abec159cda43",
+          "size": 129503,
+          "url": "{BLOB_BASE}/blobs/3a/3a2d9d7b7468fc0bf647fefb73729325a11e05a71b4238dfa6b0abec159cda43"
+        },
+        "closure": [],
+        "extension": {
+          "load": "zend-extension",
+          "path": "lib/extensions/no-debug-zts-20250925/xdebug.so",
+          "sha256": "3031559fe26102e43d32dc0889c8c40bed53c49aaa090f455a93d3a902367b52"
+        },
+        "flavor": "zts",
+        "kind": "extension",
+        "libc": {
+          "family": "darwin",
+          "min": "11.0"
+        },
+        "name": "xdebug",
+        "schema": 1,
+        "tag": "xdebug-3.5.1+php85-aarch64-apple-darwin-zts",
+        "target": "aarch64-apple-darwin",
+        "version": "3.5.1"
+      },
+      "name": "xdebug",
+      "reason": "superseded by 8.5.7",
+      "section_entry": {
+        "flavor": "zts",
+        "manifest": {
+          "path": "/versions/r26940405359/targets/aarch64-apple-darwin/manifests/ext/xdebug/3.5.1/xdebug-3.5.1+php85-aarch64-apple-darwin-zts.json",
+          "sha256": "1aee1237273f1289e784a8f6442bbb0d572e489865933c8ba422e2dd2cce9b77"
+        },
+        "php_minor": "8.5",
+        "tag": "xdebug-3.5.1+php85-aarch64-apple-darwin-zts",
+        "version": "3.5.1",
+        "yanked": false
+      },
+      "tag": "xdebug-3.5.1+php85-aarch64-apple-darwin-zts",
+      "target": "aarch64-apple-darwin"
+    },
+    {
+      "frozen_at": "2026-06-08T12:33:07Z",
+      "kind": "extension",
+      "manifest": {
+        "abi": {
+          "php": "8.5",
+          "zend_extension_api_no": "420250925",
+          "zend_module_api_no": "20250925"
+        },
+        "blob": {
+          "sha256": "5dbe219d9140889e86a6bdf332033e4437b2c072c68c4b16e53895408965232c",
+          "size": 142031,
+          "url": "{BLOB_BASE}/blobs/5d/5dbe219d9140889e86a6bdf332033e4437b2c072c68c4b16e53895408965232c"
+        },
+        "closure": [],
+        "extension": {
+          "load": "zend-extension",
+          "path": "lib/extensions/no-debug-non-zts-20250925/xdebug.so",
+          "sha256": "0de3a7799c7ebee5755a97ecdeca72abea6118197b00a0a7da9723dc5894a3e9"
+        },
+        "flavor": "nts",
+        "kind": "extension",
+        "libc": {
+          "family": "gnu",
+          "min": "2.17"
+        },
+        "name": "xdebug",
+        "schema": 1,
+        "tag": "xdebug-3.5.1+php85-x86_64-unknown-linux-gnu-nts",
+        "target": "x86_64-unknown-linux-gnu",
+        "version": "3.5.1"
+      },
+      "name": "xdebug",
+      "reason": "superseded by 8.5.7",
+      "section_entry": {
+        "flavor": "nts",
+        "manifest": {
+          "path": "/versions/r26940405359/targets/x86_64-unknown-linux-gnu/manifests/ext/xdebug/3.5.1/xdebug-3.5.1+php85-x86_64-unknown-linux-gnu-nts.json",
+          "sha256": "869bdd5078a044a78aa8f3209ce47306ffa0be9e5e29ae7df5aeac84244dfc08"
+        },
+        "php_minor": "8.5",
+        "tag": "xdebug-3.5.1+php85-x86_64-unknown-linux-gnu-nts",
+        "version": "3.5.1",
+        "yanked": false
+      },
+      "tag": "xdebug-3.5.1+php85-x86_64-unknown-linux-gnu-nts",
+      "target": "x86_64-unknown-linux-gnu"
+    },
+    {
+      "frozen_at": "2026-06-08T12:33:07Z",
+      "kind": "extension",
+      "manifest": {
+        "abi": {
+          "php": "8.5",
+          "zend_extension_api_no": "420250925",
+          "zend_module_api_no": "20250925"
+        },
+        "blob": {
+          "sha256": "a71e437b57d8a2e8c5fe12592f863669b5f4b076d868cfd24f3858e873f5b3d9",
+          "size": 149380,
+          "url": "{BLOB_BASE}/blobs/a7/a71e437b57d8a2e8c5fe12592f863669b5f4b076d868cfd24f3858e873f5b3d9"
+        },
+        "closure": [],
+        "extension": {
+          "load": "zend-extension",
+          "path": "lib/extensions/no-debug-zts-20250925/xdebug.so",
+          "sha256": "ffad9c3c72d8aecb8a337cfcb817b71e42c46e4a2769216930be06dd4c45a949"
+        },
+        "flavor": "zts",
+        "kind": "extension",
+        "libc": {
+          "family": "gnu",
+          "min": "2.17"
+        },
+        "name": "xdebug",
+        "schema": 1,
+        "tag": "xdebug-3.5.1+php85-x86_64-unknown-linux-gnu-zts",
+        "target": "x86_64-unknown-linux-gnu",
+        "version": "3.5.1"
+      },
+      "name": "xdebug",
+      "reason": "superseded by 8.5.7",
+      "section_entry": {
+        "flavor": "zts",
+        "manifest": {
+          "path": "/versions/r26940405359/targets/x86_64-unknown-linux-gnu/manifests/ext/xdebug/3.5.1/xdebug-3.5.1+php85-x86_64-unknown-linux-gnu-zts.json",
+          "sha256": "8a1bc1027714e5522dcd52c7a53ea209bf40d891f19d7572890bb01314f5cf14"
+        },
+        "php_minor": "8.5",
+        "tag": "xdebug-3.5.1+php85-x86_64-unknown-linux-gnu-zts",
+        "version": "3.5.1",
+        "yanked": false
+      },
+      "tag": "xdebug-3.5.1+php85-x86_64-unknown-linux-gnu-zts",
+      "target": "x86_64-unknown-linux-gnu"
+    },
+    {
+      "frozen_at": "2026-06-08T12:33:07Z",
+      "kind": "extension",
+      "manifest": {
+        "abi": {
+          "php": "8.5",
+          "zend_extension_api_no": "420250925",
+          "zend_module_api_no": "20250925"
+        },
+        "blob": {
+          "sha256": "a94fccab78823b12bb9fa8ed9aa12e51f3515c496b1b12b9b5ec69e6f020c246",
+          "size": 140958,
+          "url": "{BLOB_BASE}/blobs/a9/a94fccab78823b12bb9fa8ed9aa12e51f3515c496b1b12b9b5ec69e6f020c246"
+        },
+        "closure": [],
+        "extension": {
+          "load": "zend-extension",
+          "path": "lib/extensions/no-debug-non-zts-20250925/xdebug.so",
+          "sha256": "6db8d302efbf63b13bd66f638811b8c6b64da0d48da931162a16ef1449146bcf"
+        },
+        "flavor": "nts",
+        "kind": "extension",
+        "libc": {
+          "family": "musl",
+          "min": "1.2.5"
+        },
+        "name": "xdebug",
+        "schema": 1,
+        "tag": "xdebug-3.5.1+php85-x86_64-unknown-linux-musl-nts",
+        "target": "x86_64-unknown-linux-musl",
+        "version": "3.5.1"
+      },
+      "name": "xdebug",
+      "reason": "superseded by 8.5.7",
+      "section_entry": {
+        "flavor": "nts",
+        "manifest": {
+          "path": "/versions/r26940405359/targets/x86_64-unknown-linux-musl/manifests/ext/xdebug/3.5.1/xdebug-3.5.1+php85-x86_64-unknown-linux-musl-nts.json",
+          "sha256": "aa0132ecb2b462d7c1eda8817d2913feaa9e82f658b60d33a3a5880e464a021a"
+        },
+        "php_minor": "8.5",
+        "tag": "xdebug-3.5.1+php85-x86_64-unknown-linux-musl-nts",
+        "version": "3.5.1",
+        "yanked": false
+      },
+      "tag": "xdebug-3.5.1+php85-x86_64-unknown-linux-musl-nts",
+      "target": "x86_64-unknown-linux-musl"
+    },
+    {
+      "frozen_at": "2026-06-08T12:33:07Z",
+      "kind": "extension",
+      "manifest": {
+        "abi": {
+          "php": "8.5",
+          "zend_extension_api_no": "420250925",
+          "zend_module_api_no": "20250925"
+        },
+        "blob": {
+          "sha256": "f5be9512e95b4dc98157aed5f969050817bc2bbbaec55814e65b8fb38fcd1cbc",
+          "size": 148270,
+          "url": "{BLOB_BASE}/blobs/f5/f5be9512e95b4dc98157aed5f969050817bc2bbbaec55814e65b8fb38fcd1cbc"
+        },
+        "closure": [],
+        "extension": {
+          "load": "zend-extension",
+          "path": "lib/extensions/no-debug-zts-20250925/xdebug.so",
+          "sha256": "7ec7526f3cce2546c484081d46ae44e9200dbacc785c38f9c7c81672f616328c"
+        },
+        "flavor": "zts",
+        "kind": "extension",
+        "libc": {
+          "family": "musl",
+          "min": "1.2.5"
+        },
+        "name": "xdebug",
+        "schema": 1,
+        "tag": "xdebug-3.5.1+php85-x86_64-unknown-linux-musl-zts",
+        "target": "x86_64-unknown-linux-musl",
+        "version": "3.5.1"
+      },
+      "name": "xdebug",
+      "reason": "superseded by 8.5.7",
+      "section_entry": {
+        "flavor": "zts",
+        "manifest": {
+          "path": "/versions/r26940405359/targets/x86_64-unknown-linux-musl/manifests/ext/xdebug/3.5.1/xdebug-3.5.1+php85-x86_64-unknown-linux-musl-zts.json",
+          "sha256": "64801c6fdb15a5ac98b2b12bd61648f3d1a19b04bbe671a19909aad6349514a7"
+        },
+        "php_minor": "8.5",
+        "tag": "xdebug-3.5.1+php85-x86_64-unknown-linux-musl-zts",
+        "version": "3.5.1",
+        "yanked": false
+      },
+      "tag": "xdebug-3.5.1+php85-x86_64-unknown-linux-musl-zts",
+      "target": "x86_64-unknown-linux-musl"
+    }
+  ],
+  "minor": "8.5",
+  "schema": 1
+}

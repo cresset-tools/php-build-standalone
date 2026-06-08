@@ -59,9 +59,9 @@
   # sqlite — for pdo_sqlite. The autoconf tarball name encodes the version
   # numerically (3470200 = 3.47.2), see build-sqlite.sh.
   sqlite = {
-    url = "https://www.sqlite.org/2026/sqlite-autoconf-3530100.tar.gz";
-    sha256 = "83e6b2020a034e9a7ad4a72feea59e1ad52f162e09cbd26735a3ffb98359fc4f";
-    version = "3.53.1";
+    url = "https://www.sqlite.org/2026/sqlite-autoconf-3530200.tar.gz";
+    sha256 = "588ad51949419a56ebe81fe56193d510c559eb94c9a57748387860b5d3069316";
+    version = "3.53.2";
   };
 
   # oniguruma — regex engine for mbstring. NOTE: the tarball extracts
@@ -370,14 +370,14 @@
       sha256 = "66410cee07f4b2baeb0843140bb2a2b52ef930b5cf9b3d6e6d158b33aae8fa37";
     };
     "8.4" = {
-      version = "8.4.21";
-      url = "https://www.php.net/distributions/php-8.4.21.tar.xz";
-      sha256 = "7cf5d8ab12c3b2016875bcfaec71bef1ef0b07bed6148f2c447577074431f984";
+      version = "8.4.22";
+      url = "https://www.php.net/distributions/php-8.4.22.tar.xz";
+      sha256 = "696c0f6ad92e94c59059c1eb6e300842b8d050934226efcdf00f2a413cb083cf";
     };
     "8.5" = {
-      version = "8.5.6";
-      url = "https://www.php.net/distributions/php-8.5.6.tar.xz";
-      sha256 = "826c600b7c6f956bd335558ca3bdbcab23b22126c1cc8d9348be2280a2204bb7";
+      version = "8.5.7";
+      url = "https://www.php.net/distributions/php-8.5.7.tar.xz";
+      sha256 = "01ba2ed1c2658dacf91bebc8be6a4885f69b811c7993831fc48e26107ab29985";
     };
   };
 
@@ -532,9 +532,9 @@
   # shared/<dep>.nix files needed beyond what the PHP build already pulls
   # in.
   redis = {
-    url = "https://github.com/redis/redis/archive/refs/tags/8.8.0.tar.gz";
-    sha256 = "19736ce6117d90b3df032504c6e5c1ce41667ae47f073281b40d2f274c200a74";
-    version = "8.8.0";
+    url = "https://github.com/redis/redis/archive/refs/tags/8.6.4.tar.gz";
+    sha256 = "a2029c96311ab1ec2ae489076ae900b6497b3beaa7dc379de26b5df48f696f6c";
+    version = "8.6.4";
   };
 
   # Erlang/OTP. Built from source — there's no Temurin-equivalent prebuilt
