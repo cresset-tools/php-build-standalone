@@ -15,9 +15,13 @@
 # Detection mirrors scripts/lint-frozen-coverage.sh (intentional — the lint
 # defines the invariant; this script is the matching producer):
 #   - PHP minor present in both baseline and current with a forward patch bump
-#     → freeze prior php-<v> and any xdebug pinned to that minor.
+#     → freeze prior php-<v> only. The per-minor xdebug tag
+#     (xdebug-*+php<minor>-*) is NOT frozen: it doesn't encode the PHP patch,
+#     so the live build rebuilds it under the identical tag and a frozen copy
+#     would collide.
 #   - PHP minor present in baseline but removed in current (EOL'd)
-#     → freeze the last prior php-<v> (and its xdebug).
+#     → freeze the last prior php-<v> AND its xdebug: the whole minor leaves
+#     the live matrix, so nothing reproduces those tags.
 #   - sources.<svc>.version forward bump (mariadb, redis, mkcert)
 #     → freeze prior <svc>-<v>.
 #   - <ext>Versions.<series>.version forward bump (xdebug, redis-as-ext,
@@ -113,11 +117,25 @@ freeze_php_minor() {
   local minor="$1"          # 8.1
   local prior_version="$2"  # 8.1.31
   local reason_version="$3" # version we are advancing to (or prior, for EOL)
+  local freeze_xdebug="$4"  # 1 → also freeze xdebug-*+php<minor>-* (EOL only)
   local minor_nodot="${minor//./}"
 
+  # Interpreter tags are patch-keyed (php-8.5.6-…), so a patch bump
+  # genuinely supersedes the prior tag → always freeze it.
+  #
+  # Extension tags are *minor*-keyed (xdebug-3.5.1+php85-…) — they do NOT
+  # encode the PHP patch. A patch bump (8.5.6→8.5.7) rebuilds xdebug under
+  # the identical tag, so the live build reproduces it and freezing it
+  # would collide ("tag appears in both a live build and frozen file").
+  # Only an EOL — where the whole minor leaves the live matrix and nothing
+  # reproduces the tag — warrants freezing the per-minor xdebug.
+  local globs=("php-${prior_version}-*")
+  if [[ "$freeze_xdebug" == "1" ]]; then
+    globs+=("xdebug-*+php${minor_nodot}-*")
+  fi
+
   run_freeze \
-    "php-${prior_version}-*" \
-    "xdebug-*+php${minor_nodot}-*" \
+    "${globs[@]}" \
     --reason "superseded by ${reason_version}"
 }
 
@@ -130,7 +148,7 @@ while IFS= read -r minor; do
   [[ "$curr_version" == "$prev_version" ]] && continue
   version_gt "$curr_version" "$prev_version" || continue
 
-  freeze_php_minor "$minor" "$prev_version" "$curr_version"
+  freeze_php_minor "$minor" "$prev_version" "$curr_version" 0
 done < <(echo "$curr_php" | jq -r 'keys[]')
 
 # ---- PHP: EOL'd minors ------------------------------------------------------
@@ -142,7 +160,7 @@ while IFS= read -r minor; do
   # reason_version = prev_version: there's no "newer" to point at; the
   # frozen-entry reason just records the last shipped patch as the
   # cause of being frozen.
-  freeze_php_minor "$minor" "$prev_version" "$prev_version (EOL)"
+  freeze_php_minor "$minor" "$prev_version" "$prev_version (EOL)" 1
 done < <(echo "$prev_php" | jq -r 'keys[]')
 
 # ---- Service pins (mariadb, redis, mkcert) ---------------------------------
