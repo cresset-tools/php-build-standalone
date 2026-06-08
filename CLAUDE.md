@@ -379,8 +379,8 @@ The bougie CLI repo at `~/bougie` carries the consumer side:
 `bougie php install`, `bougie ext add/remove`, `bougie sync`,
 `bougie services` (mariadb / redis / opensearch / rabbitmq tenants),
 `bougie start` (recipe runner), and the index/manifest verification
-pipeline. Server and services spec docs live here for stability — see
-`SERVER.md`, `SERVICES.md` — but the Rust implementation lands in
+pipeline. The server and services spec docs (`SERVER.md`, `SERVICES.md`)
+now live in `~/bougie` alongside the Rust implementation in
 `~/bougie/src/`. The CLI surface itself is documented in `~/bougie`.
 
 ## Open questions (active)
