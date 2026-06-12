@@ -231,6 +231,7 @@
               msgpackSpec  = pickOnly sources.msgpackVersions;
               apcuSpec     = pickOnly sources.apcuVersions;
               pcovSpec     = pickOnly sources.pcovVersions;
+              protobufSpec = pickOnly sources.protobufVersions;
 
               php = pkgs.callPackage ./php/php.nix ({
                 inherit mkDep phpSpec flavor;
@@ -267,6 +268,9 @@
               pcov = pkgs.callPackage ./php/pcov.nix {
                 inherit mkDep php pcovSpec;
               };
+              protobuf = pkgs.callPackage ./php/protobuf.nix {
+                inherit mkDep php protobufSpec;
+              };
               tree = pkgs.callPackage ./shared/tree.nix {
                 bundledDeps = sharedDeps;
                 # tree still carries every .so — PECL extensions and PHP's
@@ -278,6 +282,7 @@
                 # = [] drops every .so before the tarball is emitted).
                 interpreterDeps = [
                   php xdebug imagick vips redis igbinary msgpack apcu pcov
+                  protobuf
                 ];
                 inherit toolchain;
                 pbsMusl = musl;
@@ -385,6 +390,7 @@
                 # auto-loader has to land at a later prefix.
                 msgpack     = mkExt { extDrv = msgpack;  extName = "msgpack";  extVersion = msgpackSpec.version;  confFragment = "extension=msgpack"; confPrefix = "40"; };
                 apcu        = mkExt { extDrv = apcu;     extName = "apcu";     extVersion = apcuSpec.version;     confFragment = "extension=apcu"; };
+                protobuf    = mkExt { extDrv = protobuf; extName = "protobuf"; extVersion = protobufSpec.version; confFragment = "extension=protobuf"; };
                 # pcov ships without an auto-loader conf.d fragment (confFragment=null,
                 # mirroring xdebug): coverage is a per-run opt-in, not always-on
                 # instrumentation, so the user enables it via -dextension=pcov in CI.
