@@ -466,6 +466,24 @@
     };
   };
 
+  # protobuf PECL extension. Native C implementation of Google Protocol
+  # Buffers for PHP — the fast path for google/protobuf and grpc/grpc PHP
+  # codegen, an order of magnitude faster than the pure-PHP fallback. No
+  # external C-library — the upb runtime is vendored in the PECL source and
+  # compiled in-tree via phpize.
+  #
+  # 4.33.x is the last series whose `package.xml` declares `<min>8.1.0`; the
+  # 5.x line raised the floor to 8.2, which would drop the 8.1.34 leg of our
+  # matrix. pickOnly requires a single series covering every shipped minor,
+  # so we stay on 4.33.6 until 8.1 leaves the matrix.
+  protobufVersions = {
+    "4.33" = {
+      version = "4.33.6";
+      url = "https://pecl.php.net/get/protobuf-4.33.6.tgz";
+      sha256 = "4b1e2d13c2086d647be6b6dd6648101d5ce36d83943834c724b0f399a4ecf836";
+    };
+  };
+
   # pcov PECL extension. Code-coverage driver for PHPUnit / Pest, an order
   # of magnitude faster than xdebug's coverage mode and the standard pick
   # when xdebug's other features (step debugging, var dumps, tracing) aren't
