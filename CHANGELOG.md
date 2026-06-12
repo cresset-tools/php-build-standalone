@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.2.7](https://github.com/cresset-tools/php-build-standalone/compare/v0.2.6...v0.2.7) (2026-06-12)
+
+
+### Features
+
+* **ext:** add protobuf native PECL extension ([#75](https://github.com/cresset-tools/php-build-standalone/issues/75)) ([e0ea871](https://github.com/cresset-tools/php-build-standalone/commit/e0ea8713520e26e2dd107ebbe0fb868f341f76a6))
+
+
+### Bug Fixes
+
+* **freeze:** hash served manifest bytes byte-exactly ([#71](https://github.com/cresset-tools/php-build-standalone/issues/71)) ([f24ef66](https://github.com/cresset-tools/php-build-standalone/commit/f24ef667ef6433d148dee223fed3e97859da400c))
+
+
+### Dependencies
+
+* bump pinned upstreams (automated weekly) ([#73](https://github.com/cresset-tools/php-build-standalone/issues/73)) ([0320420](https://github.com/cresset-tools/php-build-standalone/commit/03204208bef3dbec9e000902d9f2bf4b49a0dac8))
+
 ## [0.2.6](https://github.com/cresset-tools/php-build-standalone/compare/v0.2.5...v0.2.6) (2026-06-04)
 
 
