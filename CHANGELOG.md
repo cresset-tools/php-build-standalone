@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.8](https://github.com/cresset-tools/php-build-standalone/compare/v0.2.7...v0.2.8) (2026-06-12)
+
+
+### Features
+
+* **ext:** ship protobuf 5.35.1, freeze 4.33.6 (release 2) ([#76](https://github.com/cresset-tools/php-build-standalone/issues/76)) ([1841592](https://github.com/cresset-tools/php-build-standalone/commit/184159287f24c483ed2fe050264ec3fb32fcc5ef))
+
 ## [0.2.7](https://github.com/cresset-tools/php-build-standalone/compare/v0.2.6...v0.2.7) (2026-06-12)
 
 
