@@ -282,8 +282,12 @@
                 # = [] drops every .so before the tarball is emitted).
                 interpreterDeps = [
                   php xdebug imagick vips redis igbinary msgpack apcu pcov
-                  protobuf
-                ];
+                ]
+                # protobuf 5.x requires PHP >= 8.2 (package.xml <min>8.2.0).
+                # On 8.1 the protobuf derivation is never forced, so it never
+                # tries (and fails) to build against the 8.1 interpreter; 8.1
+                # gets protobuf via the frozen 4.33.6 artifact instead.
+                ++ pkgs.lib.optional (phpKey != "8.1") protobuf;
                 inherit toolchain;
                 pbsMusl = musl;
                 phpVersion = phpSpec.version;
@@ -390,7 +394,6 @@
                 # auto-loader has to land at a later prefix.
                 msgpack     = mkExt { extDrv = msgpack;  extName = "msgpack";  extVersion = msgpackSpec.version;  confFragment = "extension=msgpack"; confPrefix = "40"; };
                 apcu        = mkExt { extDrv = apcu;     extName = "apcu";     extVersion = apcuSpec.version;     confFragment = "extension=apcu"; };
-                protobuf    = mkExt { extDrv = protobuf; extName = "protobuf"; extVersion = protobufSpec.version; confFragment = "extension=protobuf"; };
                 # pcov ships without an auto-loader conf.d fragment (confFragment=null,
                 # mirroring xdebug): coverage is a per-run opt-in, not always-on
                 # instrumentation, so the user enables it via -dextension=pcov in CI.
@@ -457,6 +460,12 @@
                 ffi         = mkBuiltinExt "ffi";
                 readline    = mkBuiltinExt "readline";
                 mysqlnd     = mkBuiltinExt "mysqlnd";
+              } // pkgs.lib.optionalAttrs (phpKey != "8.1") {
+                # protobuf 5.x dropped PHP 8.1 (package.xml <min>8.2.0), so
+                # the live build ships it only on 8.2–8.5. PHP 8.1 keeps the
+                # prior 4.33.6 build via its frozen artifact (frozen/php-8.1.json),
+                # spliced into the 8.1 section at index-generation time.
+                protobuf = mkExt { extDrv = protobuf; extName = "protobuf"; extVersion = protobufSpec.version; confFragment = "extension=protobuf"; };
               } // pkgs.lib.optionalAttrs (!darwin) {
                 # gettext is Linux-only (glibc + musl): both implement the
                 # gettext family in libc. Darwin opts out (apple-sdk_14 +

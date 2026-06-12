@@ -593,6 +593,288 @@
       },
       "tag": "php-8.5.6-x86_64-unknown-linux-musl-zts",
       "target": "x86_64-unknown-linux-musl"
+    },
+    {
+      "frozen_at": "2026-06-12T10:15:16Z",
+      "kind": "extension",
+      "manifest": {
+        "abi": {
+          "php": "8.5",
+          "zend_extension_api_no": "420250925",
+          "zend_module_api_no": "20250925"
+        },
+        "blob": {
+          "sha256": "6ebc30e36019e93387f3fc7aa128acdbe9c1bd3f9fddd65293215fe5680a91f4",
+          "size": 140152,
+          "url": "{BLOB_BASE}/blobs/6e/6ebc30e36019e93387f3fc7aa128acdbe9c1bd3f9fddd65293215fe5680a91f4"
+        },
+        "closure": [],
+        "extension": {
+          "path": "lib/extensions/no-debug-non-zts-20250925/protobuf.so",
+          "sha256": "332a21e1a8cfdf66bc49b14fd97ed7abae092011ac7c4a58a0e61844549e34f5"
+        },
+        "flavor": "nts",
+        "kind": "extension",
+        "libc": {
+          "family": "darwin",
+          "min": "11.0"
+        },
+        "name": "protobuf",
+        "schema": 1,
+        "tag": "protobuf-4.33.6+php85-aarch64-apple-darwin-nts",
+        "target": "aarch64-apple-darwin",
+        "version": "4.33.6"
+      },
+      "name": "protobuf",
+      "reason": "superseded by 5.35.1; protobuf 5.x requires PHP >= 8.2",
+      "section_entry": {
+        "flavor": "nts",
+        "manifest": {
+          "path": "/versions/r27407730899/targets/aarch64-apple-darwin/manifests/ext/protobuf/4.33.6/protobuf-4.33.6+php85-aarch64-apple-darwin-nts.json",
+          "sha256": "6847aa5e386bb565cb20a61d623bbdc0163e81fbc2acea10ce6aa0de9a796ea4"
+        },
+        "php_minor": "8.5",
+        "tag": "protobuf-4.33.6+php85-aarch64-apple-darwin-nts",
+        "version": "4.33.6",
+        "yanked": false
+      },
+      "tag": "protobuf-4.33.6+php85-aarch64-apple-darwin-nts",
+      "target": "aarch64-apple-darwin"
+    },
+    {
+      "frozen_at": "2026-06-12T10:15:16Z",
+      "kind": "extension",
+      "manifest": {
+        "abi": {
+          "php": "8.5",
+          "zend_extension_api_no": "420250925",
+          "zend_module_api_no": "20250925"
+        },
+        "blob": {
+          "sha256": "3e6897a6b01994ba13c515c4ac59e5e78842ac937240c039e0aa61b843f9d5ce",
+          "size": 140368,
+          "url": "{BLOB_BASE}/blobs/3e/3e6897a6b01994ba13c515c4ac59e5e78842ac937240c039e0aa61b843f9d5ce"
+        },
+        "closure": [],
+        "extension": {
+          "path": "lib/extensions/no-debug-zts-20250925/protobuf.so",
+          "sha256": "2698dcf741a212ca13f7d6cb189a62de479a139c9a7c5c1c865ae563ad45cad9"
+        },
+        "flavor": "zts",
+        "kind": "extension",
+        "libc": {
+          "family": "darwin",
+          "min": "11.0"
+        },
+        "name": "protobuf",
+        "schema": 1,
+        "tag": "protobuf-4.33.6+php85-aarch64-apple-darwin-zts",
+        "target": "aarch64-apple-darwin",
+        "version": "4.33.6"
+      },
+      "name": "protobuf",
+      "reason": "superseded by 5.35.1; protobuf 5.x requires PHP >= 8.2",
+      "section_entry": {
+        "flavor": "zts",
+        "manifest": {
+          "path": "/versions/r27407730899/targets/aarch64-apple-darwin/manifests/ext/protobuf/4.33.6/protobuf-4.33.6+php85-aarch64-apple-darwin-zts.json",
+          "sha256": "49c77cbbc700f577137a66e8132a556f9d321aa056fbcd10a7869e630e65363a"
+        },
+        "php_minor": "8.5",
+        "tag": "protobuf-4.33.6+php85-aarch64-apple-darwin-zts",
+        "version": "4.33.6",
+        "yanked": false
+      },
+      "tag": "protobuf-4.33.6+php85-aarch64-apple-darwin-zts",
+      "target": "aarch64-apple-darwin"
+    },
+    {
+      "frozen_at": "2026-06-12T10:15:16Z",
+      "kind": "extension",
+      "manifest": {
+        "abi": {
+          "php": "8.5",
+          "zend_extension_api_no": "420250925",
+          "zend_module_api_no": "20250925"
+        },
+        "blob": {
+          "sha256": "450813833bcf1f7db40c245a0014f2458c8bd4fee80dc93c4bc2cd548dbb714c",
+          "size": 154398,
+          "url": "{BLOB_BASE}/blobs/45/450813833bcf1f7db40c245a0014f2458c8bd4fee80dc93c4bc2cd548dbb714c"
+        },
+        "closure": [],
+        "extension": {
+          "path": "lib/extensions/no-debug-non-zts-20250925/protobuf.so",
+          "sha256": "d765189746e4f2afb841dece8ae788377228e2a20d489485135e28aa2f0e574b"
+        },
+        "flavor": "nts",
+        "kind": "extension",
+        "libc": {
+          "family": "gnu",
+          "min": "2.17"
+        },
+        "name": "protobuf",
+        "schema": 1,
+        "tag": "protobuf-4.33.6+php85-x86_64-unknown-linux-gnu-nts",
+        "target": "x86_64-unknown-linux-gnu",
+        "version": "4.33.6"
+      },
+      "name": "protobuf",
+      "reason": "superseded by 5.35.1; protobuf 5.x requires PHP >= 8.2",
+      "section_entry": {
+        "flavor": "nts",
+        "manifest": {
+          "path": "/versions/r27407730899/targets/x86_64-unknown-linux-gnu/manifests/ext/protobuf/4.33.6/protobuf-4.33.6+php85-x86_64-unknown-linux-gnu-nts.json",
+          "sha256": "8a70ac3854922d72ae3e5dc4a4bf9692493d912136839472241fcf4269eba5c4"
+        },
+        "php_minor": "8.5",
+        "tag": "protobuf-4.33.6+php85-x86_64-unknown-linux-gnu-nts",
+        "version": "4.33.6",
+        "yanked": false
+      },
+      "tag": "protobuf-4.33.6+php85-x86_64-unknown-linux-gnu-nts",
+      "target": "x86_64-unknown-linux-gnu"
+    },
+    {
+      "frozen_at": "2026-06-12T10:15:16Z",
+      "kind": "extension",
+      "manifest": {
+        "abi": {
+          "php": "8.5",
+          "zend_extension_api_no": "420250925",
+          "zend_module_api_no": "20250925"
+        },
+        "blob": {
+          "sha256": "27cc2b5a8d34be1cb53807b4dd52e46bab1e52397c62eb345be956ea15561f60",
+          "size": 154758,
+          "url": "{BLOB_BASE}/blobs/27/27cc2b5a8d34be1cb53807b4dd52e46bab1e52397c62eb345be956ea15561f60"
+        },
+        "closure": [],
+        "extension": {
+          "path": "lib/extensions/no-debug-zts-20250925/protobuf.so",
+          "sha256": "f7d263993740bca202b551e8814fd2e715e7a6b5afe759c27e2a76cb3a85dab4"
+        },
+        "flavor": "zts",
+        "kind": "extension",
+        "libc": {
+          "family": "gnu",
+          "min": "2.17"
+        },
+        "name": "protobuf",
+        "schema": 1,
+        "tag": "protobuf-4.33.6+php85-x86_64-unknown-linux-gnu-zts",
+        "target": "x86_64-unknown-linux-gnu",
+        "version": "4.33.6"
+      },
+      "name": "protobuf",
+      "reason": "superseded by 5.35.1; protobuf 5.x requires PHP >= 8.2",
+      "section_entry": {
+        "flavor": "zts",
+        "manifest": {
+          "path": "/versions/r27407730899/targets/x86_64-unknown-linux-gnu/manifests/ext/protobuf/4.33.6/protobuf-4.33.6+php85-x86_64-unknown-linux-gnu-zts.json",
+          "sha256": "cce08a01d49f5d941f747d748d769ad9c858e6b3de268214883ffa4e4f553cc8"
+        },
+        "php_minor": "8.5",
+        "tag": "protobuf-4.33.6+php85-x86_64-unknown-linux-gnu-zts",
+        "version": "4.33.6",
+        "yanked": false
+      },
+      "tag": "protobuf-4.33.6+php85-x86_64-unknown-linux-gnu-zts",
+      "target": "x86_64-unknown-linux-gnu"
+    },
+    {
+      "frozen_at": "2026-06-12T10:15:16Z",
+      "kind": "extension",
+      "manifest": {
+        "abi": {
+          "php": "8.5",
+          "zend_extension_api_no": "420250925",
+          "zend_module_api_no": "20250925"
+        },
+        "blob": {
+          "sha256": "a1af532d12f7216ac9b17fdfd08add9d78a76ac0cec4c0345439dedfd9d28599",
+          "size": 152316,
+          "url": "{BLOB_BASE}/blobs/a1/a1af532d12f7216ac9b17fdfd08add9d78a76ac0cec4c0345439dedfd9d28599"
+        },
+        "closure": [],
+        "extension": {
+          "path": "lib/extensions/no-debug-non-zts-20250925/protobuf.so",
+          "sha256": "3b559e1def2f3aa5c12fdaf36c892b689e78958d0689c9f9d123eae877d43146"
+        },
+        "flavor": "nts",
+        "kind": "extension",
+        "libc": {
+          "family": "musl",
+          "min": "1.2.5"
+        },
+        "name": "protobuf",
+        "schema": 1,
+        "tag": "protobuf-4.33.6+php85-x86_64-unknown-linux-musl-nts",
+        "target": "x86_64-unknown-linux-musl",
+        "version": "4.33.6"
+      },
+      "name": "protobuf",
+      "reason": "superseded by 5.35.1; protobuf 5.x requires PHP >= 8.2",
+      "section_entry": {
+        "flavor": "nts",
+        "manifest": {
+          "path": "/versions/r27407730899/targets/x86_64-unknown-linux-musl/manifests/ext/protobuf/4.33.6/protobuf-4.33.6+php85-x86_64-unknown-linux-musl-nts.json",
+          "sha256": "91cc990ac7d612703890a45db548a6d74075b0fe698e17a9059745109523fde5"
+        },
+        "php_minor": "8.5",
+        "tag": "protobuf-4.33.6+php85-x86_64-unknown-linux-musl-nts",
+        "version": "4.33.6",
+        "yanked": false
+      },
+      "tag": "protobuf-4.33.6+php85-x86_64-unknown-linux-musl-nts",
+      "target": "x86_64-unknown-linux-musl"
+    },
+    {
+      "frozen_at": "2026-06-12T10:15:16Z",
+      "kind": "extension",
+      "manifest": {
+        "abi": {
+          "php": "8.5",
+          "zend_extension_api_no": "420250925",
+          "zend_module_api_no": "20250925"
+        },
+        "blob": {
+          "sha256": "1759e3eb154a19234326736e77515634899ca6ee8b50b708fedd3878cdd1eb3a",
+          "size": 152592,
+          "url": "{BLOB_BASE}/blobs/17/1759e3eb154a19234326736e77515634899ca6ee8b50b708fedd3878cdd1eb3a"
+        },
+        "closure": [],
+        "extension": {
+          "path": "lib/extensions/no-debug-zts-20250925/protobuf.so",
+          "sha256": "16196c289ea507d46b299dfb218b70f222e82dd235e63079f0576f0e3d5a49d8"
+        },
+        "flavor": "zts",
+        "kind": "extension",
+        "libc": {
+          "family": "musl",
+          "min": "1.2.5"
+        },
+        "name": "protobuf",
+        "schema": 1,
+        "tag": "protobuf-4.33.6+php85-x86_64-unknown-linux-musl-zts",
+        "target": "x86_64-unknown-linux-musl",
+        "version": "4.33.6"
+      },
+      "name": "protobuf",
+      "reason": "superseded by 5.35.1; protobuf 5.x requires PHP >= 8.2",
+      "section_entry": {
+        "flavor": "zts",
+        "manifest": {
+          "path": "/versions/r27407730899/targets/x86_64-unknown-linux-musl/manifests/ext/protobuf/4.33.6/protobuf-4.33.6+php85-x86_64-unknown-linux-musl-zts.json",
+          "sha256": "8b0cf52d5ddceb84b5e8fe3dc4404fce180c26ecfafbdaf8e738eddd9dce3b72"
+        },
+        "php_minor": "8.5",
+        "tag": "protobuf-4.33.6+php85-x86_64-unknown-linux-musl-zts",
+        "version": "4.33.6",
+        "yanked": false
+      },
+      "tag": "protobuf-4.33.6+php85-x86_64-unknown-linux-musl-zts",
+      "target": "x86_64-unknown-linux-musl"
     }
   ],
   "minor": "8.5",

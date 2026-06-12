@@ -472,15 +472,17 @@
   # external C-library — the upb runtime is vendored in the PECL source and
   # compiled in-tree via phpize.
   #
-  # 4.33.x is the last series whose `package.xml` declares `<min>8.1.0`; the
-  # 5.x line raised the floor to 8.2, which would drop the 8.1.34 leg of our
-  # matrix. pickOnly requires a single series covering every shipped minor,
-  # so we stay on 4.33.6 until 8.1 leaves the matrix.
+  # The 5.x line raised its `package.xml` floor to `<min>8.2.0`, so protobuf
+  # is gated out of the live 8.1 matrix (see flake.nix — `phpKey != "8.1"`).
+  # The prior 4.33.6 series (last to declare `<min>8.1.0`) was published live
+  # across the full 8.1–8.5 matrix in an earlier release and is now retained
+  # as frozen artifacts (frozen/php-<minor>.json), so 8.1 keeps a usable
+  # protobuf and 8.2–8.5 can still install 4.33.6 alongside live 5.35.1.
   protobufVersions = {
-    "4.33" = {
-      version = "4.33.6";
-      url = "https://pecl.php.net/get/protobuf-4.33.6.tgz";
-      sha256 = "4b1e2d13c2086d647be6b6dd6648101d5ce36d83943834c724b0f399a4ecf836";
+    "5.35" = {
+      version = "5.35.1";
+      url = "https://pecl.php.net/get/protobuf-5.35.1.tgz";
+      sha256 = "7ab8cd62e8b78ff9f48462ff9e3e30fd8c2d8bb5ab760d51049b38fa0b8c559e";
     };
   };
 
