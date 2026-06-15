@@ -29,9 +29,9 @@
   # OpenSSL 3.5.x is the current LTS line (supported through 2030). PBS
   # tracks 3.5.6; same pin and sha256 here.
   openssl = {
-    url = "https://github.com/openssl/openssl/releases/download/openssl-3.5.6/openssl-3.5.6.tar.gz";
-    sha256 = "deae7c80cba99c4b4f940ecadb3c3338b13cb77418409238e57d7f31f2a3b736";
-    version = "3.5.6";
+    url = "https://github.com/openssl/openssl/releases/download/openssl-3.5.7/openssl-3.5.7.tar.gz";
+    sha256 = "a8c0d28a529ca480f9f36cf5792e2cd21984552a3c8e4aa11a24aa31aeac98e8";
+    version = "3.5.7";
   };
 
   # libxml2 — foundational for dom/xml/xmlreader/xmlwriter/simplexml
@@ -396,9 +396,9 @@
   # the relocation patches (scripts/phpize.in / php-config.in).
   xdebugVersions = {
     "3.5" = {
-      version = "3.5.1";
-      url = "https://xdebug.org/files/xdebug-3.5.1.tgz";
-      sha256 = "0f26849a5edf3d9120edc100219854599d54f923a8a4d1cb4fe4403520e49678";
+      version = "3.5.3";
+      url = "https://xdebug.org/files/xdebug-3.5.3.tgz";
+      sha256 = "f073de91bea046106abf4d6071c963ea71e58571df6ce58948ceca89d121cb2d";
     };
   };
 
@@ -629,9 +629,9 @@
   # gmake-based build; depends on NSPR. NSS releases track Firefox;
   # any modern tag works for certutil's purposes.
   nss = {
-    url = "https://archive.mozilla.org/pub/security/nss/releases/NSS_3_124_RTM/src/nss-3.124.tar.gz";
-    sha256 = "80da9f1cbcb267293b2248818d288bc02f874d6a34f1989a2828401d74a0bc9b";
-    version = "3.124";
+    url = "https://archive.mozilla.org/pub/security/nss/releases/NSS_3_125_RTM/src/nss-3.125.tar.gz";
+    sha256 = "1ad541f10da7c58dec01f540ecc44d28cbbc033f741a57473de5a0893d91606d";
+    version = "3.125";
   };
 
   # mkcert — FiloSottile's local-CA generator. Pure-Go static binary;
