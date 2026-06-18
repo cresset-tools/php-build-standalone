@@ -281,6 +281,294 @@
       },
       "tag": "protobuf-4.33.6+php83-x86_64-unknown-linux-musl-zts",
       "target": "x86_64-unknown-linux-musl"
+    },
+    {
+      "frozen_at": "2026-06-15T11:58:52Z",
+      "kind": "extension",
+      "manifest": {
+        "abi": {
+          "php": "8.3",
+          "zend_extension_api_no": "420230831",
+          "zend_module_api_no": "20230831"
+        },
+        "blob": {
+          "sha256": "821e3adf64f51c23018fc29ff6c1aa42863a5b969f82db1f9f4357831381da62",
+          "size": 122988,
+          "url": "{BLOB_BASE}/blobs/82/821e3adf64f51c23018fc29ff6c1aa42863a5b969f82db1f9f4357831381da62"
+        },
+        "closure": [],
+        "extension": {
+          "load": "zend-extension",
+          "path": "lib/extensions/no-debug-non-zts-20230831/xdebug.so",
+          "sha256": "438652405631462e8eb8b96b31c6d0a8634cf693078eec2771a27920ed39a8e7"
+        },
+        "flavor": "nts",
+        "kind": "extension",
+        "libc": {
+          "family": "darwin",
+          "min": "11.0"
+        },
+        "name": "xdebug",
+        "schema": 1,
+        "tag": "xdebug-3.5.1+php83-aarch64-apple-darwin-nts",
+        "target": "aarch64-apple-darwin",
+        "version": "3.5.1"
+      },
+      "name": "xdebug",
+      "reason": "superseded by 3.5.3",
+      "section_entry": {
+        "flavor": "nts",
+        "manifest": {
+          "path": "/versions/r27410368719/targets/aarch64-apple-darwin/manifests/ext/xdebug/3.5.1/xdebug-3.5.1+php83-aarch64-apple-darwin-nts.json",
+          "sha256": "6eb7e88f10f480325d0d6d9b8dd4c0be92169032ddc57478b8bd97438bf16a6c"
+        },
+        "php_minor": "8.3",
+        "tag": "xdebug-3.5.1+php83-aarch64-apple-darwin-nts",
+        "version": "3.5.1",
+        "yanked": false
+      },
+      "tag": "xdebug-3.5.1+php83-aarch64-apple-darwin-nts",
+      "target": "aarch64-apple-darwin"
+    },
+    {
+      "frozen_at": "2026-06-15T11:58:52Z",
+      "kind": "extension",
+      "manifest": {
+        "abi": {
+          "php": "8.3",
+          "zend_extension_api_no": "420230831",
+          "zend_module_api_no": "20230831"
+        },
+        "blob": {
+          "sha256": "46256ba978da18309219232efb6985230de0bcd8b5849411033cd9eed7e81829",
+          "size": 128779,
+          "url": "{BLOB_BASE}/blobs/46/46256ba978da18309219232efb6985230de0bcd8b5849411033cd9eed7e81829"
+        },
+        "closure": [],
+        "extension": {
+          "load": "zend-extension",
+          "path": "lib/extensions/no-debug-zts-20230831/xdebug.so",
+          "sha256": "4aff32963bcf38d8b2d26ca4e209e75647fa12d53ea1c7300495e131dcd529b3"
+        },
+        "flavor": "zts",
+        "kind": "extension",
+        "libc": {
+          "family": "darwin",
+          "min": "11.0"
+        },
+        "name": "xdebug",
+        "schema": 1,
+        "tag": "xdebug-3.5.1+php83-aarch64-apple-darwin-zts",
+        "target": "aarch64-apple-darwin",
+        "version": "3.5.1"
+      },
+      "name": "xdebug",
+      "reason": "superseded by 3.5.3",
+      "section_entry": {
+        "flavor": "zts",
+        "manifest": {
+          "path": "/versions/r27410368719/targets/aarch64-apple-darwin/manifests/ext/xdebug/3.5.1/xdebug-3.5.1+php83-aarch64-apple-darwin-zts.json",
+          "sha256": "09f1fb0344a1f158e6732c167780a93b2f013699712187e2acd81e5792ae40bf"
+        },
+        "php_minor": "8.3",
+        "tag": "xdebug-3.5.1+php83-aarch64-apple-darwin-zts",
+        "version": "3.5.1",
+        "yanked": false
+      },
+      "tag": "xdebug-3.5.1+php83-aarch64-apple-darwin-zts",
+      "target": "aarch64-apple-darwin"
+    },
+    {
+      "frozen_at": "2026-06-15T11:58:52Z",
+      "kind": "extension",
+      "manifest": {
+        "abi": {
+          "php": "8.3",
+          "zend_extension_api_no": "420230831",
+          "zend_module_api_no": "20230831"
+        },
+        "blob": {
+          "sha256": "2a479fabbfd00e4e5a957c448bb103e48fd52e3640b29c5a9a5901f1011ab448",
+          "size": 141128,
+          "url": "{BLOB_BASE}/blobs/2a/2a479fabbfd00e4e5a957c448bb103e48fd52e3640b29c5a9a5901f1011ab448"
+        },
+        "closure": [],
+        "extension": {
+          "load": "zend-extension",
+          "path": "lib/extensions/no-debug-non-zts-20230831/xdebug.so",
+          "sha256": "60d3a3adcec006e1c0e977bf355bb469c94496b2c49f6bf9586ea31f7d8d9c73"
+        },
+        "flavor": "nts",
+        "kind": "extension",
+        "libc": {
+          "family": "gnu",
+          "min": "2.17"
+        },
+        "name": "xdebug",
+        "schema": 1,
+        "tag": "xdebug-3.5.1+php83-x86_64-unknown-linux-gnu-nts",
+        "target": "x86_64-unknown-linux-gnu",
+        "version": "3.5.1"
+      },
+      "name": "xdebug",
+      "reason": "superseded by 3.5.3",
+      "section_entry": {
+        "flavor": "nts",
+        "manifest": {
+          "path": "/versions/r27410368719/targets/x86_64-unknown-linux-gnu/manifests/ext/xdebug/3.5.1/xdebug-3.5.1+php83-x86_64-unknown-linux-gnu-nts.json",
+          "sha256": "efd000b6a34c0b2d228faa7a6b80bc98372e56b5f6f5ec41b7be0cf90d99687b"
+        },
+        "php_minor": "8.3",
+        "tag": "xdebug-3.5.1+php83-x86_64-unknown-linux-gnu-nts",
+        "version": "3.5.1",
+        "yanked": false
+      },
+      "tag": "xdebug-3.5.1+php83-x86_64-unknown-linux-gnu-nts",
+      "target": "x86_64-unknown-linux-gnu"
+    },
+    {
+      "frozen_at": "2026-06-15T11:58:52Z",
+      "kind": "extension",
+      "manifest": {
+        "abi": {
+          "php": "8.3",
+          "zend_extension_api_no": "420230831",
+          "zend_module_api_no": "20230831"
+        },
+        "blob": {
+          "sha256": "5e075b4397db1a963b32615044217cb6d6e2364394a2951680af96a6e8729ccd",
+          "size": 148576,
+          "url": "{BLOB_BASE}/blobs/5e/5e075b4397db1a963b32615044217cb6d6e2364394a2951680af96a6e8729ccd"
+        },
+        "closure": [],
+        "extension": {
+          "load": "zend-extension",
+          "path": "lib/extensions/no-debug-zts-20230831/xdebug.so",
+          "sha256": "c8d8f582f7c26fce8755ed957ff6b61982dc20f4f53a28ed149029747ad4fefb"
+        },
+        "flavor": "zts",
+        "kind": "extension",
+        "libc": {
+          "family": "gnu",
+          "min": "2.17"
+        },
+        "name": "xdebug",
+        "schema": 1,
+        "tag": "xdebug-3.5.1+php83-x86_64-unknown-linux-gnu-zts",
+        "target": "x86_64-unknown-linux-gnu",
+        "version": "3.5.1"
+      },
+      "name": "xdebug",
+      "reason": "superseded by 3.5.3",
+      "section_entry": {
+        "flavor": "zts",
+        "manifest": {
+          "path": "/versions/r27410368719/targets/x86_64-unknown-linux-gnu/manifests/ext/xdebug/3.5.1/xdebug-3.5.1+php83-x86_64-unknown-linux-gnu-zts.json",
+          "sha256": "600bd6373203f4041f4db8d0c02260b5d25707d08c9572e76b91fd50b36d2aaf"
+        },
+        "php_minor": "8.3",
+        "tag": "xdebug-3.5.1+php83-x86_64-unknown-linux-gnu-zts",
+        "version": "3.5.1",
+        "yanked": false
+      },
+      "tag": "xdebug-3.5.1+php83-x86_64-unknown-linux-gnu-zts",
+      "target": "x86_64-unknown-linux-gnu"
+    },
+    {
+      "frozen_at": "2026-06-15T11:58:52Z",
+      "kind": "extension",
+      "manifest": {
+        "abi": {
+          "php": "8.3",
+          "zend_extension_api_no": "420230831",
+          "zend_module_api_no": "20230831"
+        },
+        "blob": {
+          "sha256": "2408aa40230e2438ba7a687d26396ae44c0988eed3821df5ac7dc1e9a25635b5",
+          "size": 140375,
+          "url": "{BLOB_BASE}/blobs/24/2408aa40230e2438ba7a687d26396ae44c0988eed3821df5ac7dc1e9a25635b5"
+        },
+        "closure": [],
+        "extension": {
+          "load": "zend-extension",
+          "path": "lib/extensions/no-debug-non-zts-20230831/xdebug.so",
+          "sha256": "de87853cd5a7cb7abed278f0f17f976efc703eff6d8be813ace49dbb9c44c411"
+        },
+        "flavor": "nts",
+        "kind": "extension",
+        "libc": {
+          "family": "musl",
+          "min": "1.2.5"
+        },
+        "name": "xdebug",
+        "schema": 1,
+        "tag": "xdebug-3.5.1+php83-x86_64-unknown-linux-musl-nts",
+        "target": "x86_64-unknown-linux-musl",
+        "version": "3.5.1"
+      },
+      "name": "xdebug",
+      "reason": "superseded by 3.5.3",
+      "section_entry": {
+        "flavor": "nts",
+        "manifest": {
+          "path": "/versions/r27410368719/targets/x86_64-unknown-linux-musl/manifests/ext/xdebug/3.5.1/xdebug-3.5.1+php83-x86_64-unknown-linux-musl-nts.json",
+          "sha256": "2d84a5c5af866c4f8afdfc3386604b000b1a590da5d8b632820c22bb18e974a6"
+        },
+        "php_minor": "8.3",
+        "tag": "xdebug-3.5.1+php83-x86_64-unknown-linux-musl-nts",
+        "version": "3.5.1",
+        "yanked": false
+      },
+      "tag": "xdebug-3.5.1+php83-x86_64-unknown-linux-musl-nts",
+      "target": "x86_64-unknown-linux-musl"
+    },
+    {
+      "frozen_at": "2026-06-15T11:58:52Z",
+      "kind": "extension",
+      "manifest": {
+        "abi": {
+          "php": "8.3",
+          "zend_extension_api_no": "420230831",
+          "zend_module_api_no": "20230831"
+        },
+        "blob": {
+          "sha256": "77ab241d36e2b843f67865fa0b03ab8a01ac9c4d885482902dee450b5e22e3a0",
+          "size": 147507,
+          "url": "{BLOB_BASE}/blobs/77/77ab241d36e2b843f67865fa0b03ab8a01ac9c4d885482902dee450b5e22e3a0"
+        },
+        "closure": [],
+        "extension": {
+          "load": "zend-extension",
+          "path": "lib/extensions/no-debug-zts-20230831/xdebug.so",
+          "sha256": "c59496266bb74e5740d3c7d5a7f6ebce214620a4f08cfe8621b19bb1ddf6a3b5"
+        },
+        "flavor": "zts",
+        "kind": "extension",
+        "libc": {
+          "family": "musl",
+          "min": "1.2.5"
+        },
+        "name": "xdebug",
+        "schema": 1,
+        "tag": "xdebug-3.5.1+php83-x86_64-unknown-linux-musl-zts",
+        "target": "x86_64-unknown-linux-musl",
+        "version": "3.5.1"
+      },
+      "name": "xdebug",
+      "reason": "superseded by 3.5.3",
+      "section_entry": {
+        "flavor": "zts",
+        "manifest": {
+          "path": "/versions/r27410368719/targets/x86_64-unknown-linux-musl/manifests/ext/xdebug/3.5.1/xdebug-3.5.1+php83-x86_64-unknown-linux-musl-zts.json",
+          "sha256": "c99c662116893287425478bec76742b449f002eadb1af7efe8bc23012a023be5"
+        },
+        "php_minor": "8.3",
+        "tag": "xdebug-3.5.1+php83-x86_64-unknown-linux-musl-zts",
+        "version": "3.5.1",
+        "yanked": false
+      },
+      "tag": "xdebug-3.5.1+php83-x86_64-unknown-linux-musl-zts",
+      "target": "x86_64-unknown-linux-musl"
     }
   ],
   "minor": "8.3",
