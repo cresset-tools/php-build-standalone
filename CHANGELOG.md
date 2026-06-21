@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.10](https://github.com/cresset-tools/php-build-standalone/compare/v0.2.9...v0.2.10) (2026-06-21)
+
+
+### Features
+
+* **tools:** add mailpit SMTP test server bundle ([#80](https://github.com/cresset-tools/php-build-standalone/issues/80)) ([a78eed4](https://github.com/cresset-tools/php-build-standalone/commit/a78eed42124c4aad1268b668bc29e8840b2e695b))
+
 ## [0.2.9](https://github.com/cresset-tools/php-build-standalone/compare/v0.2.8...v0.2.9) (2026-06-18)
 
 
