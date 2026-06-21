@@ -797,6 +797,36 @@
             '';
           };
 
+          # ---- Mailpit tool bundle ----
+          # Repackages upstream's prebuilt static Go binary (one
+          # executable, no shared-lib deps, no glibc floor) into the
+          # standard install/ tarball shape. Same prebuilt-download shape
+          # as the JDK: no `-tree`, bypasses shared/tree.nix + finalize
+          # entirely (see tools/mailpit/mailpit.nix). `system` picks the
+          # matching per-platform pin from sources.mailpit.platforms.<system>.
+          mailpitSpec = sources.mailpit;
+          mailpit = pkgs.callPackage ./tools/mailpit/mailpit.nix {
+            inherit mailpitSpec;
+            target = system;
+          };
+          mailpitTarball = pkgs.callPackage ./tools/mailpit/tarball.nix {
+            inherit mailpit sources nixpkgsRev;
+            mailpitVersion = mailpitSpec.version;
+          };
+          mailpitRelease = pkgs.stdenvNoCC.mkDerivation {
+            pname = "pbs-release-mailpit";
+            version = mailpitSpec.version;
+            dontUnpack = true;
+            dontConfigure = true;
+            dontBuild = true;
+            dontFixup = true;
+            nativeBuildInputs = [ pkgs.coreutils ];
+            installPhase = ''
+              mkdir -p "$out"
+              cp -a ${mailpitTarball}/. "$out/" && chmod -R u+w "$out"
+            '';
+          };
+
           # ---- OpenSearch tool bundle ----
           # Symmetric across both platforms: a single platform-agnostic
           # `min` (core-only) tarball (sources.opensearch), our
@@ -885,7 +915,7 @@
           # excluded from the musl index; the glibc + darwin legs keep them.
           allReleases =
             (map (v: v.release) (builtins.attrValues variants))
-            ++ pkgs.lib.optionals (!musl) [ mariadbRelease redisServerRelease erlangRelease mkcertRelease jdkRelease opensearchRelease rabbitmqRelease ];
+            ++ pkgs.lib.optionals (!musl) [ mariadbRelease redisServerRelease erlangRelease mkcertRelease jdkRelease opensearchRelease rabbitmqRelease mailpitRelease ];
           frozenFiles =
             let allFiles = pkgs.lib.filesystem.listFilesRecursive ./frozen;
             in builtins.filter
@@ -912,7 +942,8 @@
                   mkcert mkcertTree mkcertTarball mkcertRelease
                   jdk jdkTarball jdkRelease
                   opensearch opensearchTarball opensearchRelease
-                  rabbitmq rabbitmqTarball rabbitmqRelease;
+                  rabbitmq rabbitmqTarball rabbitmqRelease
+                  mailpit mailpitTarball mailpitRelease;
         };
 
       # The native legs, keyed by real Nix system (gnu on linux, darwin on
@@ -1076,6 +1107,12 @@
           rabbitmq           = c.rabbitmq;
           rabbitmq-tarball   = c.rabbitmqTarball;
           rabbitmq-release   = c.rabbitmqRelease;
+          # Mailpit — standalone prebuilt static Go binary (SMTP test
+          # server + web UI). No `-tree`: mailpit.nix bypasses
+          # shared/tree.nix like the JDK (see tools/mailpit/mailpit.nix).
+          mailpit            = c.mailpit;
+          mailpit-tarball    = c.mailpitTarball;
+          mailpit-release    = c.mailpitRelease;
         } // nixpkgs.lib.optionalAttrs (system == "x86_64-linux") {
           # The musl leg's publishable tree. CI builds this on the same
           # ubuntu runner as the gnu leg, and merge-publish-tree unions it
