@@ -666,6 +666,28 @@
     };
   };
 
+  # Mailpit — axllent/mailpit, a single static Go SMTP test server + web
+  # UI for local development. Like the JDK, published only as a prebuilt
+  # binary (we don't compile it): the official linux builds are
+  # CGO_ENABLED=0 static executables, so there is no glibc floor. The
+  # release archive holds just `mailpit` + LICENSE + README at the root.
+  # Per-platform assets live under `platforms.<system>`; flake.nix picks
+  # the entry for the current system. Pinned in lockstep with the bougie
+  # services catalog's mailpit version.
+  mailpit = {
+    version = "1.30.2";
+    platforms = {
+      "x86_64-linux" = {
+        url = "https://github.com/axllent/mailpit/releases/download/v1.30.2/mailpit-linux-amd64.tar.gz";
+        sha256 = "63b113aa9748adf7091b649ebe02693f99a459000cbe415faa6679f4b39f82cf";
+      };
+      "aarch64-darwin" = {
+        url = "https://github.com/axllent/mailpit/releases/download/v1.30.2/mailpit-darwin-arm64.tar.gz";
+        sha256 = "05b92a4b804c34b0f6e665a482a1141be64256f500ecf23a204c2084a27a248b";
+      };
+    };
+  };
+
   # OpenSearch 2.19.5 (current 2.x LTS patch as of 2026-05-14). Single
   # platform-agnostic source: upstream's stable **min** (core-only)
   # release tarball. opensearch.nix wires our standalone Temurin
