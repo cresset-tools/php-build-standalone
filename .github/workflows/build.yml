@@ -100,7 +100,7 @@ jobs:
     name: lint frozen coverage
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
       - name: Install Nix
@@ -174,13 +174,13 @@ jobs:
           - { php: "8.4", minor: "8_4", flavor: "zts", variant_key: "8_4_zts", os: ubuntu-latest, system: "x86_64-linux-musl", target: "x86_64-unknown-linux-musl" }
           - { php: "8.5", minor: "8_5", flavor: "zts", variant_key: "8_5_zts", os: ubuntu-latest, system: "x86_64-linux-musl", target: "x86_64-unknown-linux-musl" }
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Install Nix
         uses: DeterminateSystems/determinate-nix-action@v3
 
       - name: Set up FlakeHub Cache
-        uses: DeterminateSystems/flakehub-cache-action@v3.21.1
+        uses: DeterminateSystems/flakehub-cache-action@v3.21.2
 
       - name: Build tarball
         # Each nix build uses its own -o symlink so subsequent builds
@@ -273,13 +273,13 @@ jobs:
           - { os: ubuntu-latest, system: "x86_64-linux",   target: "x86_64-unknown-linux-gnu" }
           - { os: macos-26,      system: "aarch64-darwin", target: "aarch64-apple-darwin" }
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Install Nix
         uses: DeterminateSystems/determinate-nix-action@v3
 
       - name: Set up FlakeHub Cache
-        uses: DeterminateSystems/flakehub-cache-action@v3.21.1
+        uses: DeterminateSystems/flakehub-cache-action@v3.21.2
 
       - name: Build mariadb tarball
         # mariadb-tarball is the redistributable artifact; mariadb-release is
@@ -327,13 +327,13 @@ jobs:
           - { os: ubuntu-latest, system: "x86_64-linux",   target: "x86_64-unknown-linux-gnu" }
           - { os: macos-26,      system: "aarch64-darwin", target: "aarch64-apple-darwin" }
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Install Nix
         uses: DeterminateSystems/determinate-nix-action@v3
 
       - name: Set up FlakeHub Cache
-        uses: DeterminateSystems/flakehub-cache-action@v3.21.1
+        uses: DeterminateSystems/flakehub-cache-action@v3.21.2
 
       - name: Build redis tarball
         # redis-tarball is the redistributable artifact; redis-release is
@@ -380,13 +380,13 @@ jobs:
           - { os: ubuntu-latest, system: "x86_64-linux",   target: "x86_64-unknown-linux-gnu" }
           - { os: macos-26,      system: "aarch64-darwin", target: "aarch64-apple-darwin" }
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Install Nix
         uses: DeterminateSystems/determinate-nix-action@v3
 
       - name: Set up FlakeHub Cache
-        uses: DeterminateSystems/flakehub-cache-action@v3.21.1
+        uses: DeterminateSystems/flakehub-cache-action@v3.21.2
 
       - name: Build erlang tarball
         # erlang-tarball is the redistributable artifact; erlang-release
@@ -432,7 +432,7 @@ jobs:
       matrix:
         php: ["8.1", "8.2", "8.3", "8.4", "8.5"]
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Download Linux tarball
         # NTS only — the distro-matrix gate validates the build against
@@ -473,13 +473,13 @@ jobs:
           - { os: ubuntu-latest, artifact: musl,   bundle_attr: "release-bundle-musl" }
           - { os: macos-26,      artifact: darwin, bundle_attr: "release-bundle" }
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Install Nix
         uses: DeterminateSystems/determinate-nix-action@v3
 
       - name: Set up FlakeHub Cache
-        uses: DeterminateSystems/flakehub-cache-action@v3.21.1
+        uses: DeterminateSystems/flakehub-cache-action@v3.21.2
 
       - name: Build release-bundle
         # FlakeHub Cache hits all per-minor inputs already built in
@@ -509,13 +509,13 @@ jobs:
       contents: read
       id-token: write
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Install Nix
         uses: DeterminateSystems/determinate-nix-action@v3
 
       - name: Set up FlakeHub Cache
-        uses: DeterminateSystems/flakehub-cache-action@v3.21.1
+        uses: DeterminateSystems/flakehub-cache-action@v3.21.2
 
       - name: Build release-bundle (first pass)
         run: nix build .#release-bundle --impure -o result-1 --print-build-logs
@@ -552,7 +552,7 @@ jobs:
       contents: read   # no Pages/Releases push
       id-token: write  # cosign keyless OIDC
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Install Nix
         uses: DeterminateSystems/determinate-nix-action@v3
