@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.2.11](https://github.com/cresset-tools/php-build-standalone/compare/v0.2.10...v0.2.11) (2026-06-30)
+
+
+### Features
+
+* **ext:** add php-spx profiler extension ([#84](https://github.com/cresset-tools/php-build-standalone/issues/84)) ([2a15bda](https://github.com/cresset-tools/php-build-standalone/commit/2a15bda95d86e7416580041e44f8606b7daa8db1))
+
+
+### Dependencies
+
+* bump pinned upstreams via scripts/update.py ([#83](https://github.com/cresset-tools/php-build-standalone/issues/83)) ([db55389](https://github.com/cresset-tools/php-build-standalone/commit/db553895e026476c0f70f6e292f9835a13cdec8d))
+
+
+### CI
+
+* run the darwin build legs on Depot macOS runners ([#86](https://github.com/cresset-tools/php-build-standalone/issues/86)) ([db5f790](https://github.com/cresset-tools/php-build-standalone/commit/db5f7909eb4779782b24b1ed756e50f245b69b7b))
+
 ## [0.2.10](https://github.com/cresset-tools/php-build-standalone/compare/v0.2.9...v0.2.10) (2026-06-21)
 
 
