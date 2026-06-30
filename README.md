@@ -154,6 +154,7 @@ fetches the matching per-store-path tarballs on demand:
 | **apcu** | — |
 | **gmp** | libgmp |
 | **pcov** | — |
+| **spx** | — (gz* symbols resolve against the interpreter's libz) |
 | **gettext** *(Linux)* | — (glibc + musl both implement gettext in libc) |
 
 Each per-store-path tarball lives at `store/<name>-<ver>-<hash>/` after

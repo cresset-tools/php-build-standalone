@@ -23,7 +23,7 @@ for the distribution wire format see `DISTRIBUTION.md`.
   runs on Alpine; PHP + extensions only, no service/tool bundles — added 0.2.5),
   and `aarch64-apple-darwin` (macOS 11+). No aarch64-linux yet.
 - **Per-ext tarballs:** xdebug, imagick, redis, vips *(Linux only)*,
-  igbinary, msgpack, apcu, pcov, plus every shared extension PHP's configure
+  igbinary, msgpack, apcu, pcov, spx, plus every shared extension PHP's configure
   produces (curl, gd, intl, mbstring, mysqli, pdo_mysql, pdo, pgsql,
   pdo_pgsql, sqlite3, pdo_sqlite, bz2, zip, soap, exif, bcmath, calendar,
   ftp, shmop, sockets, sysv{msg,sem,shm}, gmp, xsl, ctype, dom, fileinfo,

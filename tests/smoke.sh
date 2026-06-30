@@ -118,6 +118,24 @@ else
     emit "NOTICE: imagick.so not found at $_imagick_so — skipping imagick dlopen gate (per-ext tarball not extracted)"
 fi
 
+# 4d. spx (php-spx profiler) must dlopen + version-check when its per-ext
+#     tarball has been installed. Like imagick, spx.so is NEVER in the
+#     interpreter tarball — it ships only via its per-ext tarball. spx is a
+#     regular `extension=` module (NOT a zend_extension), so it loads via
+#     -dextension, not -dzend_extension. The gate skips with a NOTICE when
+#     spx.so is absent; set SPX_SO=<path> for explicit per-ext layout testing.
+emit "spx load"
+_spx_so="${SPX_SO:-$ext_dir/spx.so}"
+if [ -f "$_spx_so" ]; then
+    out=$("$PHP" -dextension="$_spx_so" \
+                  -r 'echo "spx=", phpversion("spx"), "\n";') \
+        || die "spx load failed"
+    printf '%s\n' "$out"
+    case "$out" in spx=*) : ;; *) die "spx did not report a version: $out" ;; esac
+else
+    emit "NOTICE: spx.so not found at $_spx_so — skipping spx dlopen gate (per-ext tarball not extracted)"
+fi
+
 # 4b. opcache (zend_extension): on PHP 8.5+ it's built statically into
 #     bin/php and registers automatically. On 8.1–8.4 opcache.so ships
 #     only as a per-ext tarball, so the bare interpreter has no opcache
