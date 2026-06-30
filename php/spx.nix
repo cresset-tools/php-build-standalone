@@ -34,4 +34,10 @@ mkDep {
   # pkg list; listed here as defense-in-depth and to document the dependency
   # at the call site).
   extraInputs = with pkgs; [ autoconf automake libtool m4 ];
+  # Web-UI relocation: build-spx.sh applies this patch so spx.http_ui_assets_dir
+  # defaults (at MINIT) to the bundled web-UI assets resolved relative to
+  # spx.so via dladdr — no php.ini changes needed. The assets themselves are
+  # staged into $out/pbs-assets/web-ui and shipped by php/tarball-extension.nix
+  # at share/php-spx/assets/web-ui inside the per-ext tarball.
+  extraEnv = { PBS_SPX_RELOC_PATCH = ./spx-relocate-assets.patch; };
 }

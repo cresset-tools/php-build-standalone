@@ -132,6 +132,26 @@ if [ -f "$_spx_so" ]; then
         || die "spx load failed"
     printf '%s\n' "$out"
     case "$out" in spx=*) : ;; *) die "spx did not report a version: $out" ;; esac
+
+    # Web-UI relocation: when the per-ext tarball is extracted with its
+    # share/php-spx/assets/web-ui tree adjacent to the .so, spx must default
+    # spx.http_ui_assets_dir to those bundled assets with NO php.ini change —
+    # resolved relative to the .so itself (dladdr), so the HTTP flame-graph UI
+    # works wherever the tarball was unpacked. Gated on the assets actually
+    # being present (the bare $ext_dir/spx.so layout has none → NOTICE).
+    _spx_assets="$(CDPATH= cd -- "$(dirname "$_spx_so")/../../../share/php-spx/assets/web-ui" 2>/dev/null && pwd)"
+    if [ -n "$_spx_assets" ] && [ -f "$_spx_assets/index.html" ]; then
+        ui=$("$PHP" -dextension="$_spx_so" \
+                     -r 'echo ini_get("spx.http_ui_assets_dir");') \
+            || die "spx web-ui assets-dir query failed"
+        [ "$ui" = "$_spx_assets" ] \
+            || die "spx.http_ui_assets_dir did not relocate to the bundled assets: got '$ui', want '$_spx_assets'"
+        [ -f "$ui/index.html" ] \
+            || die "spx web-ui index.html missing under relocated assets dir $ui"
+        emit "spx web-ui assets relocate OK ($ui)"
+    else
+        emit "NOTICE: spx web-ui assets not adjacent to $_spx_so — skipping web-ui relocation gate"
+    fi
 else
     emit "NOTICE: spx.so not found at $_spx_so — skipping spx dlopen gate (per-ext tarball not extracted)"
 fi

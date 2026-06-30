@@ -414,7 +414,12 @@
                 # module (STANDARD_MODULE_HEADER), NOT a zend_extension — so unlike
                 # xdebug it must NOT set zendExtension; PHP would reject
                 # `zend_extension=spx.so` as "not a valid Zend extension".
-                spx         = mkExt { extDrv = spx;      extName = "spx";      extVersion = spxSpec.version;      confFragment = null; };
+                # extraPayload ships spx's HTTP flame-graph web UI (assets staged at
+                # $out/pbs-assets/web-ui by build-spx.sh) at share/php-spx/assets/web-ui
+                # in the per-ext tarball. The spx-relocate-assets patch makes spx.so
+                # default spx.http_ui_assets_dir to that path resolved relative to the
+                # .so at MINIT, so the UI works with no php.ini / bougie changes.
+                spx         = mkExt { extDrv = spx;      extName = "spx";      extVersion = spxSpec.version;      confFragment = null; extraPayload = { from = "${spx}/pbs-assets/web-ui"; to = "share/php-spx/assets/web-ui"; }; };
                 mbstring    = mkBuiltinExt "mbstring";
                 intl        = mkBuiltinExt "intl";
                 curl        = mkBuiltinExt "curl";
