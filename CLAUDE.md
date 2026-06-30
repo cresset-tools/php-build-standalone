@@ -162,6 +162,12 @@ because the Nix CLI treats `.` as an attribute-path separator.
    `deps=[php (+ any bundled C-libs)]` and `build-<extName>.sh`;
    wire into the `extensions` attrset with `mkExt {...}`.
 4. Update `tests/smoke.sh` if the extension belongs in the smoke set.
+5. **Always build before pushing.** A new extension or tool must build
+   successfully locally before you push — never push an unbuilt one.
+   `nix build .#phpVariants.x86_64-linux.8_5.extensions.<name>` for an
+   extension (sweep the relevant PHP minors / variants); for a tool build
+   its `tools/<name>` attribute. Pushing CI-first to find out it doesn't
+   compile is not acceptable.
 
 ### Bumping a version
 
