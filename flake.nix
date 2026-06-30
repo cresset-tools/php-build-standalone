@@ -231,6 +231,7 @@
               msgpackSpec  = pickOnly sources.msgpackVersions;
               apcuSpec     = pickOnly sources.apcuVersions;
               pcovSpec     = pickOnly sources.pcovVersions;
+              spxSpec      = pickOnly sources.spxVersions;
               protobufSpec = pickOnly sources.protobufVersions;
 
               php = pkgs.callPackage ./php/php.nix ({
@@ -268,6 +269,10 @@
               pcov = pkgs.callPackage ./php/pcov.nix {
                 inherit mkDep php pcovSpec;
               };
+              spx = pkgs.callPackage ./php/spx.nix {
+                inherit mkDep php spxSpec;
+                inherit (deps) zlib;
+              };
               protobuf = pkgs.callPackage ./php/protobuf.nix {
                 inherit mkDep php protobufSpec;
               };
@@ -281,7 +286,7 @@
                 # shape happens in tarball.nix at staging time (coreExtensions
                 # = [] drops every .so before the tarball is emitted).
                 interpreterDeps = [
-                  php xdebug imagick vips redis igbinary msgpack apcu pcov
+                  php xdebug imagick vips redis igbinary msgpack apcu pcov spx
                 ]
                 # protobuf 5.x requires PHP >= 8.2 (package.xml <min>8.2.0).
                 # On 8.1 the protobuf derivation is never forced, so it never
@@ -402,6 +407,14 @@
                 # rejects `zend_extension=pcov.so` with "doesn't appear to
                 # be a valid Zend extension", so don't tag it like xdebug.
                 pcov        = mkExt { extDrv = pcov;     extName = "pcov";     extVersion = pcovSpec.version;     confFragment = null; };
+                # spx ships without an auto-loader conf.d fragment (confFragment=null,
+                # like xdebug/pcov): profiling is per-run opt-in (SPX_ENABLED=1 on the
+                # CLI, or the HTTP control panel), so the user enables it via
+                # -dextension=spx or a project conf.d. spx is a regular `extension=`
+                # module (STANDARD_MODULE_HEADER), NOT a zend_extension — so unlike
+                # xdebug it must NOT set zendExtension; PHP would reject
+                # `zend_extension=spx.so` as "not a valid Zend extension".
+                spx         = mkExt { extDrv = spx;      extName = "spx";      extVersion = spxSpec.version;      confFragment = null; };
                 mbstring    = mkBuiltinExt "mbstring";
                 intl        = mkBuiltinExt "intl";
                 curl        = mkBuiltinExt "curl";

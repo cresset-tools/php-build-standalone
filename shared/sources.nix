@@ -499,6 +499,25 @@
     };
   };
 
+  # php-spx profiler extension. Sampling/tracing profiler with a built-in
+  # flame-graph web UI; the profiling complement to xdebug (step debugging)
+  # and pcov (coverage). No PECL release — source is the GitHub tag archive,
+  # which extracts into php-spx-<version>/. Needs zlib.h to build, but the
+  # resulting spx.so resolves its gz* symbols against the interpreter's libz
+  # at dlopen rather than linking its own (see php/spx.nix). 0.4.x's
+  # composer.json declares `php >=5.4.0 <8.6.0` and
+  # support-zts, so a single entry covers the whole 8.1–8.5 × {nts,zts}
+  # matrix. We ship spx.so only; the web-UI assets are out of scope for the
+  # single-.so per-ext tarball (build-spx.sh discards them and bakes a
+  # static SPX_HTTP_UI_ASSETS_DIR default).
+  spxVersions = {
+    "0.4" = {
+      version = "0.4.22";
+      url = "https://github.com/NoiseByNorthwest/php-spx/archive/refs/tags/v0.4.22.tar.gz";
+      sha256 = "6f89addd100d3d71168c094612eb8e1c06fd8062da6ee4d9df5b31bdfc4de160";
+    };
+  };
+
   # APCu PECL extension. Userspace shared-memory cache; the standard backend
   # for Symfony's `cache.app`, Laravel's array-cache-with-process-persistence,
   # Composer's class-loader cache, and many other libraries. No external
