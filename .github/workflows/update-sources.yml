@@ -71,7 +71,7 @@ jobs:
       # auto-freeze-superseded diffs shared/sources.nix against
       # origin/main, so we need that ref locally. fetch-depth: 0 keeps
       # things simple (full history) — the repo is small.
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
           token: ${{ steps.app-token.outputs.token }}
