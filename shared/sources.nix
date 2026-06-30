@@ -59,9 +59,9 @@
   # sqlite — for pdo_sqlite. The autoconf tarball name encodes the version
   # numerically (3470200 = 3.47.2), see build-sqlite.sh.
   sqlite = {
-    url = "https://www.sqlite.org/2026/sqlite-autoconf-3530200.tar.gz";
-    sha256 = "588ad51949419a56ebe81fe56193d510c559eb94c9a57748387860b5d3069316";
-    version = "3.53.2";
+    url = "https://www.sqlite.org/2026/sqlite-autoconf-3530300.tar.gz";
+    sha256 = "c917d7db16648ec95f714974ace5e5dcf46b7dc70e26600a0a102a3141125db0";
+    version = "3.53.3";
   };
 
   # oniguruma — regex engine for mbstring. NOTE: the tarball extracts
@@ -155,9 +155,9 @@
   # are explicitly disabled so configure doesn't auto-detect host system
   # libs.
   libcurl = {
-    url = "https://curl.se/download/curl-8.20.0.tar.gz";
-    sha256 = "fc5819cad3f9f5482669adcdc49a782c15f36d2a0715b395b06d9173593d2dc0";
-    version = "8.20.0";
+    url = "https://curl.se/download/curl-8.21.0.tar.gz";
+    sha256 = "d9b327997999045a24cda50f3983e69e51c516bd8be6ef9842fc7f99135e33bb";
+    version = "8.21.0";
   };
 
   # ncurses — terminfo/terminal-capability library; needed by libedit as its
