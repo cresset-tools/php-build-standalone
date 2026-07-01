@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.12](https://github.com/cresset-tools/php-build-standalone/compare/v0.2.11...v0.2.12) (2026-07-01)
+
+
+### Features
+
+* **ext:** ship the spx web UI and auto-resolve it with no php.ini ([#89](https://github.com/cresset-tools/php-build-standalone/issues/89)) ([0da8861](https://github.com/cresset-tools/php-build-standalone/commit/0da88614df6fbd8b52945b6fd4f384e6812ec1c2))
+
 ## [0.2.11](https://github.com/cresset-tools/php-build-standalone/compare/v0.2.10...v0.2.11) (2026-06-30)
 
 
