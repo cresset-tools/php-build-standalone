@@ -66,6 +66,16 @@
                          # succeeds but Zend's MINIT hooks never run, so
                          # phpinfo() doesn't list the extension and runtime
                          # APIs like `xdebug_break()` aren't registered.
+, extraPayload ? null    # null, or { from = "<store path>"; to = "<staging-rel dir>"; }.
+                         # Copies an extra tree into the per-ext tarball
+                         # alongside the .so — currently only spx's web-UI
+                         # assets, which spx resolves relative to its own .so
+                         # at runtime (no conf.d / .ini needed; the consumer
+                         # extracts the whole tarball, so the assets land next
+                         # to the .so automatically). `from` is a NON-merged
+                         # subdir of the ext derivation (e.g. $out/pbs-assets/…)
+                         # so it never reaches the interpreter tarball via
+                         # tree.nix's lib/share/etc merge.
 }:
 let
   inherit (pkgs) stdenv lib;
@@ -228,6 +238,16 @@ pkgs.stdenvNoCC.mkDerivation {
       cat > "$staging/etc/php/conf.d/${confPrefix}-${extName}.ini" << 'INIEOF'
       ${confFragment}
       INIEOF
+    ''}
+
+    ${lib.optionalString (extraPayload != null) ''
+      # Extra payload shipped next to the .so (spx's web-UI assets). Lands at
+      # the given staging-relative dest; the extension resolves it relative to
+      # its own .so at runtime, so it works wherever the consumer unpacks the
+      # tarball — no conf.d/.ini and no consumer-side changes required.
+      mkdir -p "$staging/${extraPayload.to}"
+      cp -a ${extraPayload.from}/. "$staging/${extraPayload.to}/"
+      chmod -R u+w "$staging/${extraPayload.to}"
     ''}
 
     export SOURCE_DATE_EPOCH=1704067200

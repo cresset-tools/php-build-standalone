@@ -1,0 +1,116 @@
+--- a/src/php_spx.c	2026-06-30 20:00:21.468275241 +0000
++++ b/src/php_spx.c	2026-06-30 20:07:48.418012288 +0000
+@@ -15,6 +15,12 @@
+  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+  */
+ 
++/* PBS: dladdr()/Dl_info are GNU extensions on glibc — assert _GNU_SOURCE
++ * before the first system header so <features.h> exposes them. Guarded so
++ * a command-line -D_GNU_SOURCE doesn't trip -Werror with a redefinition. */
++#ifndef _GNU_SOURCE
++# define _GNU_SOURCE 1
++#endif
+ 
+ #include <stdio.h>
+ 
+@@ -29,6 +35,11 @@
+ #include "php_spx.h"
+ #include "ext/standard/info.h"
+ 
++/* PBS: dladdr()/Dl_info — used in MINIT to discover spx's own .so path so
++ * the bundled web-UI assets resolve relative to the extension itself
++ * rather than the interpreter prefix (see the MINIT override below). */
++#include <dlfcn.h>
++
+ #include "spx_thread.h"
+ #include "spx_config.h"
+ #include "spx_php.h"
+@@ -249,6 +260,13 @@
+ ZEND_GET_MODULE(spx)
+ #endif
+ 
++/* PBS: a stable function symbol inside spx.so. Its address is handed to
++ * dladdr() in MINIT to discover the extension's own on-disk path; it is
++ * never called. */
++static void pbs_spx_anchor(void)
++{
++}
++
+ static PHP_MINIT_FUNCTION(spx)
+ {
+ #ifdef ZTS
+@@ -257,6 +275,74 @@
+ 
+     REGISTER_INI_ENTRIES();
+ 
++    /* PBS: make the bundled web UI work with zero php.ini configuration.
++     * The consumer (bougie) extracts the whole extension tarball — including
++     * share/php-spx/assets/web-ui — into a content-addressed store dir and
++     * loads spx.so from it by absolute path, so the assets sit at
++     * <ext_root>/share/php-spx/assets/web-ui while spx.so sits at
++     * <ext_root>/lib/extensions/<api>/spx.so. Resolve the assets dir
++     * RELATIVE TO spx.so (via dladdr), not the interpreter prefix, and
++     * override spx.http_ui_assets_dir's default to it — but only while the
++     * live value still equals the compiled-in default, so an explicit
++     * php.ini / -d override always wins. ini_entry->value is mutated
++     * directly rather than via zend_alter_ini_entry_chars(): at MINIT the
++     * latter populates EG(modified_ini_directives) before any request
++     * exists and NULL-derefs in zend_ini_deactivate at the first request
++     * shutdown (same rationale as PHP core's extension_dir relocation).
++     * The equality check is spelled with ZSTR_LEN/memcmp rather than
++     * zend_string_equals_cstr() so the one patch also compiles on PHP 8.1
++     * (zend_string_equals_cstr arrived in 8.2). */
++    {
++        Dl_info pbs_info;
++        char pbs_dir[PATH_MAX];
++        char pbs_candidate[PATH_MAX];
++        char pbs_assets[PATH_MAX];
++        char *pbs_slash;
++        size_t pbs_len;
++        int pbs_n;
++
++        if (dladdr((void *) pbs_spx_anchor, &pbs_info) != 0 && pbs_info.dli_fname != NULL) {
++            pbs_len = strlen(pbs_info.dli_fname);
++            if (pbs_len > 0 && pbs_len < sizeof(pbs_dir)) {
++                memcpy(pbs_dir, pbs_info.dli_fname, pbs_len + 1);
++                pbs_slash = strrchr(pbs_dir, '/');
++                if (pbs_slash != NULL) {
++                    *pbs_slash = '\0';
++                    pbs_n = snprintf(pbs_candidate, sizeof(pbs_candidate),
++                        "%s/../../../share/php-spx/assets/web-ui", pbs_dir);
++                    if (pbs_n > 0 && (size_t) pbs_n < sizeof(pbs_candidate)
++                            && realpath(pbs_candidate, pbs_assets) != NULL) {
++                        zend_ini_entry *pbs_entry;
++                        zend_string *pbs_key;
++
++                        pbs_key = zend_string_init("spx.http_ui_assets_dir",
++                            sizeof("spx.http_ui_assets_dir") - 1, 0);
++                        pbs_entry = zend_hash_find_ptr(EG(ini_directives), pbs_key);
++                        zend_string_release(pbs_key);
++
++                        if (pbs_entry != NULL && pbs_entry->value != NULL
++                                && ZSTR_LEN(pbs_entry->value) == sizeof(SPX_HTTP_UI_ASSETS_DIR) - 1
++                                && memcmp(ZSTR_VAL(pbs_entry->value), SPX_HTTP_UI_ASSETS_DIR,
++                                    sizeof(SPX_HTTP_UI_ASSETS_DIR) - 1) == 0) {
++                            zend_string *pbs_new;
++                            zend_string *pbs_old;
++
++                            pbs_new = zend_string_init(pbs_assets, strlen(pbs_assets), 1);
++                            pbs_old = pbs_entry->value;
++                            pbs_entry->value = pbs_new;
++                            if (pbs_entry->on_modify != NULL) {
++                                pbs_entry->on_modify(pbs_entry, pbs_new,
++                                    pbs_entry->mh_arg1, pbs_entry->mh_arg2,
++                                    pbs_entry->mh_arg3, ZEND_INI_STAGE_STARTUP);
++                            }
++                            zend_string_release(pbs_old);
++                        }
++                    }
++                }
++            }
++        }
++    }
++
+     return SUCCESS;
+ }
+ 

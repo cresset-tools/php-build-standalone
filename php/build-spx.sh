@@ -19,6 +19,7 @@ set -euo pipefail
 : "${PBS_DEPS:?}"
 : "${PBS_DEP_PHP:?spx needs the PHP derivation for phpize/php-config}"
 : "${PBS_DEP_ZLIB:?spx config.m4 needs zlib.h via --with-zlib-dir}"
+: "${PBS_SPX_RELOC_PATCH:?web-ui asset relocation patch (php/spx-relocate-assets.patch)}"
 
 # GitHub archive tarballs extract into php-spx-<version>/, not spx-<version>/.
 src_dir="$PBS_SOURCES/php-spx-${PBS_VER_SPX}"
@@ -26,6 +27,13 @@ rm -rf "$src_dir"
 mkdir -p "$PBS_SOURCES"
 tar -xf "$PBS_SRC_SPX" -C "$PBS_SOURCES"
 cd "$src_dir"
+
+# PBS: relocate spx.http_ui_assets_dir to the bundled web-UI assets at
+# runtime (resolved relative to spx.so via dladdr), so the HTTP flame-graph
+# UI works with no php.ini changes wherever the per-ext tarball is unpacked.
+# See php/spx-relocate-assets.patch for the full rationale. --fuzz=2 -p1
+# mirrors prepare-php.sh's PATCH_OPTS.
+patch --fuzz=2 -p1 < "$PBS_SPX_RELOC_PATCH"
 
 # Darwin: SPX's config.m4 appends `-Werror` to CFLAGS *after* our env CFLAGS
 # (config.m4: `CFLAGS="$CFLAGS -Werror …"`). Our Darwin clang wrapper injects
@@ -43,15 +51,14 @@ fi
 
 "$PBS_DEP_PHP/bin/phpize"
 
-# --with-spx-assets-dir overrides config.m4's `$prefix/share/misc/php-spx/assets`
-# default. Left unset, $prefix resolves to PBS_DEP_PHP's /nix/store path, which
-# would bake that build-time store path into spx.so as the compile-time
-# SPX_HTTP_UI_ASSETS_DIR constant — a build-path leak that also wouldn't exist
-# on a consumer machine. We ship spx.so only (the web-UI flame-graph assets are
-# out of scope for the single-.so per-ext tarball format), so we bake SPX's
-# conventional documented default instead; users who want the web UI install
-# the assets themselves and point spx.http_ui_assets_dir at them (it's a
-# PHP_INI_SYSTEM OnUpdateString override of this default).
+# --with-spx-assets-dir sets the compile-time SPX_HTTP_UI_ASSETS_DIR constant
+# (config.m4 appends "/web-ui"). It's only the FALLBACK now: the
+# spx-relocate-assets patch overrides spx.http_ui_assets_dir at MINIT to the
+# bundled assets resolved relative to spx.so, so the web UI works with no
+# php.ini changes. We pass a stable absolute value (NOT $prefix, which would
+# bake PBS_DEP_PHP's /nix/store path into the .so) purely as that fallback —
+# the runtime override is what actually fires. The matching assets tree ships
+# in the per-ext tarball (see the pbs-assets copy below + tarball-extension.nix).
 # --with-zlib-dir points config.m4 at our bundled zlib.h (it errors without a
 # findable zlib header). This is compile-time only: SPX never PHP_SUBSTs its
 # SPX_SHARED_LIBADD, so the link drops -lz and spx.so's gz* symbols resolve at
@@ -60,7 +67,7 @@ fi
   --with-php-config="$PBS_DEP_PHP/bin/php-config" \
   --enable-spx \
   --with-zlib-dir="$PBS_DEP_ZLIB" \
-  --with-spx-assets-dir=/usr/local/share/misc/php-spx/assets
+  --with-spx-assets-dir=/usr/local/share/php-spx/assets
 
 make -j"$NIX_BUILD_CORES"
 
@@ -84,5 +91,16 @@ mkdir -p "$PBS_DEPS$(dirname "$rel")"
 cp "$spx_so" "$PBS_DEPS$rel"
 rm -rf "$PBS_DEPS/__staging"
 
+# PBS: ship the web-UI assets in this dep's $out under a NON-merged subdir
+# (pbs-assets/). tree.nix only merges lib/include/bin/sbin/share/etc from
+# interpreter deps into the install root, so pbs-assets/ stays out of the
+# interpreter tarball; php/tarball-extension.nix lifts it into the spx
+# per-ext tarball at share/php-spx/assets/web-ui. The spx-relocate-assets
+# patch makes spx.so resolve exactly that path at runtime (relative to its
+# own location), so the HTTP UI is served straight from the unpacked
+# per-ext tarball with no extra setup.
+mkdir -p "$PBS_DEPS/pbs-assets"
+cp -a "$src_dir/assets/web-ui" "$PBS_DEPS/pbs-assets/web-ui"
+
 pbs_audit_lib "$PBS_DEPS$rel" spx.so
-echo "spx OK ($rel)"
+echo "spx OK ($rel, +web-ui assets)"

@@ -507,9 +507,10 @@
   # at dlopen rather than linking its own (see php/spx.nix). 0.4.x's
   # composer.json declares `php >=5.4.0 <8.6.0` and
   # support-zts, so a single entry covers the whole 8.1–8.5 × {nts,zts}
-  # matrix. We ship spx.so only; the web-UI assets are out of scope for the
-  # single-.so per-ext tarball (build-spx.sh discards them and bakes a
-  # static SPX_HTTP_UI_ASSETS_DIR default).
+  # matrix. The per-ext tarball ships spx.so AND the HTTP flame-graph web-UI
+  # assets (at share/php-spx/assets/web-ui); php/spx-relocate-assets.patch
+  # makes spx default spx.http_ui_assets_dir to them at MINIT, resolved
+  # relative to the .so, so the UI works with no php.ini changes.
   spxVersions = {
     "0.4" = {
       version = "0.4.22";
