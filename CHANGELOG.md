@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.13](https://github.com/cresset-tools/php-build-standalone/compare/v0.2.12...v0.2.13) (2026-07-02)
+
+
+### Features
+
+* **ext:** ship a default spx ini enabling the web UI on 127.0.0.1 ([#91](https://github.com/cresset-tools/php-build-standalone/issues/91)) ([cf86beb](https://github.com/cresset-tools/php-build-standalone/commit/cf86beb1370aea0f0d1206ea5ac1ea1c04957265))
+
 ## [0.2.12](https://github.com/cresset-tools/php-build-standalone/compare/v0.2.11...v0.2.12) (2026-07-01)
 
 
