@@ -131,10 +131,22 @@ jobs:
         #   - variant_key: minor + "_zts" for ZTS, just minor for NTS. Used
         #     to address phpVariants outputs.
         #   - os: runner image. ubuntu-latest is the GitHub-hosted x86_64
-        #     glibc image; depot-macos-26 (Tahoe, Apple M4) is Depot's
-        #     macOS runner — the only macOS arch we ship (Apple dropped
-        #     x86_64 in macOS 27). Depot macOS capacity isn't fully elastic
-        #     (Apple licensing), so the darwin legs can queue under load.
+        #     glibc image; the darwin legs default to depot-macos-26
+        #     (Tahoe, Apple M4), Depot's macOS runner — the only macOS arch
+        #     we ship (Apple dropped x86_64 in macOS 27). Depot macOS capacity
+        #     isn't fully elastic (Apple licensing), so the darwin legs can
+        #     queue under load; if Depot's concurrency cap is hit they sit in
+        #     `queued` indefinitely (a saturated queue never fails, so an
+        #     if:failure() fallback can't fire). The `${{ vars.MACOS_RUNNER
+        #     || 'depot-macos-26' }}` indirection is the escape hatch: set the
+        #     MACOS_RUNNER repo variable (Settings → Variables) to a
+        #     GitHub-hosted arm64 image — macos-15 / macos-14, both Apple
+        #     Silicon, matching aarch64-apple-darwin — to fail the whole
+        #     darwin matrix over without a code change, then clear it once
+        #     Depot capacity returns. Nix + FlakeHub Cache are installed by
+        #     steps below, not baked into the Depot image, so a GitHub-hosted
+        #     runner needs no other change. (GitHub macOS bills at a 10×
+        #     minute multiplier — that's why Depot stays the default.)
         #   - system: Nix system tuple used to address phpVariants outputs
         #     (`phpVariants.<system>.<variant_key>.<artifact>`).
         #   - target: triple used in the tarball filename. Matches the
@@ -150,16 +162,16 @@ jobs:
           - { php: "8.3", minor: "8_3", flavor: "zts", variant_key: "8_3_zts", os: ubuntu-latest, system: "x86_64-linux",   target: "x86_64-unknown-linux-gnu" }
           - { php: "8.4", minor: "8_4", flavor: "zts", variant_key: "8_4_zts", os: ubuntu-latest, system: "x86_64-linux",   target: "x86_64-unknown-linux-gnu" }
           - { php: "8.5", minor: "8_5", flavor: "zts", variant_key: "8_5_zts", os: ubuntu-latest, system: "x86_64-linux",   target: "x86_64-unknown-linux-gnu" }
-          - { php: "8.1", minor: "8_1", flavor: "nts", variant_key: "8_1",     os: depot-macos-26, system: "aarch64-darwin", target: "aarch64-apple-darwin" }
-          - { php: "8.2", minor: "8_2", flavor: "nts", variant_key: "8_2",     os: depot-macos-26, system: "aarch64-darwin", target: "aarch64-apple-darwin" }
-          - { php: "8.3", minor: "8_3", flavor: "nts", variant_key: "8_3",     os: depot-macos-26, system: "aarch64-darwin", target: "aarch64-apple-darwin" }
-          - { php: "8.4", minor: "8_4", flavor: "nts", variant_key: "8_4",     os: depot-macos-26, system: "aarch64-darwin", target: "aarch64-apple-darwin" }
-          - { php: "8.5", minor: "8_5", flavor: "nts", variant_key: "8_5",     os: depot-macos-26, system: "aarch64-darwin", target: "aarch64-apple-darwin" }
-          - { php: "8.1", minor: "8_1", flavor: "zts", variant_key: "8_1_zts", os: depot-macos-26, system: "aarch64-darwin", target: "aarch64-apple-darwin" }
-          - { php: "8.2", minor: "8_2", flavor: "zts", variant_key: "8_2_zts", os: depot-macos-26, system: "aarch64-darwin", target: "aarch64-apple-darwin" }
-          - { php: "8.3", minor: "8_3", flavor: "zts", variant_key: "8_3_zts", os: depot-macos-26, system: "aarch64-darwin", target: "aarch64-apple-darwin" }
-          - { php: "8.4", minor: "8_4", flavor: "zts", variant_key: "8_4_zts", os: depot-macos-26, system: "aarch64-darwin", target: "aarch64-apple-darwin" }
-          - { php: "8.5", minor: "8_5", flavor: "zts", variant_key: "8_5_zts", os: depot-macos-26, system: "aarch64-darwin", target: "aarch64-apple-darwin" }
+          - { php: "8.1", minor: "8_1", flavor: "nts", variant_key: "8_1",     os: "${{ vars.MACOS_RUNNER || 'depot-macos-26' }}", system: "aarch64-darwin", target: "aarch64-apple-darwin" }
+          - { php: "8.2", minor: "8_2", flavor: "nts", variant_key: "8_2",     os: "${{ vars.MACOS_RUNNER || 'depot-macos-26' }}", system: "aarch64-darwin", target: "aarch64-apple-darwin" }
+          - { php: "8.3", minor: "8_3", flavor: "nts", variant_key: "8_3",     os: "${{ vars.MACOS_RUNNER || 'depot-macos-26' }}", system: "aarch64-darwin", target: "aarch64-apple-darwin" }
+          - { php: "8.4", minor: "8_4", flavor: "nts", variant_key: "8_4",     os: "${{ vars.MACOS_RUNNER || 'depot-macos-26' }}", system: "aarch64-darwin", target: "aarch64-apple-darwin" }
+          - { php: "8.5", minor: "8_5", flavor: "nts", variant_key: "8_5",     os: "${{ vars.MACOS_RUNNER || 'depot-macos-26' }}", system: "aarch64-darwin", target: "aarch64-apple-darwin" }
+          - { php: "8.1", minor: "8_1", flavor: "zts", variant_key: "8_1_zts", os: "${{ vars.MACOS_RUNNER || 'depot-macos-26' }}", system: "aarch64-darwin", target: "aarch64-apple-darwin" }
+          - { php: "8.2", minor: "8_2", flavor: "zts", variant_key: "8_2_zts", os: "${{ vars.MACOS_RUNNER || 'depot-macos-26' }}", system: "aarch64-darwin", target: "aarch64-apple-darwin" }
+          - { php: "8.3", minor: "8_3", flavor: "zts", variant_key: "8_3_zts", os: "${{ vars.MACOS_RUNNER || 'depot-macos-26' }}", system: "aarch64-darwin", target: "aarch64-apple-darwin" }
+          - { php: "8.4", minor: "8_4", flavor: "zts", variant_key: "8_4_zts", os: "${{ vars.MACOS_RUNNER || 'depot-macos-26' }}", system: "aarch64-darwin", target: "aarch64-apple-darwin" }
+          - { php: "8.5", minor: "8_5", flavor: "zts", variant_key: "8_5_zts", os: "${{ vars.MACOS_RUNNER || 'depot-macos-26' }}", system: "aarch64-darwin", target: "aarch64-apple-darwin" }
           # musl leg: built on the glibc ubuntu runner (the toolchain
           # cross-targets musl via pkgsMusl; see shared/toolchain-musl.nix),
           # addressed through the `x86_64-linux-musl` flake leg key. The
@@ -273,7 +285,7 @@ jobs:
       matrix:
         include:
           - { os: ubuntu-latest, system: "x86_64-linux",   target: "x86_64-unknown-linux-gnu" }
-          - { os: depot-macos-26, system: "aarch64-darwin", target: "aarch64-apple-darwin" }
+          - { os: "${{ vars.MACOS_RUNNER || 'depot-macos-26' }}", system: "aarch64-darwin", target: "aarch64-apple-darwin" }
     steps:
       - uses: actions/checkout@v7
 
@@ -327,7 +339,7 @@ jobs:
       matrix:
         include:
           - { os: ubuntu-latest, system: "x86_64-linux",   target: "x86_64-unknown-linux-gnu" }
-          - { os: depot-macos-26, system: "aarch64-darwin", target: "aarch64-apple-darwin" }
+          - { os: "${{ vars.MACOS_RUNNER || 'depot-macos-26' }}", system: "aarch64-darwin", target: "aarch64-apple-darwin" }
     steps:
       - uses: actions/checkout@v7
 
@@ -380,7 +392,7 @@ jobs:
       matrix:
         include:
           - { os: ubuntu-latest, system: "x86_64-linux",   target: "x86_64-unknown-linux-gnu" }
-          - { os: depot-macos-26, system: "aarch64-darwin", target: "aarch64-apple-darwin" }
+          - { os: "${{ vars.MACOS_RUNNER || 'depot-macos-26' }}", system: "aarch64-darwin", target: "aarch64-apple-darwin" }
     steps:
       - uses: actions/checkout@v7
 
@@ -473,7 +485,7 @@ jobs:
         include:
           - { os: ubuntu-latest, artifact: linux,  bundle_attr: "release-bundle" }
           - { os: ubuntu-latest, artifact: musl,   bundle_attr: "release-bundle-musl" }
-          - { os: depot-macos-26, artifact: darwin, bundle_attr: "release-bundle" }
+          - { os: "${{ vars.MACOS_RUNNER || 'depot-macos-26' }}", artifact: darwin, bundle_attr: "release-bundle" }
     steps:
       - uses: actions/checkout@v7
 
