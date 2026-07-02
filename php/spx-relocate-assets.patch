@@ -1,5 +1,5 @@
---- a/src/php_spx.c	2026-06-30 20:00:21.468275241 +0000
-+++ b/src/php_spx.c	2026-06-30 20:07:48.418012288 +0000
+--- a/src/php_spx.c
++++ b/src/php_spx.c
 @@ -15,6 +15,12 @@
   * along with this program.  If not, see <https://www.gnu.org/licenses/>.
   */
@@ -25,86 +25,156 @@
  #include "spx_thread.h"
  #include "spx_config.h"
  #include "spx_php.h"
-@@ -249,6 +260,13 @@
+@@ -249,6 +260,88 @@
  ZEND_GET_MODULE(spx)
  #endif
  
-+/* PBS: a stable function symbol inside spx.so. Its address is handed to
-+ * dladdr() in MINIT to discover the extension's own on-disk path; it is
++/* PBS: a stable function symbol inside spx.so. Its address is used to
++ * discover the extension's own on-disk path (see pbs_spx_self_path); it is
 + * never called. */
 +static void pbs_spx_anchor(void)
 +{
 +}
 +
++/* PBS: resolve spx.so's absolute on-disk path into `out` (capacity out_sz).
++ * Returns 1 on success, 0 otherwise.
++ *
++ * On Linux we read /proc/self/maps and pick the mapping that contains
++ * pbs_spx_anchor's address; the pathname column there is ALWAYS absolute,
++ * regardless of how the extension was dlopen'd. That matters under php-fpm:
++ * the extension can be loaded through a relative extension_dir, so
++ * dladdr()'s dli_fname comes back relative and the realpath() in MINIT would
++ * resolve it against the worker's CWD — the wrong directory, leaving the
++ * web-UI assets to 404. /proc/self/maps sidesteps that. dladdr() is the
++ * fallback (macOS dyld records absolute names; best-effort elsewhere). */
++static int pbs_spx_self_path(char *out, size_t out_sz)
++{
++#if defined(__linux__)
++    {
++        FILE *pbs_maps = fopen("/proc/self/maps", "r");
++
++        if (pbs_maps != NULL) {
++            unsigned long pbs_target = (unsigned long) (void *) pbs_spx_anchor;
++            char pbs_line[PATH_MAX + 128];
++            int pbs_found = 0;
++
++            while (fgets(pbs_line, (int) sizeof(pbs_line), pbs_maps) != NULL) {
++                unsigned long pbs_start;
++                unsigned long pbs_end;
++
++                if (sscanf(pbs_line, "%lx-%lx", &pbs_start, &pbs_end) == 2
++                        && pbs_target >= pbs_start && pbs_target < pbs_end) {
++                    /* Every field before the pathname (address, perms,
++                     * offset, dev, inode) is '/'-free, so the first '/' on
++                     * the line begins the absolute pathname. Anonymous or
++                     * "[heap]"-style maps have none -> pbs_path stays NULL. */
++                    char *pbs_path = strchr(pbs_line, '/');
++
++                    if (pbs_path != NULL) {
++                        size_t pbs_plen = strlen(pbs_path);
++
++                        while (pbs_plen > 0
++                                && (pbs_path[pbs_plen - 1] == '\n'
++                                    || pbs_path[pbs_plen - 1] == '\r')) {
++                            pbs_path[--pbs_plen] = '\0';
++                        }
++                        if (pbs_plen > 0 && pbs_plen < out_sz) {
++                            memcpy(out, pbs_path, pbs_plen + 1);
++                            pbs_found = 1;
++                        }
++                    }
++                    break;
++                }
++            }
++            fclose(pbs_maps);
++            if (pbs_found) {
++                return 1;
++            }
++        }
++    }
++#endif
++    {
++        Dl_info pbs_info;
++
++        if (dladdr((void *) pbs_spx_anchor, &pbs_info) != 0
++                && pbs_info.dli_fname != NULL
++                && pbs_info.dli_fname[0] != '\0') {
++            size_t pbs_len = strlen(pbs_info.dli_fname);
++
++            if (pbs_len < out_sz) {
++                memcpy(out, pbs_info.dli_fname, pbs_len + 1);
++                return 1;
++            }
++        }
++    }
++
++    return 0;
++}
++
  static PHP_MINIT_FUNCTION(spx)
  {
  #ifdef ZTS
-@@ -257,6 +275,74 @@
+@@ -257,6 +350,69 @@
  
      REGISTER_INI_ENTRIES();
  
 +    /* PBS: make the bundled web UI work with zero php.ini configuration.
 +     * The consumer (bougie) extracts the whole extension tarball — including
 +     * share/php-spx/assets/web-ui — into a content-addressed store dir and
-+     * loads spx.so from it by absolute path, so the assets sit at
++     * loads spx.so from it, so the assets sit at
 +     * <ext_root>/share/php-spx/assets/web-ui while spx.so sits at
 +     * <ext_root>/lib/extensions/<api>/spx.so. Resolve the assets dir
-+     * RELATIVE TO spx.so (via dladdr), not the interpreter prefix, and
-+     * override spx.http_ui_assets_dir's default to it — but only while the
-+     * live value still equals the compiled-in default, so an explicit
-+     * php.ini / -d override always wins. ini_entry->value is mutated
-+     * directly rather than via zend_alter_ini_entry_chars(): at MINIT the
-+     * latter populates EG(modified_ini_directives) before any request
++     * RELATIVE TO spx.so (whose absolute path pbs_spx_self_path discovers via
++     * /proc/self/maps, so it holds under php-fpm too — see that helper), not
++     * the interpreter prefix, and override spx.http_ui_assets_dir's default to
++     * it — but only while the live value still equals the compiled-in default,
++     * so an explicit php.ini / -d override always wins. ini_entry->value is
++     * mutated directly rather than via zend_alter_ini_entry_chars(): at MINIT
++     * the latter populates EG(modified_ini_directives) before any request
 +     * exists and NULL-derefs in zend_ini_deactivate at the first request
 +     * shutdown (same rationale as PHP core's extension_dir relocation).
 +     * The equality check is spelled with ZSTR_LEN/memcmp rather than
 +     * zend_string_equals_cstr() so the one patch also compiles on PHP 8.1
 +     * (zend_string_equals_cstr arrived in 8.2). */
 +    {
-+        Dl_info pbs_info;
 +        char pbs_dir[PATH_MAX];
 +        char pbs_candidate[PATH_MAX];
 +        char pbs_assets[PATH_MAX];
 +        char *pbs_slash;
-+        size_t pbs_len;
 +        int pbs_n;
 +
-+        if (dladdr((void *) pbs_spx_anchor, &pbs_info) != 0 && pbs_info.dli_fname != NULL) {
-+            pbs_len = strlen(pbs_info.dli_fname);
-+            if (pbs_len > 0 && pbs_len < sizeof(pbs_dir)) {
-+                memcpy(pbs_dir, pbs_info.dli_fname, pbs_len + 1);
-+                pbs_slash = strrchr(pbs_dir, '/');
-+                if (pbs_slash != NULL) {
-+                    *pbs_slash = '\0';
-+                    pbs_n = snprintf(pbs_candidate, sizeof(pbs_candidate),
-+                        "%s/../../../share/php-spx/assets/web-ui", pbs_dir);
-+                    if (pbs_n > 0 && (size_t) pbs_n < sizeof(pbs_candidate)
-+                            && realpath(pbs_candidate, pbs_assets) != NULL) {
-+                        zend_ini_entry *pbs_entry;
-+                        zend_string *pbs_key;
++        if (pbs_spx_self_path(pbs_dir, sizeof(pbs_dir))) {
++            pbs_slash = strrchr(pbs_dir, '/');
++            if (pbs_slash != NULL) {
++                *pbs_slash = '\0';
++                pbs_n = snprintf(pbs_candidate, sizeof(pbs_candidate),
++                    "%s/../../../share/php-spx/assets/web-ui", pbs_dir);
++                if (pbs_n > 0 && (size_t) pbs_n < sizeof(pbs_candidate)
++                        && realpath(pbs_candidate, pbs_assets) != NULL) {
++                    zend_ini_entry *pbs_entry;
++                    zend_string *pbs_key;
 +
-+                        pbs_key = zend_string_init("spx.http_ui_assets_dir",
-+                            sizeof("spx.http_ui_assets_dir") - 1, 0);
-+                        pbs_entry = zend_hash_find_ptr(EG(ini_directives), pbs_key);
-+                        zend_string_release(pbs_key);
++                    pbs_key = zend_string_init("spx.http_ui_assets_dir",
++                        sizeof("spx.http_ui_assets_dir") - 1, 0);
++                    pbs_entry = zend_hash_find_ptr(EG(ini_directives), pbs_key);
++                    zend_string_release(pbs_key);
 +
-+                        if (pbs_entry != NULL && pbs_entry->value != NULL
-+                                && ZSTR_LEN(pbs_entry->value) == sizeof(SPX_HTTP_UI_ASSETS_DIR) - 1
-+                                && memcmp(ZSTR_VAL(pbs_entry->value), SPX_HTTP_UI_ASSETS_DIR,
-+                                    sizeof(SPX_HTTP_UI_ASSETS_DIR) - 1) == 0) {
-+                            zend_string *pbs_new;
-+                            zend_string *pbs_old;
++                    if (pbs_entry != NULL && pbs_entry->value != NULL
++                            && ZSTR_LEN(pbs_entry->value) == sizeof(SPX_HTTP_UI_ASSETS_DIR) - 1
++                            && memcmp(ZSTR_VAL(pbs_entry->value), SPX_HTTP_UI_ASSETS_DIR,
++                                sizeof(SPX_HTTP_UI_ASSETS_DIR) - 1) == 0) {
++                        zend_string *pbs_new;
++                        zend_string *pbs_old;
 +
-+                            pbs_new = zend_string_init(pbs_assets, strlen(pbs_assets), 1);
-+                            pbs_old = pbs_entry->value;
-+                            pbs_entry->value = pbs_new;
-+                            if (pbs_entry->on_modify != NULL) {
-+                                pbs_entry->on_modify(pbs_entry, pbs_new,
-+                                    pbs_entry->mh_arg1, pbs_entry->mh_arg2,
-+                                    pbs_entry->mh_arg3, ZEND_INI_STAGE_STARTUP);
-+                            }
-+                            zend_string_release(pbs_old);
++                        pbs_new = zend_string_init(pbs_assets, strlen(pbs_assets), 1);
++                        pbs_old = pbs_entry->value;
++                        pbs_entry->value = pbs_new;
++                        if (pbs_entry->on_modify != NULL) {
++                            pbs_entry->on_modify(pbs_entry, pbs_new,
++                                pbs_entry->mh_arg1, pbs_entry->mh_arg2,
++                                pbs_entry->mh_arg3, ZEND_INI_STAGE_STARTUP);
 +                        }
++                        zend_string_release(pbs_old);
 +                    }
 +                }
 +            }
