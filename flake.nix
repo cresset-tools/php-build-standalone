@@ -407,19 +407,29 @@
                 # rejects `zend_extension=pcov.so` with "doesn't appear to
                 # be a valid Zend extension", so don't tag it like xdebug.
                 pcov        = mkExt { extDrv = pcov;     extName = "pcov";     extVersion = pcovSpec.version;     confFragment = null; };
-                # spx ships without an auto-loader conf.d fragment (confFragment=null,
-                # like xdebug/pcov): profiling is per-run opt-in (SPX_ENABLED=1 on the
-                # CLI, or the HTTP control panel), so the user enables it via
-                # -dextension=spx or a project conf.d. spx is a regular `extension=`
-                # module (STANDARD_MODULE_HEADER), NOT a zend_extension — so unlike
-                # xdebug it must NOT set zendExtension; PHP would reject
-                # `zend_extension=spx.so` as "not a valid Zend extension".
-                # extraPayload ships spx's HTTP flame-graph web UI (assets staged at
-                # $out/pbs-assets/web-ui by build-spx.sh) at share/php-spx/assets/web-ui
-                # in the per-ext tarball. The spx-relocate-assets patch makes spx.so
-                # default spx.http_ui_assets_dir to that path resolved relative to the
-                # .so at MINIT, so the UI works with no php.ini / bougie changes.
-                spx         = mkExt { extDrv = spx;      extName = "spx";      extVersion = spxSpec.version;      confFragment = null; extraPayload = { from = "${spx}/pbs-assets/web-ui"; to = "share/php-spx/assets/web-ui"; }; };
+                # spx ships a default conf.d that loads the extension and turns its
+                # HTTP flame-graph web UI on for loopback only. SPX's UI is gated
+                # behind three directives that are all off/empty under SPX's own
+                # defaults (http_enabled / http_key / http_ip_whitelist) — with them
+                # unset SPX silently passes every request through and there's no UI.
+                # The fixed dev key `spx` is safe enough behind the 127.0.0.1
+                # whitelist; open http://127.0.0.1:<port>/?SPX_KEY=spx&SPX_UI_URI=/.
+                # spx is a regular `extension=` module (STANDARD_MODULE_HEADER), NOT a
+                # zend_extension — so it must NOT set zendExtension (PHP would reject
+                # `zend_extension=spx.so`). No spx.http_ui_assets_dir line: the web-UI
+                # assets (shipped via extraPayload below at share/php-spx/assets/web-ui)
+                # are auto-located relative to spx.so at runtime by
+                # spx-relocate-assets.patch, so no absolute path is baked here.
+                spx         = mkExt {
+                  extDrv = spx; extName = "spx"; extVersion = spxSpec.version;
+                  confFragment = ''
+                    extension=spx
+                    spx.http_enabled=1
+                    spx.http_key=spx
+                    spx.http_ip_whitelist=127.0.0.1
+                  '';
+                  extraPayload = { from = "${spx}/pbs-assets/web-ui"; to = "share/php-spx/assets/web-ui"; };
+                };
                 mbstring    = mkBuiltinExt "mbstring";
                 intl        = mkBuiltinExt "intl";
                 curl        = mkBuiltinExt "curl";
