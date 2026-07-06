@@ -99,9 +99,9 @@
   # not the TurboJPEG one — we drop libturbojpeg.so to keep the tarball
   # lean and avoid /nix/store-leak in tjbench's RPATH.
   libjpeg-turbo = {
-    url = "https://github.com/libjpeg-turbo/libjpeg-turbo/releases/download/3.1.4.1/libjpeg-turbo-3.1.4.1.tar.gz";
-    sha256 = "ecae8008e2cc9ade2f2c1bb9d5e6d4fb73e7c433866a056bd82980741571a022";
-    version = "3.1.4.1";
+    url = "https://github.com/libjpeg-turbo/libjpeg-turbo/releases/download/3.2.0/libjpeg-turbo-3.2.0.tar.gz";
+    sha256 = "6f30092cef9fb839779646608f4ee14ae3cbac989c47fa05e841b0841f09878e";
+    version = "3.2.0";
   };
 
   # libwebp — for gd extension. Internal libsharpyuv.so also gets built
@@ -360,24 +360,24 @@
       sha256 = "ffa9e0982e82eeaea848f57687b425ed173aa278fe563001310ae2638db5c251";
     };
     "8.2" = {
-      version = "8.2.31";
-      url = "https://www.php.net/distributions/php-8.2.31.tar.xz";
-      sha256 = "95eae411d594fe6f6e5678b76645dc13ae47d3c0a5325c1d969b58dea56ee45a";
+      version = "8.2.32";
+      url = "https://www.php.net/distributions/php-8.2.32.tar.xz";
+      sha256 = "e02aa173c236c12791696254d607da680e6d5516f8f5c2339642de7c4f944bd2";
     };
     "8.3" = {
-      version = "8.3.31";
-      url = "https://www.php.net/distributions/php-8.3.31.tar.xz";
-      sha256 = "66410cee07f4b2baeb0843140bb2a2b52ef930b5cf9b3d6e6d158b33aae8fa37";
+      version = "8.3.32";
+      url = "https://www.php.net/distributions/php-8.3.32.tar.xz";
+      sha256 = "8698ec1f9402fa5e5e872ae3d0916b62f5f27503c1fbfc9cc3521e113355ea92";
     };
     "8.4" = {
-      version = "8.4.22";
-      url = "https://www.php.net/distributions/php-8.4.22.tar.xz";
-      sha256 = "696c0f6ad92e94c59059c1eb6e300842b8d050934226efcdf00f2a413cb083cf";
+      version = "8.4.23";
+      url = "https://www.php.net/distributions/php-8.4.23.tar.xz";
+      sha256 = "1ab9f52008414e43bb2427ffa288eff2a4de39e1a830f957e800ba368d887a72";
     };
     "8.5" = {
-      version = "8.5.7";
-      url = "https://www.php.net/distributions/php-8.5.7.tar.xz";
-      sha256 = "01ba2ed1c2658dacf91bebc8be6a4885f69b811c7993831fc48e26107ab29985";
+      version = "8.5.8";
+      url = "https://www.php.net/distributions/php-8.5.8.tar.xz";
+      sha256 = "58910198d19e873048fe87cdfe16bc790025417ede3d1651bfa1c4b533d573f2";
     };
   };
 
