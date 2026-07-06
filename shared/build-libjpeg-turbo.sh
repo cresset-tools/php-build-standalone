@@ -10,6 +10,17 @@
 
 set -euo pipefail
 
+# libjpeg-turbo's CLI tools (cjpeg/djpeg/bmpsizetest) call fpclassify(3)
+# on floats, which glibc expands to the libm symbol __fpclassifyf. Those
+# executables link libjpeg.so but not libm directly, so on the glibc
+# sysroot + lld leg the link fails with "undefined symbol: __fpclassifyf"
+# (musl resolves it straight out of libc, so that leg is unaffected). We
+# delete the tools below, but `make` builds — and thus links — them before
+# we get the chance, so the whole derivation dies. Add -lm so the tools
+# link; CMake seeds CMAKE_{EXE,SHARED}_LINKER_FLAGS from LDFLAGS. libjpeg.so
+# already pulls libm in, so the extra flag is a no-op for the library.
+export LDFLAGS="${LDFLAGS:-} -lm"
+
 : "${PBS_SRC_LIBJPEG_TURBO:?}"
 : "${PBS_VER_LIBJPEG_TURBO:?}"
 : "${PBS_SOURCES:?}"
