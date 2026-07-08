@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.2.14](https://github.com/cresset-tools/php-build-standalone/compare/v0.2.13...v0.2.14) (2026-07-08)
+
+
+### Features
+
+* **tools:** add MySQL 8.0 and 8.4 server bundles ([#96](https://github.com/cresset-tools/php-build-standalone/issues/96)) ([2c78d99](https://github.com/cresset-tools/php-build-standalone/commit/2c78d99250690d7a8ccc671949e5ecf05dfe0a45))
+
+
+### Dependencies
+
+* bump pinned upstreams (automated weekly) ([#95](https://github.com/cresset-tools/php-build-standalone/issues/95)) ([ffde799](https://github.com/cresset-tools/php-build-standalone/commit/ffde7990cc72f4e54d5e19cb01c3f2c6d4c6019c))
+
+
+### CI
+
+* allow failing the darwin matrix over to GitHub-hosted macOS via a repo variable ([#93](https://github.com/cresset-tools/php-build-standalone/issues/93)) ([fa852fa](https://github.com/cresset-tools/php-build-standalone/commit/fa852fa6df18e5fd02843d28354376b4311859a7))
+
 ## [0.2.13](https://github.com/cresset-tools/php-build-standalone/compare/v0.2.12...v0.2.13) (2026-07-02)
 
 
