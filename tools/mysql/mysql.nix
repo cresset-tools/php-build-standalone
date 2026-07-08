@@ -31,4 +31,15 @@ mkDep {
   # parser). pkg-config backs a couple of CMake probes. perl runs MySQL's
   # build-time codegen helper scripts.
   extraInputs = with pkgs; [ cmake bison pkg-config perl ];
+
+  # Darwin only: libmysql/dns_srv.cc does `#include <resolv.h>`, but the
+  # nixpkgs framework SDK on the compile path doesn't ship <resolv.h> — it
+  # lives in the separate darwin.libresolv package. Hand its -dev output's
+  # include dir to build-mysql.sh (which adds it to CFLAGS on Darwin). We
+  # only need the *header*: linking goes through `-lresolv`, which resolves
+  # against the SDK's libresolv stub whose install_name is the system
+  # /usr/lib/libresolv.9.dylib (on finalize-darwin's allowlist).
+  extraEnv = pkgs.lib.optionalAttrs pkgs.stdenv.isDarwin {
+    PBS_DARWIN_RESOLV_DEV = pkgs.darwin.libresolv.dev;
+  };
 }

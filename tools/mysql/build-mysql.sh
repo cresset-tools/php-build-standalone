@@ -201,6 +201,13 @@ else
   # res_*/dn_expand symbols live there and are re-exported by libSystem at
   # runtime, so the resulting LC_LOAD_DYLIB is the system /usr/lib/
   # libresolv.9.dylib — on finalize-darwin's allowlist.
+  #
+  # The *header* <resolv.h> that dns_srv.cc includes is a separate matter:
+  # the framework SDK doesn't ship it, so add darwin.libresolv's -dev include
+  # dir (handed in by mysql.nix as PBS_DARWIN_RESOLV_DEV) to the compile path.
+  : "${PBS_DARWIN_RESOLV_DEV:?set by mysql.nix on Darwin}"
+  export CFLAGS="${CFLAGS:-} -I$PBS_DARWIN_RESOLV_DEV/include"
+  export CXXFLAGS="${CXXFLAGS:-} -I$PBS_DARWIN_RESOLV_DEV/include"
   resolv_args=(-DRESOLV_LIBRARY=resolv)
 fi
 
