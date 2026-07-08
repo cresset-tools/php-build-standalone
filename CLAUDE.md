@@ -31,7 +31,8 @@ for the distribution wire format see `DISTRIBUTION.md`.
   mbstring, opcache *(.so on 8.1–8.4; static into bin/php on 8.5)*, gettext
   *(Linux only)*).
 - **Tools** (separate kinds, served under `sections/tool/<name>`):
-  `tools/mariadb`, `tools/redis` (server), `tools/mkcert` (with NSS).
+  `tools/mariadb`, `tools/mysql` (Oracle MySQL Community Server, 8.0 + 8.4,
+  Linux + Darwin), `tools/redis` (server), `tools/mkcert` (with NSS).
 - **Distribution layer:** two-tier index (root → per-target sections),
   content-addressed blob paths (`blobs/<sha256[0:2]>/<sha256>`),
   `{INDEX_BASE}` / `{BLOB_BASE}` placeholders, cosign keyless OIDC
@@ -100,8 +101,10 @@ php/                      PHP interpreter + PECL/builtin extension tarballs.
 
 tools/                    Standalone tool bundles. Each subdir builds a
                           relocatable .tar.zst that index.nix serves under
-                          sections/tool/<name>.
-  mariadb/ redis/ mkcert/
+                          sections/tool/<name>. mysql/ fans out over two
+                          server lines (8.0 + 8.4) that coexist in one
+                          sections/tool/mysql section, like a two-minor PHP.
+  mariadb/ mysql/ redis/ mkcert/
 
 frozen/                   one JSON file per artifact that should remain
                           installable after the live matrix drops it (EOL'd
