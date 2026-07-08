@@ -558,6 +558,45 @@
     version = "11.4.12";
   };
 
+  # Oracle MySQL Community Server. Unlike the single-entry tool pins above,
+  # MySQL ships as TWO server lines — 8.0 (the previous LTS, EOL ~Apr 2026)
+  # and 8.4 (the current LTS) — so this is a version map keyed by minor,
+  # fanned out by flake.nix's `mkMysql` into two `tools/mysql` tarballs that
+  # coexist in one `sections/tool/mysql` section (distinct tags per version).
+  #
+  # Built from source through the flake (like mariadb/redis) so it links
+  # PBS's pinned openssl + zlib + ncurses via $ORIGIN RPATHs and joins the
+  # content-addressed store. Everything else MySQL needs (icu, zstd, lz4,
+  # protobuf, libedit, boost, tirpc, rapidjson) is vendored under the source
+  # tree's boost/ + extra/ and static-linked — no new shared/<dep>.nix files.
+  #
+  # License: GPLv2 with the FLOSS/OpenSSL linking exception — redistribution
+  # as a tool tarball linking our OpenSSL is clean (same footing as the
+  # GPLv2 mariadb pin above).
+  #
+  # Tarball choice: Boost is bundled in the source tarball only since MySQL
+  # 8.3, so 8.0 uses the `mysql-boost-<ver>` variant (carries boost/ at the
+  # tree top) while 8.4 uses the plain tarball (boost lives under
+  # extra/boost/, found by cmake/boost.cmake automatically). build-mysql.sh
+  # auto-detects a top-level boost/ and only then passes -DWITH_BOOST.
+  #
+  # 8.0.46 currently lives under /Downloads; it moves to /archives once a
+  # later (non-existent — 8.0 is EOL) patch supersedes it. If that URL ever
+  # 404s, swap the host to cdn.mysql.com/archives/mysql-8.0/ — the sha256
+  # is unchanged.
+  mysqlVersions = {
+    "8.0" = {
+      url = "https://cdn.mysql.com/Downloads/MySQL-8.0/mysql-boost-8.0.46.tar.gz";
+      sha256 = "dff4332ee7f8f37fc0516c66763600a22a81c8192c743c477b6484206e314f2f";
+      version = "8.0.46";
+    };
+    "8.4" = {
+      url = "https://cdn.mysql.com/archives/mysql-8.4/mysql-8.4.10.tar.gz";
+      sha256 = "d57a6730baef14ae118f7f4a6e02845b5b50933758df61fb06e104f27ccc8f96";
+      version = "8.4.10";
+    };
+  };
+
   # Redis server. 8.x is the current stable line and is tri-licensed
   # (RSALv2 / SSPLv1 / AGPLv3) — bougie's use case is local dev, where the
   # AGPLv3 leg covers redistribution-as-a-tool cleanly. 7.2 and prior were

@@ -427,6 +427,60 @@ jobs:
           path: result-erlang-release/
           if-no-files-found: error
 
+  build-mysql:
+    name: build MySQL ${{ matrix.version.label }} (${{ matrix.leg.target }})
+    runs-on: ${{ matrix.leg.os }}
+    permissions:
+      contents: read
+      id-token: write
+    strategy:
+      # MySQL fans out over sources.mysqlVersions (8.0 + 8.4), so unlike the
+      # single-version mariadb/redis/erlang jobs the matrix carries a version
+      # axis crossed with the per-OS target axis (2 versions × 2 OSes = 4
+      # legs). `version.attr` is the underscore form the flake exposes
+      # (8_0 / 8_4); `version.label` is the dotted form used in names.
+      fail-fast: false
+      matrix:
+        version:
+          - { label: "8.0", attr: "8_0" }
+          - { label: "8.4", attr: "8_4" }
+        leg:
+          - { os: ubuntu-latest, system: "x86_64-linux",   target: "x86_64-unknown-linux-gnu" }
+          - { os: "${{ vars.MACOS_RUNNER || 'depot-macos-26' }}", system: "aarch64-darwin", target: "aarch64-apple-darwin" }
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install Nix
+        uses: DeterminateSystems/determinate-nix-action@v3
+
+      - name: Set up FlakeHub Cache
+        uses: DeterminateSystems/flakehub-cache-action@v3.21.2
+
+      - name: Build mysql tarball
+        # mysql-<v>-tarball is the redistributable artifact; mysql-<v>-release
+        # is the flat-dir aggregate the index assembly stage consumes. Same
+        # -o-symlink split mariadb/redis/erlang use.
+        run: nix build .#packages.${{ matrix.leg.system }}.mysql-${{ matrix.version.attr }}-tarball -o result-mysql-tarball --print-build-logs
+
+      - name: Build mysql release
+        run: nix build .#packages.${{ matrix.leg.system }}.mysql-${{ matrix.version.attr }}-release -o result-mysql-release --print-build-logs
+
+      - name: Upload tarball as workflow artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: mysql-tarball-${{ matrix.version.label }}-${{ matrix.leg.target }}
+          path: |
+            result-mysql-tarball/mysql-*.tar.zst
+            result-mysql-tarball/mysql-*.json
+          if-no-files-found: error
+
+      - name: Upload release tree as workflow artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: mysql-release-${{ matrix.version.label }}-${{ matrix.leg.target }}
+          path: result-mysql-release/
+          if-no-files-found: error
+
   # NOTE: no dedicated build-rabbitmq job. RabbitMQ is a pure repackage
   # (fetchurl + tar extract + inject the finalized erlang tree + tar
   # create), no compilation involved — the assemble job picks it up
@@ -472,7 +526,7 @@ jobs:
     # warmed the cache before assemble runs. rabbitmq/jdk/mkcert/
     # opensearch are pure repackages assemble picks up cheaply
     # without a dedicated job.
-    needs: [build-tarball, build-mariadb, build-redis, build-erlang]
+    needs: [build-tarball, build-mariadb, build-redis, build-erlang, build-mysql]
     permissions:
       contents: read
       id-token: write
@@ -518,7 +572,7 @@ jobs:
   verify-reproducible-index:
     name: reproducibility audit
     runs-on: ubuntu-latest
-    needs: [build-tarball, build-mariadb, build-redis, build-erlang]
+    needs: [build-tarball, build-mariadb, build-redis, build-erlang, build-mysql]
     permissions:
       contents: read
       id-token: write

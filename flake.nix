@@ -634,6 +634,67 @@
             '';
           };
 
+          # ---- MySQL server bundles (8.0 + 8.4) ----
+          # Oracle MySQL, built from source like the mariadb stanza above but
+          # fanned out over sources.mysqlVersions into two independently-
+          # versioned tool tarballs (8.0 + 8.4) that coexist under a single
+          # sections/tool/mysql section (distinct per-version tags). Reuses
+          # bundled deps the PHP/mariadb builds already pull in — zlib +
+          # openssl + ncurses + libedit — so a consumer that already has those
+          # store/<X>/ dirs from PHP doesn't pay for them twice; everything
+          # else MySQL needs is vendored under its own source tree and
+          # static-linked. (libedit: MySQL's bundled copy won't compile under
+          # clang 18, so we link PBS's via WITH_EDITLINE=system — see
+          # tools/mysql/build-mysql.sh.)
+          mysqlBundledDepNames = [ "zlib" "openssl" "ncurses" "libedit" ];
+          mysqlBundledDeps = map (n: deps.${n}) mysqlBundledDepNames;
+          mysqlStorePathTarballs =
+            map (n: storePathTarballs.${n}) mysqlBundledDepNames;
+          # mkMysql: one (versionKey -> spec) pair -> the finalized-tree
+          # tarball plus the release flat-dir aggregate that feeds the index.
+          # The two entries differ only in src/version; the recipe (deps,
+          # tree, tarball, release) is identical, so map it over the version
+          # attrset rather than duplicating the mariadb-style stanza twice.
+          mkMysql = _key: spec:
+            let
+              mysql = pkgs.callPackage ./tools/mysql/mysql.nix {
+                inherit mkDep;
+                mysqlSpec = spec;
+                inherit (deps) zlib openssl ncurses libedit;
+              };
+              mysqlTree = pkgs.callPackage ./shared/tree.nix {
+                bundledDeps = mysqlBundledDeps;
+                interpreterDeps = [ mysql ];
+                inherit toolchain;
+                phpVersion = spec.version;
+              };
+              mysqlTarball = pkgs.callPackage ./tools/mysql/tarball.nix {
+                tree = mysqlTree;
+                inherit sources nixpkgsRev;
+                mysqlVersion = spec.version;
+                bundledDeps = mysqlBundledDeps;
+                storePathTarballs = builtins.attrValues storePathTarballs;
+              };
+              mysqlRelease = pkgs.stdenvNoCC.mkDerivation {
+                pname = "pbs-release-mysql-${spec.version}";
+                version = spec.version;
+                dontUnpack = true;
+                dontConfigure = true;
+                dontBuild = true;
+                dontFixup = true;
+                nativeBuildInputs = [ pkgs.coreutils ];
+                installPhase = ''
+                  mkdir -p "$out"
+                  cp -a ${mysqlTarball}/. "$out/" && chmod -R u+w "$out"
+                  ${pkgs.lib.concatMapStringsSep "\n" (spt: ''
+                    cp -a ${spt}/. "$out/" && chmod -R u+w "$out"
+                  '') mysqlStorePathTarballs}
+                '';
+              };
+            in { inherit mysql mysqlTree mysqlTarball mysqlRelease; };
+          # Keyed by minor ("8.0" / "8.4"), matching sources.mysqlVersions.
+          mysqlVariants = builtins.mapAttrs mkMysql sources.mysqlVersions;
+
           # ---- Redis server bundle ----
           # Parallel to the mariadb stanza above. Redis only needs OpenSSL
           # as a directly-linked external C library (everything else under
@@ -943,7 +1004,10 @@
           # excluded from the musl index; the glibc + darwin legs keep them.
           allReleases =
             (map (v: v.release) (builtins.attrValues variants))
-            ++ pkgs.lib.optionals (!musl) [ mariadbRelease redisServerRelease erlangRelease mkcertRelease jdkRelease opensearchRelease rabbitmqRelease mailpitRelease ];
+            ++ pkgs.lib.optionals (!musl) (
+                 [ mariadbRelease redisServerRelease erlangRelease mkcertRelease jdkRelease opensearchRelease rabbitmqRelease mailpitRelease ]
+                 ++ map (v: v.mysqlRelease) (builtins.attrValues mysqlVariants)
+               );
           frozenFiles =
             let allFiles = pkgs.lib.filesystem.listFilesRecursive ./frozen;
             in builtins.filter
@@ -965,6 +1029,7 @@
         in {
           inherit pkgs sources darwin sysroot toolchain deps variants index latestVariant
                   mariadb mariadbTree mariadbTarball mariadbRelease
+                  mysqlVariants
                   redisServer redisServerTree redisServerTarball redisServerRelease
                   erlang erlangTree erlangTarball erlangRelease
                   mkcert mkcertTree mkcertTarball mkcertRelease
@@ -1098,6 +1163,17 @@
           mariadb-tree    = c.mariadbTree;
           mariadb-tarball = c.mariadbTarball;
           mariadb-release = c.mariadbRelease;
+          # MySQL outputs: same quartet as MariaDB, but per version line
+          # (8.0 / 8.4). Underscore (not dot) in the attr name — the Nix CLI
+          # treats `.` as an attribute-path separator (as for `8_5_zts`).
+          mysql-8_0         = c.mysqlVariants."8.0".mysql;
+          mysql-8_0-tree    = c.mysqlVariants."8.0".mysqlTree;
+          mysql-8_0-tarball = c.mysqlVariants."8.0".mysqlTarball;
+          mysql-8_0-release = c.mysqlVariants."8.0".mysqlRelease;
+          mysql-8_4         = c.mysqlVariants."8.4".mysql;
+          mysql-8_4-tree    = c.mysqlVariants."8.4".mysqlTree;
+          mysql-8_4-tarball = c.mysqlVariants."8.4".mysqlTarball;
+          mysql-8_4-release = c.mysqlVariants."8.4".mysqlRelease;
           # Redis outputs at the top level. Same shape as the MariaDB
           # quartet — bare derivation, finalized tree, redistributable
           # tarball, release-flat-dir aggregate.
