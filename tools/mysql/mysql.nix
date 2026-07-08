@@ -30,5 +30,17 @@ mkDep {
   # CMake + bison are the build-system entry points (bison generates the SQL
   # parser). pkg-config backs a couple of CMake probes. perl runs MySQL's
   # build-time codegen helper scripts.
-  extraInputs = with pkgs; [ cmake bison pkg-config perl ];
+  #
+  # Darwin also needs cctools for install_name_tool: MySQL's cmake
+  # (cmake/install_macros.cmake — ADD_INSTALL_RPATH_FOR_PROTOBUF and friends)
+  # runs `install_name_tool` as a POST_BUILD step to repoint binaries at their
+  # bundled dylibs, and invokes it by *bare name* off PATH. PBS's own
+  # finalize/mkDep scripts call /usr/bin/install_name_tool by absolute path, but
+  # the nix build sandbox's PATH omits /usr/bin, so the bare call fails with
+  # exit 127 ("install_name_tool: command not found"). cctools provides it.
+  # mkDep puts toolchainPkgs ahead of extraInputs on PATH, so cctools' own
+  # ar/nm/strip stay shadowed by the toolchain's llvm-based ones — only
+  # install_name_tool (absent from the toolchain wrapper) is newly resolved.
+  extraInputs = with pkgs; [ cmake bison pkg-config perl ]
+    ++ lib.optional stdenv.isDarwin darwin.cctools;
 }
