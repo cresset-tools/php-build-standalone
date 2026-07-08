@@ -125,20 +125,39 @@ MACRO(MYSQL_CHECK_SSL_DLLS)
 ENDMACRO()
 PBS_SSL_DLLS_NOOP
 
-# Force the bundled Abseil to build STATIC on Linux, matching the static
-# Protobuf (see the -static-libgcc block below). Since 8.4, MySQL's
-# extra/abseil/CMakeLists.txt carries an `IF(LINUX) SET(absl_BUILD_SHARED_LIBS
-# ON)` that unconditionally builds Abseil *shared* — but our -static-libgcc
-# makes Protobuf *static*. That mismatch (static libprotobuf.a + shared
-# libabsl.so) duplicates Abseil's global state across protoc and libprotobuf
-# under our clang toolchain (no symbol interposition), so protoc heap-corrupts
-# at codegen ("free(): invalid pointer") the moment it generates the X-plugin
-# .pb.cc files. 8.1-8.3 have no such IF(LINUX) block (Abseil defaults to
-# static there, matching Protobuf), which is why they build clean. A plain
-# SET() can't be overridden from the cmake command line, so flip it in-source;
-# both static is exactly the config 8.0-8.3 ship. Applied only when the
-# LINUX-forced-shared block is present (a no-op on 8.1-8.3); a guard fails the
-# build loudly if a future layout change leaves Abseil forced shared.
+# Force the bundled Protobuf AND Abseil to build STATIC on every target.
+#
+# Under our clang toolchain (no symbol interposition), a mixed static/shared
+# Protobuf+Abseil makes `protoc` heap-corrupt at codegen ("free(): invalid
+# pointer") on Abseil's duplicated global singletons — the same crash whether
+# it's shared-protobuf+static-abseil or the reverse. Both-static is the config
+# MySQL 8.0-8.3 already ship on Linux, and it's what works.
+#
+# Protobuf: extra/protobuf/CMakeLists.txt only picks static when it sees
+# `-static-libgcc` in CMAKE_CXX_FLAGS (`IF(CMAKE_CXX_FLAGS MATCHES
+# "-static-libgcc")`). We can't drive it with that flag: Apple clang rejects
+# `-static-libgcc` as an unsupported option and fails the very first compiler
+# check on Darwin, and a `-Dprotobuf_BUILD_SHARED_LIBS=OFF` override doesn't
+# help either — 8.0's else-branch forces it back ON with `CACHE INTERNAL`,
+# ignoring the command line (8.4 respects -D, but 8.0 does not). So flip the
+# probe to `IF(TRUE)` in-source: Protobuf then always builds static, on every
+# platform, reaching the exact SET(protobuf_BUILD_SHARED_LIBS OFF) branch the
+# `-static-libgcc` path used. (Our toolchain already static-links libstdc++/
+# libgcc via a positional libstdc++.a, so no compiler flag is needed anyway.)
+#
+# Abseil: since 8.4, extra/abseil/CMakeLists.txt has an `IF(LINUX)
+# SET(absl_BUILD_SHARED_LIBS ON)` that forces Abseil *shared* on Linux
+# regardless — the reverse mismatch. Flip it to OFF. 8.1-8.3, and every
+# version on Darwin/Apple, default Abseil static already, so it's a no-op there.
+#
+# Both are apply-if-present with a guard that fails the build loudly if a
+# future layout change leaves either library forced shared.
+pb_cmake="$src_dir/extra/protobuf/CMakeLists.txt"
+[ -f "$pb_cmake" ] || { echo "FATAL: $pb_cmake missing; MySQL layout changed" >&2; exit 1; }
+perl -0777 -i -pe 's/IF\(CMAKE_CXX_FLAGS MATCHES "-static-libgcc"\)/IF(TRUE) # PBS: always build Protobuf static (clang, no symbol interposition)/' "$pb_cmake"
+grep -q 'IF(TRUE) # PBS' "$pb_cmake" \
+  || { echo "FATAL: Protobuf static-probe patch did not apply; static-Protobuf fix is stale" >&2; exit 1; }
+
 absl_cmake="$src_dir/extra/abseil/CMakeLists.txt"
 [ -f "$absl_cmake" ] || { echo "FATAL: $absl_cmake missing; MySQL layout changed" >&2; exit 1; }
 perl -0777 -i -pe 's/(IF\(LINUX\)\n\s*SET\(absl_BUILD_SHARED_LIBS )ON\)/${1}OFF)/' "$absl_cmake"
@@ -188,21 +207,10 @@ fi
 export CFLAGS="${CFLAGS:-} -Wno-error=cast-function-type-strict"
 export CXXFLAGS="${CXXFLAGS:-} -Wno-error=cast-function-type-strict"
 
-# Force the bundled Protobuf/Abseil to build as STATIC libraries. MySQL builds
-# Abseil static but Protobuf *shared* unless it detects a static-libstdc++
-# build; with the two mismatched, protoc links a shared libprotobuf.so while
-# Abseil's global state (the empty-string singleton) is duplicated across the
-# .so and the protoc exe. gcc papers over this with symbol interposition, but
-# our clang toolchain doesn't, so protoc heap-corrupts at codegen time ("free():
-# invalid pointer" on a static default string) — and the same libprotobuf would
-# reach mysqld. MySQL's own extra/protobuf/CMakeLists.txt picks static protobuf
-# exactly for this case, but keys off `CMAKE_CXX_FLAGS MATCHES "-static-libgcc"`.
-# Our toolchain links libstdc++/libgcc statically via a positional archive, not
-# that flag, so the probe misses it. Adding -static-libgcc makes the probe fire
-# (protobuf built static → self-contained protoc, one Abseil copy); it's
-# consistent with how we already link C++ and changes nothing else.
-export CFLAGS="$CFLAGS -static-libgcc"
-export CXXFLAGS="$CXXFLAGS -static-libgcc"
+# (Static Protobuf/Abseil is forced by the in-source CMakeLists patches above,
+# not a compiler flag — see the pb_cmake / absl_cmake block. We intentionally
+# do NOT pass -static-libgcc: Apple clang rejects it, and it isn't needed since
+# the toolchain already static-links libstdc++/libgcc via a positional archive.)
 
 mkdir -p build
 cd build
