@@ -204,6 +204,17 @@ else
   resolv_args=(-DRESOLV_LIBRARY=resolv)
 fi
 
+# Darwin: cmake/package_name.cmake's APPLE branch runs `sw_vers` to derive
+# DEFAULT_PLATFORM, but sw_vers isn't on PATH in the nix build sandbox, so its
+# empty output makes LIST(GET ...) abort configure. That string only names
+# MySQL's *own* package artifact — which we never build (tarball.nix produces
+# ours) — and the whole block is skipped when SYSTEM_NAME_AND_PROCESSOR is
+# already set. Pre-seed it so the sw_vers path is never taken.
+pkgname_args=()
+if [ -n "${MACOSX_DEPLOYMENT_TARGET:-}" ]; then
+  pkgname_args=(-DSYSTEM_NAME_AND_PROCESSOR=aarch64-apple-darwin)
+fi
+
 if [ -n "${MACOSX_DEPLOYMENT_TARGET:-}" ]; then
   rpath_origin='@loader_path/../lib'
 else
@@ -272,6 +283,7 @@ cmake -G "Unix Makefiles" \
   -DIGNORE_AIO_CHECK=1 \
   -DENABLED_LOCAL_INFILE=ON \
   "${resolv_args[@]}" \
+  "${pkgname_args[@]}" \
   "${boost_args[@]}" \
   ..
 
