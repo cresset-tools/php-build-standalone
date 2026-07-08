@@ -205,9 +205,14 @@ else
   # The *header* <resolv.h> that dns_srv.cc includes is a separate matter:
   # the framework SDK doesn't ship it, so add darwin.libresolv's -dev include
   # dir (handed in by mysql.nix as PBS_DARWIN_RESOLV_DEV) to the compile path.
+  # That header's <arpa/nameser.h> is old Apple source: its NS_GET16/NS_GET32
+  # macros still use the `register` storage class, which C++17 removed and
+  # MySQL's -std=c++20 build rejects as a hard error. The diagnostic is under
+  # -Wregister, so -Wno-register lets the system-header macro through (only
+  # dns_srv.cc pulls nameser.h in; our own code doesn't use register).
   : "${PBS_DARWIN_RESOLV_DEV:?set by mysql.nix on Darwin}"
   export CFLAGS="${CFLAGS:-} -I$PBS_DARWIN_RESOLV_DEV/include"
-  export CXXFLAGS="${CXXFLAGS:-} -I$PBS_DARWIN_RESOLV_DEV/include"
+  export CXXFLAGS="${CXXFLAGS:-} -I$PBS_DARWIN_RESOLV_DEV/include -Wno-register"
   resolv_args=(-DRESOLV_LIBRARY=resolv)
 fi
 
