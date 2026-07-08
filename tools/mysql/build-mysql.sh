@@ -191,6 +191,17 @@ resolv_args=()
 if [ -z "${MACOSX_DEPLOYMENT_TARGET:-}" ]; then
   : "${PBS_SYSROOT:?}"
   resolv_args=(-DRESOLV_LIBRARY="$PBS_SYSROOT/usr/lib64/libresolv.so")
+else
+  # Darwin: libmysql/CMakeLists.txt gates HAVE_DNS_SRV on
+  # FIND_LIBRARY(RESOLV_LIBRARY NAMES resolv) and FATALs if it fails. Under
+  # the nixpkgs SDK toolchain that find comes back empty (libresolv is an SDK
+  # .tbd stub, not on cmake's default library search path), so pre-seed the
+  # cache var with the bare `resolv` name: the check then passes and the
+  # linker gets -lresolv, which resolves against the SDK's libresolv.tbd. The
+  # res_*/dn_expand symbols live there and are re-exported by libSystem at
+  # runtime, so the resulting LC_LOAD_DYLIB is the system /usr/lib/
+  # libresolv.9.dylib — on finalize-darwin's allowlist.
+  resolv_args=(-DRESOLV_LIBRARY=resolv)
 fi
 
 if [ -n "${MACOSX_DEPLOYMENT_TARGET:-}" ]; then
