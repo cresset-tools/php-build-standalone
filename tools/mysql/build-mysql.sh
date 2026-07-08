@@ -166,6 +166,18 @@ if perl -0777 -ne 'exit(/IF\(LINUX\)\n\s*SET\(absl_BUILD_SHARED_LIBS ON\)/ ? 0 :
   exit 1
 fi
 
+# Make the DNS-SRV resolver optional. libmysql/CMakeLists.txt FATALs when it
+# finds neither the Win32 nor the Unix DNS-SRV APIs. On Darwin we deliberately
+# don't wire a resolver (see the resolv_args note below), so downgrade that
+# fatal to a status message; dns_srv.cc is #ifdef HAVE_UNIX_DNS_SRV and becomes
+# a stub. No-op on Linux, where the sysroot libresolv is found, HAVE_DNS_SRV is
+# set, and the guard never trips.
+lm_cmake="$src_dir/libmysql/CMakeLists.txt"
+[ -f "$lm_cmake" ] || { echo "FATAL: $lm_cmake missing; MySQL layout changed" >&2; exit 1; }
+perl -0777 -i -pe 's/MESSAGE\(FATAL_ERROR "Can.t find neither Win32 nor Unix DNS SRV APIs"\)/MESSAGE(STATUS "PBS: no DNS SRV APIs available; building without DNS-SRV support")/' "$lm_cmake"
+grep -q 'PBS: no DNS SRV APIs available' "$lm_cmake" \
+  || { echo "FATAL: DNS-SRV FATAL->STATUS patch did not apply; stale" >&2; exit 1; }
+
 # Boost is required to build (not to run) MySQL. Since 8.3 the source tarball
 # bundles it under extra/boost/ (cmake/boost.cmake finds it automatically);
 # the 8.0 `mysql-boost-` tarball instead carries a top-level boost/ that must
@@ -176,44 +188,28 @@ if [ -d "$src_dir/boost" ]; then
   boost_args=(-DWITH_BOOST="$src_dir/boost")
 fi
 
-# libmysqlclient's DNS-SRV support (dns_srv.cc) calls __res_nsearch /
-# __dn_expand, and the shared lib is linked with --no-undefined, so those
-# must resolve at link time. MySQL locates the resolver with
-# FIND_LIBRARY(RESOLV_LIBRARY NAMES resolv) — but cmake's find searches the
-# nixpkgs *host* paths, not our clang toolchain's sysroot, so it picks up
-# nixpkgs' modern-glibc libresolv, which is an empty stub (glibc folded the
-# res_* symbols into libc in 2.34). Pin RESOLV_LIBRARY at the CentOS 7
-# sysroot's real libresolv.so (glibc 2.17, where the symbols still live); the
-# DT_NEEDED stays the bare libresolv.so.2 soname, resolved from the target
-# host's own glibc at runtime. Linux-only: Darwin has no PBS_SYSROOT and
-# provides the resolver via libSystem.
+# DNS-SRV resolver. libmysqlclient's dns_srv.cc calls __res_nsearch /
+# __dn_expand, and the shared lib is linked with --no-undefined, so those must
+# resolve at link time — but the file is #ifdef HAVE_UNIX_DNS_SRV, so it only
+# needs a resolver when that's defined.
+#
+# Linux: pin RESOLV_LIBRARY at the CentOS 7 sysroot's real libresolv.so (glibc
+# 2.17, where res_*/dn_expand still live). Without the pin MySQL's
+# FIND_LIBRARY(RESOLV_LIBRARY NAMES resolv) grabs nixpkgs' modern-glibc
+# libresolv, an empty stub (glibc folded the res_* symbols into libc in 2.34).
+# The DT_NEEDED stays the bare libresolv.so.2 soname, resolved from the target
+# host's own glibc at runtime.
+#
+# Darwin: build WITHOUT DNS-SRV. The framework SDK ships no <resolv.h>, and
+# nixpkgs' darwin.libresolv headers are old Apple source (register keyword in
+# <arpa/nameser.h>, awkward link + /nix/store install_name) — not worth wiring
+# up for a niche client-connection feature. With no resolver found, dns_srv.cc
+# compiles to a stub; the libmysql patch above downgrades the otherwise-fatal
+# "no DNS SRV APIs" configure check to a status message.
 resolv_args=()
 if [ -z "${MACOSX_DEPLOYMENT_TARGET:-}" ]; then
   : "${PBS_SYSROOT:?}"
   resolv_args=(-DRESOLV_LIBRARY="$PBS_SYSROOT/usr/lib64/libresolv.so")
-else
-  # Darwin: libmysql/CMakeLists.txt gates HAVE_DNS_SRV on
-  # FIND_LIBRARY(RESOLV_LIBRARY NAMES resolv) and FATALs if it fails. Under
-  # the nixpkgs SDK toolchain that find comes back empty (libresolv is an SDK
-  # .tbd stub, not on cmake's default library search path), so pre-seed the
-  # cache var with the bare `resolv` name: the check then passes and the
-  # linker gets -lresolv, which resolves against the SDK's libresolv.tbd. The
-  # res_*/dn_expand symbols live there and are re-exported by libSystem at
-  # runtime, so the resulting LC_LOAD_DYLIB is the system /usr/lib/
-  # libresolv.9.dylib — on finalize-darwin's allowlist.
-  #
-  # The *header* <resolv.h> that dns_srv.cc includes is a separate matter:
-  # the framework SDK doesn't ship it, so add darwin.libresolv's -dev include
-  # dir (handed in by mysql.nix as PBS_DARWIN_RESOLV_DEV) to the compile path.
-  # That header's <arpa/nameser.h> is old Apple source: its NS_GET16/NS_GET32
-  # macros still use the `register` storage class, which C++17 removed and
-  # MySQL's -std=c++20 build rejects as a hard error. The diagnostic is under
-  # -Wregister, so -Wno-register lets the system-header macro through (only
-  # dns_srv.cc pulls nameser.h in; our own code doesn't use register).
-  : "${PBS_DARWIN_RESOLV_DEV:?set by mysql.nix on Darwin}"
-  export CFLAGS="${CFLAGS:-} -I$PBS_DARWIN_RESOLV_DEV/include"
-  export CXXFLAGS="${CXXFLAGS:-} -I$PBS_DARWIN_RESOLV_DEV/include -Wno-register"
-  resolv_args=(-DRESOLV_LIBRARY=resolv)
 fi
 
 # Darwin: cmake/package_name.cmake's APPLE branch runs `sw_vers` to derive
