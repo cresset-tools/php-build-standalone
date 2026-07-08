@@ -166,17 +166,37 @@ if perl -0777 -ne 'exit(/IF\(LINUX\)\n\s*SET\(absl_BUILD_SHARED_LIBS ON\)/ ? 0 :
   exit 1
 fi
 
-# Make the DNS-SRV resolver optional. libmysql/CMakeLists.txt FATALs when it
-# finds neither the Win32 nor the Unix DNS-SRV APIs. On Darwin we deliberately
-# don't wire a resolver (see the resolv_args note below), so downgrade that
-# fatal to a status message; dns_srv.cc is #ifdef HAVE_UNIX_DNS_SRV and becomes
-# a stub. No-op on Linux, where the sysroot libresolv is found, HAVE_DNS_SRV is
-# set, and the guard never trips.
+# Make the DNS-SRV resolver optional (two coupled source patches). MySQL's
+# libmysqlclient can connect via a DNS SRV record; the resolver backend needs
+# libresolv's res_*/ns_* APIs. On Darwin we deliberately don't wire one up (see
+# the resolv note below), so both the configure-time check and the compile-time
+# code path have to tolerate its absence.
+#
+# 1. libmysql/CMakeLists.txt FATALs when it finds neither the Win32 nor the
+#    Unix DNS-SRV APIs. Downgrade that fatal to a status message so configure
+#    proceeds with HAVE_UNIX_DNS_SRV left undefined.
+# 2. With HAVE_UNIX_DNS_SRV undefined, dns_srv.cc compiles its #else branch —
+#    which stock is a hard `#error "No DNS SRV Support detected for your OS"`.
+#    Right beside it, disabled under `#if 0`, MySQL ships the intended fallback:
+#    a dummy get_dns_srv() that returns a "not supported" error at runtime
+#    ("dummy function returning an error in case it's not supported by the OS").
+#    Drop the #error and flip that fallback live, so mysql_real_connect_dns_srv()
+#    returns a clean CR_DNS_SRV_LOOKUP_FAILED instead of failing the build.
+#
+# Both are no-ops on Linux, where the sysroot libresolv is found, HAVE_DNS_SRV
+# is set, the CMake guard never trips, and dns_srv.cc's #else branch (the text
+# patch 2 edits) is never compiled.
 lm_cmake="$src_dir/libmysql/CMakeLists.txt"
 [ -f "$lm_cmake" ] || { echo "FATAL: $lm_cmake missing; MySQL layout changed" >&2; exit 1; }
 perl -0777 -i -pe 's/MESSAGE\(FATAL_ERROR "Can.t find neither Win32 nor Unix DNS SRV APIs"\)/MESSAGE(STATUS "PBS: no DNS SRV APIs available; building without DNS-SRV support")/' "$lm_cmake"
 grep -q 'PBS: no DNS SRV APIs available' "$lm_cmake" \
   || { echo "FATAL: DNS-SRV FATAL->STATUS patch did not apply; stale" >&2; exit 1; }
+
+dns_cc="$src_dir/libmysql/dns_srv.cc"
+[ -f "$dns_cc" ] || { echo "FATAL: $dns_cc missing; MySQL layout changed" >&2; exit 1; }
+perl -0777 -i -pe 's{#error "No DNS SRV Support detected for your OS\. Consider adjusting Cmake\."\n\n#if 0}{// PBS: no resolver backend on this platform; enable the built-in no-op\n// DNS-SRV fallback below (returns "not supported" at runtime) in place of #error.\n#if 1}' "$dns_cc"
+grep -q 'PBS: no resolver backend on this platform' "$dns_cc" \
+  || { echo "FATAL: dns_srv.cc fallback-enable patch did not apply; DNS-SRV stub fix is stale" >&2; exit 1; }
 
 # Boost is required to build (not to run) MySQL. Since 8.3 the source tarball
 # bundles it under extra/boost/ (cmake/boost.cmake finds it automatically);
@@ -200,12 +220,14 @@ fi
 # The DT_NEEDED stays the bare libresolv.so.2 soname, resolved from the target
 # host's own glibc at runtime.
 #
-# Darwin: build WITHOUT DNS-SRV. The framework SDK ships no <resolv.h>, and
-# nixpkgs' darwin.libresolv headers are old Apple source (register keyword in
-# <arpa/nameser.h>, awkward link + /nix/store install_name) — not worth wiring
-# up for a niche client-connection feature. With no resolver found, dns_srv.cc
-# compiles to a stub; the libmysql patch above downgrades the otherwise-fatal
-# "no DNS SRV APIs" configure check to a status message.
+# Darwin: build WITHOUT DNS-SRV — link no resolver library at all. The
+# framework SDK ships no <resolv.h> and no libresolv.tbd; nixpkgs'
+# darwin.libresolv is old Apple source with a /nix/store install_name that
+# finalize-darwin can't keep (no store provider) — not worth wiring up for a
+# niche client-connection feature. The two source patches above (CMake
+# FATAL->STATUS and the dns_srv.cc fallback-enable) let configure and compile
+# both succeed with no backend; mysql_real_connect_dns_srv() then returns a
+# "not supported" error at runtime.
 resolv_args=()
 if [ -z "${MACOSX_DEPLOYMENT_TARGET:-}" ]; then
   : "${PBS_SYSROOT:?}"
