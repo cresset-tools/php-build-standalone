@@ -688,9 +688,9 @@
   # gmake-based build; depends on NSPR. NSS releases track Firefox;
   # any modern tag works for certutil's purposes.
   nss = {
-    url = "https://archive.mozilla.org/pub/security/nss/releases/NSS_3_125_RTM/src/nss-3.125.tar.gz";
-    sha256 = "1ad541f10da7c58dec01f540ecc44d28cbbc033f741a57473de5a0893d91606d";
-    version = "3.125";
+    url = "https://archive.mozilla.org/pub/security/nss/releases/NSS_3_126_RTM/src/nss-3.126.tar.gz";
+    sha256 = "7aa07c758be1453d82d739240b249ffb7aef0041be488067e1c0f348e1f9e337";
+    version = "3.126";
   };
 
   # mkcert — FiloSottile's local-CA generator. Pure-Go static binary;
