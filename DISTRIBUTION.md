@@ -241,9 +241,10 @@ pointer eliminates this race by URL construction:
   reads the root once per sync and uses that root's version for
   every subsequent URL it constructs.
 
-Old version directories are pruned by a separate GC concern (a
-days-long retention is enough; clients don't keep stale roots
-beyond their must-revalidate TTL).
+Old version directories are retained indefinitely. Toolchain locks pin
+`root.version`, so deleting a `versions/<V>/` tree would break every
+project locked to that snapshot. The metadata is small and artifact blobs
+remain content-addressed and deduplicated across snapshots.
 
 ## Section index (per extension, plus one for interpreters)
 
