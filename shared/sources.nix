@@ -59,9 +59,9 @@
   # sqlite — for pdo_sqlite. The autoconf tarball name encodes the version
   # numerically (3470200 = 3.47.2), see build-sqlite.sh.
   sqlite = {
-    url = "https://www.sqlite.org/2026/sqlite-autoconf-3530300.tar.gz";
-    sha256 = "c917d7db16648ec95f714974ace5e5dcf46b7dc70e26600a0a102a3141125db0";
-    version = "3.53.3";
+    url = "https://www.sqlite.org/2026/sqlite-autoconf-3530400.tar.gz";
+    sha256 = "0e9483900e92cd5de8fd48d16bf9200145a61f7fd5be542a5ac81d8a9516eb9c";
+    version = "3.53.4";
   };
 
   # oniguruma — regex engine for mbstring. NOTE: the tarball extracts
@@ -611,9 +611,9 @@
   # shared/<dep>.nix files needed beyond what the PHP build already pulls
   # in.
   redis = {
-    url = "https://github.com/redis/redis/archive/refs/tags/8.6.4.tar.gz";
-    sha256 = "a2029c96311ab1ec2ae489076ae900b6497b3beaa7dc379de26b5df48f696f6c";
-    version = "8.6.4";
+    url = "https://github.com/redis/redis/archive/refs/tags/8.8.1.tar.gz";
+    sha256 = "56008a7e9c87ed4ec5ce13032ff8a685ffff944276c2a993024ce805df8338e2";
+    version = "8.8.1";
   };
 
   # Erlang/OTP. Built from source — there's no Temurin-equivalent prebuilt
