@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.2.15](https://github.com/cresset-tools/php-build-standalone/compare/v0.2.14...v0.2.15) (2026-08-08)
+
+
+### Features
+
+* **sync:** phase 10 — run against the canonical store, one copy per host ([31e9995](https://github.com/cresset-tools/php-build-standalone/commit/31e99955d38a23b902fd1c0de1044338bf83b500))
+
+
+### Dependencies
+
+* bump pinned upstreams via scripts/update.py ([#102](https://github.com/cresset-tools/php-build-standalone/issues/102)) ([e9a2218](https://github.com/cresset-tools/php-build-standalone/commit/e9a2218c95b843767414c8cf938ba05f4c2b867d))
+* bump pinned upstreams via scripts/update.py ([#99](https://github.com/cresset-tools/php-build-standalone/issues/99)) ([5f6fbd7](https://github.com/cresset-tools/php-build-standalone/commit/5f6fbd7647261110447c5873d8f7a5b96460e068))
+
 ## [0.2.14](https://github.com/cresset-tools/php-build-standalone/compare/v0.2.13...v0.2.14) (2026-07-08)
 
 
