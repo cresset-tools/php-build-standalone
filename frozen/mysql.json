@@ -1,0 +1,174 @@
+{
+  "entries": [
+    {
+      "frozen_at": "2026-08-17T08:19:13Z",
+      "kind": "tool",
+      "manifest": {
+        "binaries": [
+          "mysqld",
+          "mysql",
+          "mysqldump",
+          "mysqladmin",
+          "mysqlbinlog"
+        ],
+        "blob": {
+          "sha256": "00f43cf3fe7fa69fc8f32540c5af3e9e7ff595f6c4c6fcc76aa6f6b728f7eb25",
+          "size": 32505398,
+          "url": "{BLOB_BASE}/blobs/00/00f43cf3fe7fa69fc8f32540c5af3e9e7ff595f6c4c6fcc76aa6f6b728f7eb25"
+        },
+        "build_info": {
+          "nixpkgs_rev": "549bd84d6279f9852cae6225e372cc67fb91a4c1",
+          "output_tree_sha256": "268e9b7f0de877885d36569d9da620155ae30614fa00e0641d4aff1ba7240fa7"
+        },
+        "bundled_libraries": {
+          "mysql": "8.4.10"
+        },
+        "closure": [
+          {
+            "hash": "4wf8hnwf",
+            "name": "zlib",
+            "sha256": "a2f067a231636e4f20bc046c3f2015dbbb7bda650e7319bfdc62415e15ab0479",
+            "size": 69025,
+            "url": "{BLOB_BASE}/blobs/a2/a2f067a231636e4f20bc046c3f2015dbbb7bda650e7319bfdc62415e15ab0479",
+            "version": "1.3.2"
+          },
+          {
+            "hash": "izaadpkr",
+            "name": "openssl",
+            "sha256": "b8400703e016b2c97ec860da683e65b80f66bd3dae8669415122e2c7a855311c",
+            "size": 2667667,
+            "url": "{BLOB_BASE}/blobs/b8/b8400703e016b2c97ec860da683e65b80f66bd3dae8669415122e2c7a855311c",
+            "version": "3.5.7"
+          },
+          {
+            "hash": "liyaj8a2",
+            "name": "ncurses",
+            "sha256": "40f49adb68c1902bc35408419f617c308fc4989b6dc1c231461d817f3d295eaa",
+            "size": 222441,
+            "url": "{BLOB_BASE}/blobs/40/40f49adb68c1902bc35408419f617c308fc4989b6dc1c231461d817f3d295eaa",
+            "version": "6.6"
+          },
+          {
+            "hash": "lw4kv25r",
+            "name": "libedit",
+            "sha256": "b01c3af1eb45d93186968c3c7aa82053788fb5b0afeb7a5bb8795cf6a53324ba",
+            "size": 72524,
+            "url": "{BLOB_BASE}/blobs/b0/b01c3af1eb45d93186968c3c7aa82053788fb5b0afeb7a5bb8795cf6a53324ba",
+            "version": "20260512-3.1"
+          }
+        ],
+        "flavor": "default",
+        "kind": "tool",
+        "libc": {
+          "family": "darwin",
+          "min": "11.0"
+        },
+        "name": "mysql",
+        "schema": 1,
+        "tag": "mysql-8.4.10-aarch64-apple-darwin-default",
+        "target": "aarch64-apple-darwin",
+        "version": "8.4.10"
+      },
+      "name": "mysql",
+      "reason": "superseded by 8.4.11",
+      "section_entry": {
+        "flavor": "default",
+        "manifest": {
+          "path": "/versions/r31250940106/targets/aarch64-apple-darwin/manifests/tool/mysql/8.4.10/mysql-8.4.10-aarch64-apple-darwin-default.json",
+          "sha256": "bdfc18243959cdaaa1e337244eb1867253f7e2f2e8df6c6695d8dfd41bcc82b8"
+        },
+        "tag": "mysql-8.4.10-aarch64-apple-darwin-default",
+        "version": "8.4.10",
+        "yanked": false
+      },
+      "tag": "mysql-8.4.10-aarch64-apple-darwin-default",
+      "target": "aarch64-apple-darwin"
+    },
+    {
+      "frozen_at": "2026-08-17T08:19:13Z",
+      "kind": "tool",
+      "manifest": {
+        "binaries": [
+          "mysqld",
+          "mysql",
+          "mysqldump",
+          "mysqladmin",
+          "mysqlbinlog"
+        ],
+        "blob": {
+          "sha256": "ba3ea3c818c57945ccb45bdf27f940d384fc169f8f0980e2ad297c8e23720f44",
+          "size": 51346702,
+          "url": "{BLOB_BASE}/blobs/ba/ba3ea3c818c57945ccb45bdf27f940d384fc169f8f0980e2ad297c8e23720f44"
+        },
+        "build_info": {
+          "nixpkgs_rev": "549bd84d6279f9852cae6225e372cc67fb91a4c1",
+          "output_tree_sha256": "659b069952236fa3292f357a2c986ea1e4a535365068a82b09d6c17c740b9749"
+        },
+        "bundled_libraries": {
+          "mysql": "8.4.10"
+        },
+        "closure": [
+          {
+            "hash": "jbmj2bcm",
+            "name": "zlib",
+            "sha256": "9d0007fda79fb60526d6764ac0cff8235d8ee49a33cc73c119c55fb6c0222f20",
+            "size": 81375,
+            "url": "{BLOB_BASE}/blobs/9d/9d0007fda79fb60526d6764ac0cff8235d8ee49a33cc73c119c55fb6c0222f20",
+            "version": "1.3.2"
+          },
+          {
+            "hash": "avzx1wn9",
+            "name": "openssl",
+            "sha256": "e5574d6c47e0cecc8e630c80ef8e27bcb7789d24467506f5a53d63ac0d6cc269",
+            "size": 2369956,
+            "url": "{BLOB_BASE}/blobs/e5/e5574d6c47e0cecc8e630c80ef8e27bcb7789d24467506f5a53d63ac0d6cc269",
+            "version": "3.5.7"
+          },
+          {
+            "hash": "grpadm5y",
+            "name": "ncurses",
+            "sha256": "26f1d5624ff7fe2b71b4eea4d63c7e638ddd3c1f87986f0634371bfa76319eaa",
+            "size": 245294,
+            "url": "{BLOB_BASE}/blobs/26/26f1d5624ff7fe2b71b4eea4d63c7e638ddd3c1f87986f0634371bfa76319eaa",
+            "version": "6.6"
+          },
+          {
+            "hash": "a2wsf4nv",
+            "name": "libedit",
+            "sha256": "45344aeb579d0c0d7f7c9784d819e133c9195f8d5e5f3025e900d2a3bcae37ca",
+            "size": 84516,
+            "url": "{BLOB_BASE}/blobs/45/45344aeb579d0c0d7f7c9784d819e133c9195f8d5e5f3025e900d2a3bcae37ca",
+            "version": "20260512-3.1"
+          }
+        ],
+        "flavor": "default",
+        "kind": "tool",
+        "libc": {
+          "family": "gnu",
+          "min": "2.17"
+        },
+        "name": "mysql",
+        "schema": 1,
+        "tag": "mysql-8.4.10-x86_64-unknown-linux-gnu-default",
+        "target": "x86_64-unknown-linux-gnu",
+        "version": "8.4.10"
+      },
+      "name": "mysql",
+      "reason": "superseded by 8.4.11",
+      "section_entry": {
+        "flavor": "default",
+        "manifest": {
+          "path": "/versions/r31250940106/targets/x86_64-unknown-linux-gnu/manifests/tool/mysql/8.4.10/mysql-8.4.10-x86_64-unknown-linux-gnu-default.json",
+          "sha256": "56c63e9c351670b4c6855ef131015e53d34cbe32751c54f29183a4bcee91e958"
+        },
+        "tag": "mysql-8.4.10-x86_64-unknown-linux-gnu-default",
+        "version": "8.4.10",
+        "yanked": false
+      },
+      "tag": "mysql-8.4.10-x86_64-unknown-linux-gnu-default",
+      "target": "x86_64-unknown-linux-gnu"
+    }
+  ],
+  "name": "mysql",
+  "schema": 1
+}

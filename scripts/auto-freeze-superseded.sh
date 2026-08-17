@@ -27,6 +27,9 @@
 #   - <ext>Versions.<series>.version forward bump (xdebug, redis-as-ext,
 #     imagick, …) → freeze prior <ext>-<v>+php*-* across every PHP minor
 #     the series was built against.
+#   - <tool>Versions.<series>.version forward bump for a TOOL_VERSION_MAPS
+#     member (mysql) → freeze prior <tool>-<v>-*, the flat service shape:
+#     these publish tool tags, not PHP-bound extension tags.
 #
 # Index source is `freeze-publish-entries.sh`, which reads
 # $PUBLISH_INDEX_BASE (default https://index.bougie.tools). The update
@@ -187,6 +190,24 @@ freeze_service_bump mariadb
 freeze_service_bump redis
 freeze_service_bump mkcert
 
+# ---- Tool version maps ------------------------------------------------------
+# Mirrors lint-frozen-coverage.sh's TOOL_VERSION_MAPS (keep the two in sync).
+# mysql fans sources.mysqlVersions out into independently-versioned tool
+# bundles under one sections/tool/mysql section (flake.nix `mysqlVariants`),
+# so its tags are `mysql-<ver>-<target>-default` and freeze-publish-entries.sh
+# files them into frozen/mysql.json by kind=tool. The `<ext>Versions` loop
+# below would glob `mysql-<ver>+php*-*` and match nothing.
+TOOL_VERSION_MAPS=(mysql)
+
+is_tool_version_map() {
+  local name="$1"
+  local t
+  for t in "${TOOL_VERSION_MAPS[@]}"; do
+    [[ "$name" == "$t" ]] && return 0
+  done
+  return 1
+}
+
 # ---- Extension version maps (xdebug, redis-as-ext, imagick, …) -------------
 # Tags shaped <ext>-<ver>+php<minor>-... — file glob covers every PHP
 # minor the series was built against; freeze-publish-entries.sh files
@@ -217,8 +238,14 @@ while IFS= read -r ext_attr; do
     [[ "$curr_version" == "$prev_version" ]] && continue
     version_gt "$curr_version" "$prev_version" || continue
 
+    if is_tool_version_map "$ext_name"; then
+      glob="${ext_name}-${prev_version}-*"
+    else
+      glob="${ext_name}-${prev_version}+php*-*"
+    fi
+
     run_freeze \
-      "${ext_name}-${prev_version}+php*-*" \
+      "$glob" \
       --reason "superseded by ${curr_version}"
   done < <(echo "$curr_series" | jq -r 'keys[]')
 done < <(echo "$ext_attrs" | jq -r '.[]')

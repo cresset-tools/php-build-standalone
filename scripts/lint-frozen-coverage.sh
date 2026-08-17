@@ -20,10 +20,15 @@
 #      not a versions map), so one frozen file per service accumulates every
 #      superseded release rather than the per-minor split used for PHP.
 #   4. For each `<ext>Versions.<series>.version` forward bump (excluding
-#      phpVersions, which is rule 1): at least one entry across the
-#      frozen/php-*.json set must start with `<ext>-<prior>+php`. The
-#      tag is filed under whichever PHP minor it was built for, so the
-#      lint accepts a match in any minor file.
+#      phpVersions, which is rule 1, and the tool maps of rule 5): at
+#      least one entry across the frozen/php-*.json set must start with
+#      `<ext>-<prior>+php`. The tag is filed under whichever PHP minor it
+#      was built for, so the lint accepts a match in any minor file.
+#   5. For each `<tool>Versions.<series>.version` forward bump where
+#      <tool> is a TOOL_VERSION_MAPS member (mysql): same requirement as
+#      rule 3 — at least one entry in frozen/<tool>.json starting with
+#      `<tool>-<prior>-`. These are tools that happen to ship several
+#      concurrently-pinned series, not PHP-bound extensions.
 
 set -euo pipefail
 
@@ -239,6 +244,27 @@ check_service_pin mariadb MariaDB
 check_service_pin redis   Redis
 check_service_pin mkcert  mkcert
 
+# ---- Tool version maps ------------------------------------------------------
+# A `<name>Versions` attr is *not* automatically a PHP-bound extension. mysql
+# is fanned out over sources.mysqlVersions into independently-versioned tool
+# bundles (flake.nix `mysqlVariants`) that coexist under one sections/tool/
+# mysql section, so its tags are `mysql-<ver>-<target>-default` — the flat
+# service shape of rule 3 — not `mysql-<ver>+php<minor>-...`. The freeze script
+# files those under frozen/mysql.json (it routes kind=tool by name), so the
+# coverage check is check_service_frozen_coverage, not the extension one.
+# Listed explicitly because the two map shapes are structurally identical in
+# sources.nix; only the consuming derivation tells them apart.
+TOOL_VERSION_MAPS=(mysql)
+
+is_tool_version_map() {
+  local name="$1"
+  local t
+  for t in "${TOOL_VERSION_MAPS[@]}"; do
+    [[ "$name" == "$t" ]] && return 0
+  done
+  return 1
+}
+
 # ---- Extension version maps (xdebugVersions, redisVersions, …) ----
 # Each is a series→{version,url,sha256} map producing tags shaped
 #   <ext>-<ver>+php<minor_no_dot>-<target>-<flavor>
@@ -246,6 +272,8 @@ check_service_pin mkcert  mkcert
 # accepts a match in any minor file: an extension series may have built
 # for multiple PHP minors, and the freeze splits the entries across
 # those files. // empty handles new series introduced in the bump.
+# TOOL_VERSION_MAPS members are routed to the service check instead —
+# they share this map shape but publish tool tags.
 
 check_extension_frozen_coverage() {
   local ext="$1"            # xdebug, redis, imagick, …
@@ -303,7 +331,12 @@ while IFS= read -r ext_attr; do
     [[ "$curr_version" == "$prev_version" ]] && continue
     version_gt "$curr_version" "$prev_version" || continue
 
-    check_extension_frozen_coverage "$ext_name" "$series" "$prev_version" "$curr_version"
+    if is_tool_version_map "$ext_name"; then
+      context="$ext_name $series: $prev_version → $curr_version version bump in sources.nix, but $prev_version is not frozen."
+      check_service_frozen_coverage "$ext_name" "$prev_version" "$curr_version" "$context"
+    else
+      check_extension_frozen_coverage "$ext_name" "$series" "$prev_version" "$curr_version"
+    fi
   done < <(echo "$curr_series" | jq -r 'keys[]')
 done < <(echo "$ext_attrs" | jq -r '.[]')
 
