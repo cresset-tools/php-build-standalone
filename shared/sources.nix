@@ -125,9 +125,9 @@
   # We build with --enable-lib-only to skip the C++ apps (nghttp/nghttpd/
   # h2load) that pull in libev/libxml2/jansson/jemalloc.
   nghttp2 = {
-    url = "https://github.com/nghttp2/nghttp2/releases/download/v1.69.0/nghttp2-1.69.0.tar.gz";
-    sha256 = "c866b7477cbb7512ab6863a685027adbb1bb8da8fc3bab7429ed43d3281d5aa9";
-    version = "1.69.0";
+    url = "https://github.com/nghttp2/nghttp2/releases/download/v1.70.0/nghttp2-1.70.0.tar.gz";
+    sha256 = "aa317e2cf9dca6afa0aed68f8fad6ff303ec6982e25a78c75c0b65e2b9b3ded5";
+    version = "1.70.0";
   };
 
   # libzip — for the zip extension. cmake-based; uses zlib + bzip2 +
@@ -189,9 +189,9 @@
   # is compiled and installed — see build-libpq.sh. Wired against our bundled
   # OpenSSL so libpq supports TLS connections (sslmode=require et al).
   libpq = {
-    url = "https://ftp.postgresql.org/pub/source/v18.4/postgresql-18.4.tar.bz2";
-    sha256 = "81a81ec695fb0c7901407defaa1d2f7973617154cf27ba74e3a7ab8e64436094";
-    version = "18.4";
+    url = "https://ftp.postgresql.org/pub/source/v18.6/postgresql-18.6.tar.bz2";
+    sha256 = "555610c24d53e4316da5b7d3fc25c279d96856d5e0e23ee308c328c5fa881d9f";
+    version = "18.6";
   };
 
   # libtiff — TIFF reader/writer, an ImageMagick delegate. Depends on zlib
@@ -360,24 +360,24 @@
       sha256 = "ffa9e0982e82eeaea848f57687b425ed173aa278fe563001310ae2638db5c251";
     };
     "8.2" = {
-      version = "8.2.32";
-      url = "https://www.php.net/distributions/php-8.2.32.tar.xz";
-      sha256 = "e02aa173c236c12791696254d607da680e6d5516f8f5c2339642de7c4f944bd2";
+      version = "8.2.33";
+      url = "https://www.php.net/distributions/php-8.2.33.tar.xz";
+      sha256 = "fbdeace9b38220436a4c8fd79b900df92878151db145e641750743a283b514c1";
     };
     "8.3" = {
-      version = "8.3.32";
-      url = "https://www.php.net/distributions/php-8.3.32.tar.xz";
-      sha256 = "8698ec1f9402fa5e5e872ae3d0916b62f5f27503c1fbfc9cc3521e113355ea92";
+      version = "8.3.33";
+      url = "https://www.php.net/distributions/php-8.3.33.tar.xz";
+      sha256 = "e293ed620cec74651bb4a071317892a478aa6840fab22db45c72d77cd42f9676";
     };
     "8.4" = {
-      version = "8.4.23";
-      url = "https://www.php.net/distributions/php-8.4.23.tar.xz";
-      sha256 = "1ab9f52008414e43bb2427ffa288eff2a4de39e1a830f957e800ba368d887a72";
+      version = "8.4.24";
+      url = "https://www.php.net/distributions/php-8.4.24.tar.xz";
+      sha256 = "e127be09a8506f4327c5cfa78a614b00d210714484ec215ce0011b4a03c00731";
     };
     "8.5" = {
-      version = "8.5.8";
-      url = "https://www.php.net/distributions/php-8.5.8.tar.xz";
-      sha256 = "58910198d19e873048fe87cdfe16bc790025417ede3d1651bfa1c4b533d573f2";
+      version = "8.5.9";
+      url = "https://www.php.net/distributions/php-8.5.9.tar.xz";
+      sha256 = "0db7855f25bcd0ab1d592cdb35e284d6f6a5d2ae0f6f621122e364cc39b708f4";
     };
   };
 
@@ -591,9 +591,9 @@
       version = "8.0.46";
     };
     "8.4" = {
-      url = "https://cdn.mysql.com/archives/mysql-8.4/mysql-8.4.10.tar.gz";
-      sha256 = "d57a6730baef14ae118f7f4a6e02845b5b50933758df61fb06e104f27ccc8f96";
-      version = "8.4.10";
+      url = "https://cdn.mysql.com/Downloads/MySQL-8.4/mysql-8.4.11.tar.gz";
+      sha256 = "eb3051164d625dd346a8203f76e0d5d5d9aec51dbe9d51788e39ec6b3f1394c2";
+      version = "8.4.11";
     };
   };
 
@@ -611,9 +611,9 @@
   # shared/<dep>.nix files needed beyond what the PHP build already pulls
   # in.
   redis = {
-    url = "https://github.com/redis/redis/archive/refs/tags/8.8.1.tar.gz";
-    sha256 = "56008a7e9c87ed4ec5ce13032ff8a685ffff944276c2a993024ce805df8338e2";
-    version = "8.8.1";
+    url = "https://github.com/redis/redis/archive/refs/tags/8.10.0.tar.gz";
+    sha256 = "b928cf47427b94bb0c6866c32df834bc8e5efc815b9ad2e2d24bf33f2c533e2a";
+    version = "8.10.0";
   };
 
   # Erlang/OTP. Built from source — there's no Temurin-equivalent prebuilt
@@ -676,9 +676,9 @@
   # the most recent stable as of early 2026; bumps should track NSS's
   # `coreconf/coreconf.dep` floor.
   nspr = {
-    url = "https://archive.mozilla.org/pub/nspr/releases/v4.39/src/nspr-4.39.tar.gz";
-    sha256 = "bbd02ee87a55676063a63e5bc819e0227de2666b47307b2a0134414cdf42368e";
-    version = "4.39";
+    url = "https://archive.mozilla.org/pub/nspr/releases/v4.40/src/nspr-4.40.tar.gz";
+    sha256 = "c0c1884c627f3db7a783f7c7314c695226b2043696791d15519e7e0578c19bdc";
+    version = "4.40";
   };
 
   # NSS — Network Security Services. Mozilla's TLS/crypto/cert-DB
