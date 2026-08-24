@@ -611,9 +611,9 @@
   # shared/<dep>.nix files needed beyond what the PHP build already pulls
   # in.
   redis = {
-    url = "https://github.com/redis/redis/archive/refs/tags/8.10.0.tar.gz";
-    sha256 = "b928cf47427b94bb0c6866c32df834bc8e5efc815b9ad2e2d24bf33f2c533e2a";
-    version = "8.10.0";
+    url = "https://github.com/redis/redis/archive/refs/tags/8.10.1.tar.gz";
+    sha256 = "b0f0cf1927b6ff8d5a523eb7f97c5bcaafbfbef96ffa23f643494bd4af527eee";
+    version = "8.10.1";
   };
 
   # Erlang/OTP. Built from source — there's no Temurin-equivalent prebuilt
@@ -688,9 +688,9 @@
   # gmake-based build; depends on NSPR. NSS releases track Firefox;
   # any modern tag works for certutil's purposes.
   nss = {
-    url = "https://archive.mozilla.org/pub/security/nss/releases/NSS_3_126_RTM/src/nss-3.126.tar.gz";
-    sha256 = "7aa07c758be1453d82d739240b249ffb7aef0041be488067e1c0f348e1f9e337";
-    version = "3.126";
+    url = "https://archive.mozilla.org/pub/security/nss/releases/NSS_3_127_RTM/src/nss-3.127.tar.gz";
+    sha256 = "5a899cad21ae2c9d3c5132de79726eda8df3b7fdf18eeb239fc544d43b87338b";
+    version = "3.127";
   };
 
   # mkcert — FiloSottile's local-CA generator. Pure-Go static binary;

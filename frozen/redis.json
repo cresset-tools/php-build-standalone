@@ -1,6 +1,144 @@
 {
   "entries": [
     {
+      "frozen_at": "2026-08-24T06:51:46Z",
+      "kind": "tool",
+      "manifest": {
+        "binaries": [
+          "redis-server",
+          "redis-cli",
+          "redis-benchmark",
+          "redis-sentinel",
+          "redis-check-rdb",
+          "redis-check-aof"
+        ],
+        "blob": {
+          "sha256": "ad45a294f321db91e29d655ac43b3b3106ff3254df30e11bfe47060757ac7634",
+          "size": 1270116,
+          "url": "{BLOB_BASE}/blobs/ad/ad45a294f321db91e29d655ac43b3b3106ff3254df30e11bfe47060757ac7634"
+        },
+        "build_info": {
+          "nixpkgs_rev": "549bd84d6279f9852cae6225e372cc67fb91a4c1",
+          "output_tree_sha256": "d271ae1b2c3acf5dfcb5e4378f809347b837fb33bc6e4ef053cb1f0491a8470c"
+        },
+        "bundled_libraries": {
+          "redis": "8.10.0"
+        },
+        "closure": [
+          {
+            "hash": "4wf8hnwf",
+            "name": "zlib",
+            "sha256": "a2f067a231636e4f20bc046c3f2015dbbb7bda650e7319bfdc62415e15ab0479",
+            "size": 69025,
+            "url": "{BLOB_BASE}/blobs/a2/a2f067a231636e4f20bc046c3f2015dbbb7bda650e7319bfdc62415e15ab0479",
+            "version": "1.3.2"
+          },
+          {
+            "hash": "izaadpkr",
+            "name": "openssl",
+            "sha256": "b8400703e016b2c97ec860da683e65b80f66bd3dae8669415122e2c7a855311c",
+            "size": 2667667,
+            "url": "{BLOB_BASE}/blobs/b8/b8400703e016b2c97ec860da683e65b80f66bd3dae8669415122e2c7a855311c",
+            "version": "3.5.7"
+          }
+        ],
+        "flavor": "default",
+        "kind": "tool",
+        "libc": {
+          "family": "darwin",
+          "min": "11.0"
+        },
+        "name": "redis",
+        "schema": 1,
+        "tag": "redis-8.10.0-aarch64-apple-darwin-default",
+        "target": "aarch64-apple-darwin",
+        "version": "8.10.0"
+      },
+      "name": "redis",
+      "reason": "superseded by 8.10.1",
+      "section_entry": {
+        "flavor": "default",
+        "manifest": {
+          "path": "/versions/r32116471094/targets/aarch64-apple-darwin/manifests/tool/redis/8.10.0/redis-8.10.0-aarch64-apple-darwin-default.json",
+          "sha256": "99143988a9e0bf21559c6e61a03fc13a4d63c1bcffed14d490d0a6dd027fae58"
+        },
+        "tag": "redis-8.10.0-aarch64-apple-darwin-default",
+        "version": "8.10.0",
+        "yanked": false
+      },
+      "tag": "redis-8.10.0-aarch64-apple-darwin-default",
+      "target": "aarch64-apple-darwin"
+    },
+    {
+      "frozen_at": "2026-08-24T06:51:46Z",
+      "kind": "tool",
+      "manifest": {
+        "binaries": [
+          "redis-server",
+          "redis-cli",
+          "redis-benchmark",
+          "redis-sentinel",
+          "redis-check-rdb",
+          "redis-check-aof"
+        ],
+        "blob": {
+          "sha256": "e51174517f582b42770c9f4aefff2bb6513902ff47ce77f1debdf79575848254",
+          "size": 1910682,
+          "url": "{BLOB_BASE}/blobs/e5/e51174517f582b42770c9f4aefff2bb6513902ff47ce77f1debdf79575848254"
+        },
+        "build_info": {
+          "nixpkgs_rev": "549bd84d6279f9852cae6225e372cc67fb91a4c1",
+          "output_tree_sha256": "f8037170b14384819c095e35b2cf48681cb0221c6ed2f8e26f45e9d812447433"
+        },
+        "bundled_libraries": {
+          "redis": "8.10.0"
+        },
+        "closure": [
+          {
+            "hash": "jbmj2bcm",
+            "name": "zlib",
+            "sha256": "9d0007fda79fb60526d6764ac0cff8235d8ee49a33cc73c119c55fb6c0222f20",
+            "size": 81375,
+            "url": "{BLOB_BASE}/blobs/9d/9d0007fda79fb60526d6764ac0cff8235d8ee49a33cc73c119c55fb6c0222f20",
+            "version": "1.3.2"
+          },
+          {
+            "hash": "avzx1wn9",
+            "name": "openssl",
+            "sha256": "e5574d6c47e0cecc8e630c80ef8e27bcb7789d24467506f5a53d63ac0d6cc269",
+            "size": 2369956,
+            "url": "{BLOB_BASE}/blobs/e5/e5574d6c47e0cecc8e630c80ef8e27bcb7789d24467506f5a53d63ac0d6cc269",
+            "version": "3.5.7"
+          }
+        ],
+        "flavor": "default",
+        "kind": "tool",
+        "libc": {
+          "family": "gnu",
+          "min": "2.17"
+        },
+        "name": "redis",
+        "schema": 1,
+        "tag": "redis-8.10.0-x86_64-unknown-linux-gnu-default",
+        "target": "x86_64-unknown-linux-gnu",
+        "version": "8.10.0"
+      },
+      "name": "redis",
+      "reason": "superseded by 8.10.1",
+      "section_entry": {
+        "flavor": "default",
+        "manifest": {
+          "path": "/versions/r32116471094/targets/x86_64-unknown-linux-gnu/manifests/tool/redis/8.10.0/redis-8.10.0-x86_64-unknown-linux-gnu-default.json",
+          "sha256": "52b348c9db592b9d17e6f7bdd0113fc68104160b57f3273bd1f13e58bca62c68"
+        },
+        "tag": "redis-8.10.0-x86_64-unknown-linux-gnu-default",
+        "version": "8.10.0",
+        "yanked": false
+      },
+      "tag": "redis-8.10.0-x86_64-unknown-linux-gnu-default",
+      "target": "x86_64-unknown-linux-gnu"
+    },
+    {
       "frozen_at": "2026-05-29T09:46:11Z",
       "kind": "tool",
       "manifest": {
