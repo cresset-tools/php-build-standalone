@@ -381,6 +381,21 @@ per-store-path tarball.
 - **`pcntl` is static on Debian-aligned builds.** No `pcntl.so` is
   produced; it's compiled into `bin/php`. The flake's `extensions`
   attrset reflects this (no `pcntl = mkBuiltinExt …`).
+- **A tag is not content-stable across publishes.** Tags encode the
+  component version, not the dep closure, so a publish that moves only a
+  bundled C lib republishes the same tag with different bytes. Re-running
+  a freeze against a newer index than it was captured from therefore
+  aborts with `FAIL: diverged frozen entry` — that's the guard working,
+  not corruption; the existing entry still resolves, so leave it. See
+  DISTRIBUTION.md §Tag-identity-is-not-content-identity.
+- **`<name>Versions` in sources.nix is not automatically an extension.**
+  `mysqlVersions` is a *tool* map: flake.nix fans it into tool bundles
+  under `sections/tool/mysql`, so its tags are `mysql-<ver>-<target>-default`
+  and freeze into `frozen/mysql.json`, not `<name>-<ver>+php*` under
+  `frozen/php-<minor>.json`. The two map shapes are structurally
+  identical, so `lint-frozen-coverage.sh` and `auto-freeze-superseded.sh`
+  carry an explicit `TOOL_VERSION_MAPS` list — add to it when a new
+  versioned tool map appears.
 
 ## Out of scope here (lives in bougie)
 

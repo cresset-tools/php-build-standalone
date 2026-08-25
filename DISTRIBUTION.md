@@ -754,6 +754,49 @@ identically to any other artifact during lockfile replay. The CLI may surface
 the `frozen` flag as an informational note when the artifact resolves during
 fresh (non-lockfile) resolution.
 
+### Tag identity is not content identity
+
+A tag encodes the *component* version, not the closure it was built
+against. `php-8.2.32-aarch64-apple-darwin-nts` names PHP 8.2.32, but the
+artifact also depends on every bundled C library, and those move
+independently in `sources.nix`. A publish that bumps only a dep therefore
+republishes the same tag with different bytes.
+
+This is observable across two real publishes of that tag — `r28937971937`
+(v0.2.14) and `r31250940106` (v0.2.15):
+
+```
+blob      d8c84c… (6840158 b)  →  07e6bb… (6840928 b)
+sources   nss    3.125 → 3.126
+          sqlite 3.53.3 → 3.53.4
+          redis  8.6.4 → 8.8.1
+```
+
+Two consequences follow, and both are load-bearing:
+
+**Freezing captures a point in time.** A frozen entry preserves whichever
+build was live on the index at freeze time — not "the" 8.2.32 artifact,
+because there isn't one. `freeze-publish-entries.sh` compares the recorded
+`section_entry.manifest.sha256` against the freshly-fetched manifest and
+aborts with `FAIL: diverged frozen entry` when they disagree. That fires
+whenever a freeze is re-run against a *newer* index than the one it was
+originally captured from. It is a guard against silently rewriting a
+frozen entry, not a sign of corruption — the existing entry is still
+valid and still resolves. Leave it alone rather than re-freezing.
+
+**A superseded tag may have shipped bytes that nothing preserves.** If a
+version is published more than once and the freeze captured publish *N*,
+consumers who fetched the tag from publish *N+1* hold bytes that no
+frozen entry references once the version leaves the live matrix. The
+blobs themselves survive — `rsync-publish-tree.sh` pushes blobs
+additively and never deletes — so this is a referential gap, not data
+loss: the bytes are on the origin with no manifest pointing at them.
+
+Freezing the version that is live *at the moment the bump is made* (which
+is what `auto-freeze-superseded.sh` does when the update workflow runs
+against a current index) keeps the common case correct. The gap opens
+when a publish lands between the freeze and the merge.
+
 ## Yanking
 
 A published artifact can be yanked but never deleted (deletion would
