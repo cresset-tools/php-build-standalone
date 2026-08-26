@@ -23,13 +23,19 @@ for the distribution wire format see `DISTRIBUTION.md`.
   runs on Alpine; PHP + extensions only, no service/tool bundles — added 0.2.5),
   and `aarch64-apple-darwin` (macOS 11+). No aarch64-linux yet.
 - **Per-ext tarballs:** xdebug, imagick, redis, vips *(Linux only)*,
-  igbinary, msgpack, apcu, pcov, spx, plus every shared extension PHP's configure
-  produces (curl, gd, intl, mbstring, mysqli, pdo_mysql, pdo, pgsql,
-  pdo_pgsql, sqlite3, pdo_sqlite, bz2, zip, soap, exif, bcmath, calendar,
-  ftp, shmop, sockets, sysv{msg,sem,shm}, gmp, xsl, ctype, dom, fileinfo,
-  iconv, phar, posix, simplexml, tokenizer, xml, xmlreader, xmlwriter,
-  mbstring, opcache *(.so on 8.1–8.4; static into bin/php on 8.5)*, gettext
-  *(Linux only)*).
+  igbinary, msgpack, apcu, pcov, spx, ev, event, uv, plus every shared
+  extension PHP's configure produces (curl, gd, intl, mbstring, mysqli,
+  pdo_mysql, pdo, pgsql, pdo_pgsql, sqlite3, pdo_sqlite, bz2, zip, soap,
+  exif, bcmath, calendar, ftp, shmop, sockets, sysv{msg,sem,shm}, gmp, xsl,
+  ctype, dom, fileinfo, iconv, phar, posix, simplexml, tokenizer, xml,
+  xmlreader, xmlwriter, mbstring, opcache *(.so on 8.1–8.4; static into
+  bin/php on 8.5)*, gettext *(Linux only)*).
+- **ReactPHP event loops:** `ev` / `event` / `uv` are the three backends
+  [reactphp.org/event-loop](https://reactphp.org/event-loop/) documents as
+  current (`ExtEvLoop` / `ExtEventLoop` / `ExtUvLoop`); without one, ReactPHP
+  falls back to `StreamSelectLoop` and its `FD_SETSIZE` ceiling. `ev` vendors
+  libev in-tree; `event` and `uv` brought in two new bundled C-libs,
+  `shared/libevent.nix` and `shared/libuv.nix`. See the socket_ce trap below.
 - **Tools** (separate kinds, served under `sections/tool/<name>`):
   `tools/mariadb`, `tools/mysql` (Oracle MySQL Community Server, 8.0 + 8.4,
   Linux + Darwin), `tools/redis` (server), `tools/mkcert` (with NSS).
@@ -396,6 +402,29 @@ per-store-path tarball.
   identical, so `lint-frozen-coverage.sh` and `auto-freeze-superseded.sh`
   carry an explicit `TOOL_VERSION_MAPS` list — add to it when a new
   versioned tool map appears.
+- **`ev` and `event` cannot load without `sockets`.** Both compile their
+  ext/sockets integration by default (`ev` under `#if HAVE_SOCKETS`, which
+  `main/php_config.h` defines even for `--enable-sockets=shared`; `event`
+  under `--enable-event-sockets`) and reference `socket_ce` — a *data*
+  symbol exported by `sockets.so`. PHP dlopens extensions with
+  `RTLD_LAZY|RTLD_GLOBAL`, and `RTLD_LAZY` defers only *function*
+  relocations, so a data reference binds eagerly: bare `ev.so` fails with
+  `undefined symbol: socket_ce`. Hence `confPrefix = "40"` on both (they
+  load after the core's `20-sockets.ini`) — the same fix msgpack needed
+  against session. `uv` is exempt: upstream declares `socket_ce` weak and
+  fills it via `DL_FETCH_SYMBOL` at MINIT. The manifest schema has no
+  cross-extension `requires` field, so nothing at the index layer enforces
+  the pairing — bougie's install list has to carry it.
+- **`event` is the only PECL ext whose build runs `bin/php`.** Its
+  configure regenerates `php8/php_event.stub.php`, which fires PHP's
+  `gen_stub.php` rule. The PHP dep isn't finalized at that point (RPATHs
+  are written at tree time), so `php/event.nix` passes `PBS_PHP_LDPATH`
+  from `php.passthru.transitiveBundledDeps` and `build-event.sh` scopes it
+  onto the `make` steps. mkDep's own `PBS_DEPS_LDPATH` is not enough —
+  it only covers that derivation's direct deps. Linux only: on Darwin
+  `PBS_PHP_LDPATH` is unset (exporting `DYLD_LIBRARY_PATH` across a `make`
+  is the hazard mkDep already documents) and `make` runs unwrapped, since
+  dyld resolves bin/php's deps through absolute install_names anyway.
 
 ## Out of scope here (lives in bougie)
 

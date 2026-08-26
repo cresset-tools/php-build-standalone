@@ -344,6 +344,41 @@
     version = "20260512-3.1";
   };
 
+  # libevent — event-notification library (epoll on Linux, kqueue on
+  # Darwin). Consumed by the `event` PECL extension, which backs
+  # ReactPHP's ExtEventLoop. Built as the modular library set
+  # (libevent_core / _extra / _openssl / _pthreads) plus the deprecated
+  # all-in-one libevent.so that rides along; the extension links
+  # event_core + event_extra + event_openssl. openssl is wired in so
+  # EventSslContext / EventBufferEvent::sslSocket() resolve against the
+  # bundled TLS stack rather than a host copy.
+  #
+  # 2.1.13-stable (released 2026-07-01) is the current stable line; the
+  # preceding 2.1.12-stable dates from 2020. The tarball extracts to
+  # libevent-<version>-stable/, not libevent-<version>/ — shared/libevent.nix
+  # carries the srcSubdir override. Our `version` deliberately drops the
+  # `-stable` suffix: storeName is <name>-<version>-<hash> and consumers
+  # split it on the last two dashes, so a dash inside the version confuses
+  # the field split.
+  libevent = {
+    url = "https://github.com/libevent/libevent/releases/download/release-2.1.13-stable/libevent-2.1.13-stable.tar.gz";
+    sha256 = "f7e9383b8c0baa81b687e5b5eecc01beefaf1b19b64151d95ed61647fe7a315c";
+    version = "2.1.13";
+  };
+
+  # libuv — cross-platform asynchronous I/O library (the event loop
+  # underneath Node.js). Consumed by the `uv` PECL extension, which backs
+  # ReactPHP's ExtUvLoop. cmake-based, so it goes through build-libuv.sh
+  # rather than mkDep's autotools template — the dist tarball ships
+  # CMakeLists.txt + autogen.sh but no pre-generated configure. It also
+  # extracts to libuv-v<version>/ (leading `v`), which the build script
+  # accounts for.
+  libuv = {
+    url = "https://dist.libuv.org/dist/v1.52.1/libuv-v1.52.1.tar.gz";
+    sha256 = "66d511b9e6e334c0e62279eb234fbfb2b3110b1479c09b95b44c7afca8cff9e7";
+    version = "1.52.1";
+  };
+
   # PHP version matrix. Each entry is a PHP major.minor pinned to a specific
   # patch release. PHP entries describe PHP and only PHP — extension series
   # pairings live in the per-extension <ext>Versions maps below and are
@@ -528,6 +563,71 @@
       version = "5.1.24";
       url = "https://pecl.php.net/get/apcu-5.1.24.tgz";
       sha256 = "5c28a55b27082c69657e25b7ecf553e2cf6b74ec3fa77d6b76f4fb982e001e43";
+    };
+  };
+
+  # --- ReactPHP event-loop backends -----------------------------------
+  #
+  # ReactPHP picks its EventLoop implementation at runtime from whichever
+  # of these is loaded, falling back to the pure-PHP StreamSelectLoop
+  # (stream_select(), capped at FD_SETSIZE descriptors). The three
+  # extensions below are the ones reactphp.org/event-loop documents as
+  # current — ExtEventLoop (event), ExtEvLoop (ev), ExtUvLoop (uv). The
+  # deprecated ExtLibeventLoop / ExtLibevLoop backends are PHP 5-only and
+  # are deliberately not packaged.
+  #
+  # An app only ever needs one of them — Factory takes the first it finds,
+  # so the other two would be dead weight in the process. They're packaged
+  # as three independent per-ext tarballs rather than a bundle for exactly
+  # that reason.
+
+  # ev PECL extension. libev bindings; ReactPHP's ExtEvLoop. libev itself
+  # is vendored inside the PECL source (ev-<v>/libev/) and compiled in-tree,
+  # so unlike `event` and `uv` this one needs no bundled C-library of its
+  # own. 1.2.x declares <min>8.0.0 and covers the whole 8.1–8.5 matrix.
+  #
+  # ev.so resolves `socket_ce` from ext/sockets at dlopen — see php/ev.nix.
+  evVersions = {
+    "1.2" = {
+      version = "1.2.3";
+      url = "https://pecl.php.net/get/ev-1.2.3.tgz";
+      sha256 = "5ea937d3b81c24fd76a6772c2b202a13bc561a4348743a011bd1a7a39eb9fdba";
+    };
+  };
+
+  # event PECL extension. libevent bindings; ReactPHP's ExtEventLoop. The
+  # richest of the three — beyond the loop it exposes libevent's DNS, HTTP
+  # and listener APIs, plus OpenSSL-backed buffer events. Needs bundled
+  # libevent (event_core + event_extra + event_openssl) and openssl.
+  # 3.1.x declares <min>5.4.0 and covers 8.1–8.5.
+  #
+  # event.so resolves `socket_ce` from ext/sockets at dlopen — see
+  # php/event.nix.
+  eventVersions = {
+    "3.1" = {
+      version = "3.1.6";
+      url = "https://pecl.php.net/get/event-3.1.6.tgz";
+      sha256 = "5b74554c6370aae8c284c8110fe27e071d3f663953c3eb762ffc429b0a3c83a2";
+    };
+  };
+
+  # uv PECL extension. libuv bindings; ReactPHP's ExtUvLoop. Needs bundled
+  # libuv, which it locates via pkg-config.
+  #
+  # 0.3.0 is the newest release upstream (amphp/ext-uv) has published — PECL
+  # still flags the whole line `beta`, and the tag predates PHP 8.4. We ship
+  # it anyway because it is the only ExtUvLoop backend there is, and it does
+  # still compile clean across 8.1–8.5 × {nts,zts} — hence no uv entries in
+  # php/patches. Re-check that when a new minor lands; upstream last pushed
+  # in December 2023.
+  #
+  # Unlike ev and event, uv weak-links `socket_ce` and resolves it via
+  # DL_FETCH_SYMBOL at MINIT, so uv.so dlopens with or without ext/sockets.
+  uvVersions = {
+    "0.3" = {
+      version = "0.3.0";
+      url = "https://pecl.php.net/get/uv-0.3.0.tgz";
+      sha256 = "a11f9c987f4c466b70c79050714fcf0c916753c560421279bbe0f6b7dc737d3e";
     };
   };
 
