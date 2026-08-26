@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.2.17](https://github.com/cresset-tools/php-build-standalone/compare/v0.2.16...v0.2.17) (2026-08-26)
+
+
+### Features
+
+* **ext:** add the ReactPHP event-loop backends — ev, event and uv ([3ca8130](https://github.com/cresset-tools/php-build-standalone/commit/3ca81301df740503fbda40fce0c4211dcd81dea7))
+
+
+### Dependencies
+
+* bump pinned upstreams via scripts/update.py ([#107](https://github.com/cresset-tools/php-build-standalone/issues/107)) ([5acfa12](https://github.com/cresset-tools/php-build-standalone/commit/5acfa120ec908770cadec5c4a04ddf6908d952ca))
+
 ## [0.2.16](https://github.com/cresset-tools/php-build-standalone/compare/v0.2.15...v0.2.16) (2026-08-18)
 
 
