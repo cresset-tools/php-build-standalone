@@ -137,6 +137,12 @@
                       libtiff lcms2 openjpeg libheif libde265;
             };
             libgmp        = pkgs.callPackage ./shared/libgmp.nix        { inherit mkDep; };
+            # ReactPHP event-loop backends. libevent backs the `event`
+            # extension (ExtEventLoop), libuv backs `uv` (ExtUvLoop). The
+            # third backend, `ev` (ExtEvLoop), vendors libev inside its own
+            # PECL source and so needs no entry here.
+            libevent      = pkgs.callPackage ./shared/libevent.nix      { inherit mkDep openssl; };
+            libuv         = pkgs.callPackage ./shared/libuv.nix         { inherit mkDep; };
             # NSPR + NSS underpin mkcert's certutil shipment; not linked
             # by anything in the PHP build itself. Kept in the common
             # `rec` block so both Linux and Darwin can pick them up
@@ -233,6 +239,9 @@
               pcovSpec     = pickOnly sources.pcovVersions;
               spxSpec      = pickOnly sources.spxVersions;
               protobufSpec = pickOnly sources.protobufVersions;
+              evSpec       = pickOnly sources.evVersions;
+              eventSpec    = pickOnly sources.eventVersions;
+              uvSpec       = pickOnly sources.uvVersions;
 
               php = pkgs.callPackage ./php/php.nix ({
                 inherit mkDep phpSpec flavor;
@@ -276,6 +285,20 @@
               protobuf = pkgs.callPackage ./php/protobuf.nix {
                 inherit mkDep php protobufSpec;
               };
+              # ReactPHP event-loop backends: ev (ExtEvLoop), event
+              # (ExtEventLoop), uv (ExtUvLoop). ev vendors libev in its own
+              # PECL source, so it takes no bundled C-lib input.
+              ev = pkgs.callPackage ./php/ev.nix {
+                inherit mkDep php evSpec;
+              };
+              event = pkgs.callPackage ./php/event.nix {
+                inherit mkDep php eventSpec;
+                inherit (deps) libevent openssl;
+              };
+              uv = pkgs.callPackage ./php/uv.nix {
+                inherit mkDep php uvSpec;
+                inherit (deps) libuv;
+              };
               tree = pkgs.callPackage ./shared/tree.nix {
                 bundledDeps = sharedDeps;
                 # tree still carries every .so — PECL extensions and PHP's
@@ -287,6 +310,7 @@
                 # = [] drops every .so before the tarball is emitted).
                 interpreterDeps = [
                   php xdebug imagick vips redis igbinary msgpack apcu pcov spx
+                  ev event uv
                 ]
                 # protobuf 5.x requires PHP >= 8.2 (package.xml <min>8.2.0).
                 # On 8.1 the protobuf derivation is never forced, so it never
@@ -430,6 +454,31 @@
                   '';
                   extraPayload = { from = "${spx}/pbs-assets/web-ui"; to = "share/php-spx/assets/web-ui"; };
                 };
+                # ReactPHP event-loop backends. React\EventLoop\Factory picks
+                # the first available of ExtUvLoop (uv) → ExtEvLoop (ev) →
+                # ExtEventLoop (event) → StreamSelectLoop, so installing any
+                # one of them is what lifts a ReactPHP app off
+                # stream_select()'s FD_SETSIZE ceiling onto epoll/kqueue.
+                #
+                # confPrefix=40 on ev and event: both compile ext/sockets
+                # integration (ev under `#if HAVE_SOCKETS`, event under
+                # --enable-event-sockets, each on by default) and reference
+                # `socket_ce` — a data symbol exported by sockets.so. PHP
+                # dlopens with RTLD_LAZY|RTLD_GLOBAL and RTLD_LAZY defers only
+                # *function* relocations, so a data symbol binds eagerly and
+                # the .so fails to load unless sockets.so came first. The core
+                # ships sockets at 20-sockets.ini, so these have to land at a
+                # later prefix — the same reason msgpack sits at 40. It also
+                # means ev and event are only usable alongside the sockets
+                # per-ext tarball; the manifest has no cross-extension
+                # requires field to express that, so bougie's install list has
+                # to pair them.
+                ev          = mkExt { extDrv = ev;      extName = "ev";      extVersion = evSpec.version;      confFragment = "extension=ev";    confPrefix = "40"; };
+                event       = mkExt { extDrv = event;   extName = "event";   extVersion = eventSpec.version;   confFragment = "extension=event"; confPrefix = "40"; };
+                # uv needs no such ordering: upstream declares socket_ce weak
+                # and resolves it with DL_FETCH_SYMBOL at MINIT, so uv.so
+                # dlopens standalone. Default 20- prefix applies.
+                uv          = mkExt { extDrv = uv;      extName = "uv";      extVersion = uvSpec.version;      confFragment = "extension=uv"; };
                 mbstring    = mkBuiltinExt "mbstring";
                 intl        = mkBuiltinExt "intl";
                 curl        = mkBuiltinExt "curl";

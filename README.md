@@ -109,6 +109,17 @@ the toolchain is a thin wrapper around nixpkgs's `clang`. `@rpath/`-relative
   backends (igbinary, msgpack, lzf, zstd, lz4) are not enabled.
 - **vips 1.0.13** as a per-ext download (Linux only), linked against bundled
   libvips + glib.
+- **ev 1.2.3 / event 3.1.6 / uv 0.3.0** as per-ext downloads — the three
+  event-loop backends [ReactPHP](https://reactphp.org/event-loop/) can run
+  on instead of its pure-PHP `StreamSelectLoop`, which is capped at
+  `FD_SETSIZE` descriptors. `React\EventLoop\Factory` picks the first
+  available of `ExtUvLoop` (uv) → `ExtEvLoop` (ev) → `ExtEventLoop` (event).
+  `ev` vendors libev in its own PECL source; `event` links bundled libevent
+  (core + extra + openssl), `uv` links bundled libuv. **`ev` and `event`
+  additionally require the `sockets` per-ext tarball** — both reference
+  `socket_ce`, a data symbol exported by `sockets.so`, and PHP binds data
+  relocations eagerly at `dlopen`, so neither loads without it. `uv` weak-links
+  the same symbol and loads standalone.
 
 ### What ships in the interpreter tarball (the core)
 
@@ -155,6 +166,9 @@ fetches the matching per-store-path tarballs on demand:
 | **gmp** | libgmp |
 | **pcov** | — |
 | **spx** | — (gz* symbols resolve against the interpreter's libz) |
+| **ev** *(requires sockets)* | — (libev is vendored in the PECL source) |
+| **event** *(requires sockets)* | libevent, openssl, zlib |
+| **uv** | libuv |
 | **gettext** *(Linux)* | — (glibc + musl both implement gettext in libc) |
 
 Each per-store-path tarball lives at `store/<name>-<ver>-<hash>/` after

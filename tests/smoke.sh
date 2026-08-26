@@ -156,6 +156,73 @@ else
     emit "NOTICE: spx.so not found at $_spx_so — skipping spx dlopen gate (per-ext tarball not extracted)"
 fi
 
+# 4e. ReactPHP event-loop backends. Three per-ext tarballs stand behind
+#     React\EventLoop's non-default loops: uv → ExtUvLoop, ev → ExtEvLoop,
+#     event → ExtEventLoop. Each gate skips with a NOTICE when its .so
+#     isn't extracted alongside /php; set UV_SO / EV_SO / EVENT_SO to test
+#     an explicit path.
+#
+#     ev.so and event.so both reference `socket_ce`, a *data* symbol
+#     exported by sockets.so, and PHP dlopens with RTLD_LAZY|RTLD_GLOBAL —
+#     which defers function relocations but binds data ones eagerly. So
+#     those two load only with sockets.so already loaded, which is why
+#     their conf.d fragments ship at prefix 40 (after 20-sockets.ini).
+#     These gates pin that contract: sockets is loaded explicitly, and
+#     each extension is asserted to publish the symbol ReactPHP's Factory
+#     probes for when it picks a loop.
+emit "reactphp event-loop backends"
+_sockets_so="${SOCKETS_SO:-$ext_dir/sockets.so}"
+
+# Every probe below runs under -n. These three DO ship auto-loading conf.d
+# fragments, so without -n the fragment loads the extension first and the
+# explicit -dextension= is a "Module already loaded" warning that lands in
+# $out. -n also makes each gate hermetic: it proves the .so loads given
+# exactly its stated prerequisites and nothing else, which is what makes
+# the sockets pairing above a real assertion rather than an artifact of
+# conf.d ordering. extension_dir still resolves — the relocation patch
+# computes it from /proc/self/exe at startup, not from php.ini — and the
+# paths passed here are absolute regardless.
+
+# uv needs no such pairing — upstream declares socket_ce weak and fills it
+# with DL_FETCH_SYMBOL at MINIT, so uv.so must load entirely on its own.
+# Loading it bare here is the assertion.
+_uv_so="${UV_SO:-$ext_dir/uv.so}"
+if [ -f "$_uv_so" ]; then
+    out=$("$PHP" -n -dextension="$_uv_so" \
+                  -r 'echo function_exists("uv_loop_new") ? "uv=ok\n" : "uv=missing\n";') \
+        || die "uv load failed"
+    printf '%s\n' "$out"
+    [ "$out" = "uv=ok" ] || die "uv did not register uv_loop_new(): $out"
+else
+    emit "NOTICE: uv.so not found at $_uv_so — skipping ExtUvLoop gate"
+fi
+
+_ev_so="${EV_SO:-$ext_dir/ev.so}"
+if [ -f "$_ev_so" ] && [ -f "$_sockets_so" ]; then
+    out=$("$PHP" -n -dextension="$_sockets_so" -dextension="$_ev_so" \
+                  -r 'echo class_exists("EvLoop") ? "ev=ok\n" : "ev=missing\n";') \
+        || die "ev load failed (sockets.so must load first — see the note above)"
+    printf '%s\n' "$out"
+    [ "$out" = "ev=ok" ] || die "ev did not register the EvLoop class: $out"
+elif [ -f "$_ev_so" ]; then
+    emit "NOTICE: sockets.so not found at $_sockets_so — skipping ExtEvLoop gate (ev.so cannot load without it)"
+else
+    emit "NOTICE: ev.so not found at $_ev_so — skipping ExtEvLoop gate"
+fi
+
+_event_so="${EVENT_SO:-$ext_dir/event.so}"
+if [ -f "$_event_so" ] && [ -f "$_sockets_so" ]; then
+    out=$("$PHP" -n -dextension="$_sockets_so" -dextension="$_event_so" \
+                  -r 'echo class_exists("EventBase") ? "event=ok\n" : "event=missing\n";') \
+        || die "event load failed (sockets.so must load first — see the note above)"
+    printf '%s\n' "$out"
+    [ "$out" = "event=ok" ] || die "event did not register the EventBase class: $out"
+elif [ -f "$_event_so" ]; then
+    emit "NOTICE: sockets.so not found at $_sockets_so — skipping ExtEventLoop gate (event.so cannot load without it)"
+else
+    emit "NOTICE: event.so not found at $_event_so — skipping ExtEventLoop gate"
+fi
+
 # 4b. opcache (zend_extension): on PHP 8.5+ it's built statically into
 #     bin/php and registers automatically. On 8.1–8.4 opcache.so ships
 #     only as a per-ext tarball, so the bare interpreter has no opcache
