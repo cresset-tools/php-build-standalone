@@ -29,9 +29,9 @@
   # OpenSSL 3.5.x is the current LTS line (supported through 2030). PBS
   # tracks 3.5.6; same pin and sha256 here.
   openssl = {
-    url = "https://github.com/openssl/openssl/releases/download/openssl-3.5.7/openssl-3.5.7.tar.gz";
-    sha256 = "a8c0d28a529ca480f9f36cf5792e2cd21984552a3c8e4aa11a24aa31aeac98e8";
-    version = "3.5.7";
+    url = "https://github.com/openssl/openssl/releases/download/openssl-3.5.8/openssl-3.5.8.tar.gz";
+    sha256 = "a8f84a39918ec6415ce765d9b429d313ba97b8143169c172e734b9514464f5b2";
+    version = "3.5.8";
   };
 
   # libxml2 — foundational for dom/xml/xmlreader/xmlwriter/simplexml
@@ -410,9 +410,9 @@
       sha256 = "e127be09a8506f4327c5cfa78a614b00d210714484ec215ce0011b4a03c00731";
     };
     "8.5" = {
-      version = "8.5.9";
-      url = "https://www.php.net/distributions/php-8.5.9.tar.xz";
-      sha256 = "0db7855f25bcd0ab1d592cdb35e284d6f6a5d2ae0f6f621122e364cc39b708f4";
+      version = "8.5.10";
+      url = "https://www.php.net/distributions/php-8.5.10.tar.xz";
+      sha256 = "6a8bebaa4d5a979a38db29a9373e9851f60c6b11f72172c585947e78f3081957";
     };
   };
 
@@ -653,9 +653,9 @@
   # bundled-dep set the PHP build uses is reused — no new shared/<dep>.nix
   # files are needed for MariaDB itself.
   mariadb = {
-    url = "https://archive.mariadb.org/mariadb-11.4.12/source/mariadb-11.4.12.tar.gz";
-    sha256 = "5ab7883db519bfcebfdd2aac09bc5544a12ce328f39edd46d0bf01690615ef6c";
-    version = "11.4.12";
+    url = "https://archive.mariadb.org/mariadb-11.4.13/source/mariadb-11.4.13.tar.gz";
+    sha256 = "1bb254b106d0a7ca871cfa18fa6e18d4b80a7430f9ec9d1571ec4271a13def96";
+    version = "11.4.13";
   };
 
   # Oracle MySQL Community Server. Unlike the single-entry tool pins above,
@@ -788,9 +788,9 @@
   # gmake-based build; depends on NSPR. NSS releases track Firefox;
   # any modern tag works for certutil's purposes.
   nss = {
-    url = "https://archive.mozilla.org/pub/security/nss/releases/NSS_3_127_RTM/src/nss-3.127.tar.gz";
-    sha256 = "5a899cad21ae2c9d3c5132de79726eda8df3b7fdf18eeb239fc544d43b87338b";
-    version = "3.127";
+    url = "https://archive.mozilla.org/pub/security/nss/releases/NSS_3_128_RTM/src/nss-3.128.tar.gz";
+    sha256 = "70ea638f4e4fc341b24782ef9af6d88a2d3280ef5e46736748411fe8ca586351";
+    version = "3.128";
   };
 
   # mkcert — FiloSottile's local-CA generator. Pure-Go static binary;
