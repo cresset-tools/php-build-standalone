@@ -66,6 +66,30 @@ export NSS_DISABLE_GTESTS=1
 export NSS_BUILD_NSPR=0
 export NSS_ENABLE_WERROR=0
 
+# LITTLE_ENDIAN=1 — works around an upstream NSS build bug that breaks
+# every non-Linux aarch64 gmake build from 3.128 onward (still broken on
+# NSS master as of 3.128; there is no later release to move to).
+#
+# NSS commit e57221034e01 ("Bug 2027768 - Fix build failure due to
+# missing gcm stubs if on big endian") put -DHAVE_PLATFORM_GHASH behind
+# `ifeq ($(LITTLE_ENDIAN),1)` in lib/freebl/Makefile, but added the
+# endianness probe that sets LITTLE_ENDIAN to coreconf/Linux.mk only —
+# it is the sole definition across all of coreconf. On Darwin the
+# variable is empty, so HAVE_PLATFORM_GHASH is never defined and gcm.c
+# compiles its fallback stubs (`#if !defined(HAVE_PLATFORM_GHASH)`).
+# ghash-aarch64.c still compiles the real implementations, because its
+# own guard keys off the C-level IS_LITTLE_ENDIAN that NSPR's headers
+# define regardless. Both land in libfreebl3.dylib and the link dies on
+# 5 duplicate symbols (gcm_HashInit_hw and friends).
+#
+# Setting it here restores the pre-3.128 behaviour. Every LITTLE_ENDIAN
+# site in freebl's Makefile gates only HAVE_PLATFORM_GHASH, and only
+# under arm/aarch64/ppc, so x86_64 targets never reach one. Linux is
+# unaffected either way: Linux.mk assigns with `:=`, which overrides the
+# environment, so it keeps its probed value. Every target PBS builds is
+# little-endian.
+export LITTLE_ENDIAN=1
+
 # Skip FIPS-mode `.chk` file generation. NSS's shlibsign command
 # dlopens the just-built libsoftokn3.so to compute an integrity hash;
 # inside the Nix sandbox the sibling libs aren't on LD_LIBRARY_PATH
