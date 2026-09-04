@@ -507,17 +507,27 @@
                 #     missing. So it gets the normal 20- fragment.
                 excimer     = mkExt { extDrv = excimer; extName = "excimer"; extVersion = excimerSpec.version; confFragment = "extension=excimer"; };
                 #
-                #   opentelemetry calls zend_observer_fcall_register() at MINIT
-                #     unconditionally (otel_observer.c), which switches on PHP's
-                #     observer path for every function call process-wide. The
-                #     only escape is `opentelemetry.conflicts` — a list of module
-                #     names whose presence disables it, meant for sitting next to
-                #     a vendor APM — there is no plain `disabled` INI. Paying
-                #     that on every project just because the tarball was
-                #     extracted is wrong, so it ships without an auto-loader
-                #     (confFragment=null, mirroring xdebug and pcov) and the user
-                #     opts in with -dextension=opentelemetry or a project conf.d.
-                opentelemetry = mkExt { extDrv = opentelemetry; extName = "opentelemetry"; extVersion = opentelemetrySpec.version; confFragment = null; };
+                #   opentelemetry also auto-loads, but at prefix 50 rather than
+                #     the default 20. It does call zend_observer_fcall_register()
+                #     at MINIT unconditionally (otel_observer.c), so loading it
+                #     switches PHP's observer path on process-wide — but that
+                #     cost is not the failure mode worth optimizing against.
+                #     Nobody has this extension by accident: it arrives because
+                #     someone asked for it, and the userland open-telemetry/*
+                #     packages degrade to a silent no-op when it isn't loaded,
+                #     which is a much worse thing to debug than the overhead.
+                #
+                #     The 50- prefix is load-bearing, not cosmetic.
+                #     check_conflicts() scans the live `module_registry` at MINIT
+                #     for the names in `opentelemetry.conflicts` and stands the
+                #     extension down when it finds one — the supported way to sit
+                #     beside a vendor APM (a Tideways or New Relic .so added
+                #     through `bougie ext add`, say). A module that has not
+                #     registered yet is invisible to that scan, so opentelemetry
+                #     has to come last: after the 20- core bucket and after the
+                #     40- pair above. The INI defaults to empty, so the check is
+                #     inert until someone configures it.
+                opentelemetry = mkExt { extDrv = opentelemetry; extName = "opentelemetry"; extVersion = opentelemetrySpec.version; confFragment = "extension=opentelemetry"; confPrefix = "50"; };
                 mbstring    = mkBuiltinExt "mbstring";
                 intl        = mkBuiltinExt "intl";
                 curl        = mkBuiltinExt "curl";

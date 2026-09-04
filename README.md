@@ -128,10 +128,11 @@ the toolchain is a thin wrapper around nixpkgs's `clang`. `@rpath/`-relative
   handlers so the `open-telemetry/*` Composer packages can auto-instrument
   function calls; span export stays in userland, over OTLP/HTTP+protobuf
   (we ship `protobuf`) rather than OTLP/gRPC (we do not ship `grpc`).
-  Neither needs a bundled C library. **`excimer` auto-loads; `opentelemetry`
-  does not** — it registers a process-wide observer at MINIT, so you enable
-  it deliberately with `-dextension=opentelemetry` or a project conf.d,
-  the same opt-in model as xdebug and pcov.
+  Neither needs a bundled C library, and both auto-load. `opentelemetry`
+  loads at `50-` rather than the usual `20-`: it checks the live module
+  registry at startup against `opentelemetry.conflicts` so it can stand
+  down beside a vendor APM, and a module that has not registered yet is
+  invisible to that check — so it has to come last.
 
 ### What ships in the interpreter tarball (the core)
 
@@ -182,7 +183,7 @@ fetches the matching per-store-path tarballs on demand:
 | **event** *(requires sockets)* | libevent, openssl, zlib |
 | **uv** | libuv |
 | **excimer** | — (librt/pthread come from libc) |
-| **opentelemetry** *(opt-in load)* | — |
+| **opentelemetry** *(loads at 50-)* | — |
 | **gettext** *(Linux)* | — (glibc + musl both implement gettext in libc) |
 
 Each per-store-path tarball lives at `store/<name>-<ver>-<hash>/` after

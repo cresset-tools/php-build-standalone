@@ -229,11 +229,11 @@ fi
 #     Each gate skips with a NOTICE when its .so isn't extracted alongside
 #     /php; set EXCIMER_SO / OPENTELEMETRY_SO for an explicit path.
 #
-#     -n for the same reason as 4e: excimer ships an auto-loading conf.d
-#     fragment, so without it the explicit -dextension= double-loads.
-#     opentelemetry ships none by design (it registers a global
-#     zend_observer at MINIT), which makes this gate the only place its
-#     load path gets exercised at all.
+#     -n for the same reason as 4e: both ship auto-loading conf.d
+#     fragments, so without it the explicit -dextension= double-loads.
+#     opentelemetry's fragment is 50- rather than 20- so that its
+#     check_conflicts() scan of the module registry can actually see the
+#     other extensions; the ordering assertion for that is gate 4g.
 emit "observability extensions"
 
 _excimer_so="${EXCIMER_SO:-$ext_dir/excimer.so}"
@@ -261,6 +261,22 @@ if [ -f "$_otel_so" ]; then
     [ "$out" = "otel=ok" ] || die "opentelemetry did not register hook(): $out"
 else
     emit "NOTICE: opentelemetry.so not found at $_otel_so — skipping opentelemetry gate"
+fi
+
+# 4g. conf.d load order: opentelemetry must come last.
+#     PHP parses conf.d in filename order, and opentelemetry's
+#     check_conflicts() inspects the live module registry at MINIT — it can
+#     only see extensions that already registered. That is why its fragment
+#     ships as 50-opentelemetry.ini rather than the default 20-. Anything
+#     sorting after it would be invisible to the conflicts check, so this
+#     gate fails if a later fragment ever appears. Only meaningful once
+#     per-ext tarballs have actually been extracted over /php.
+if [ -f /php/etc/php/conf.d/50-opentelemetry.ini ]; then
+    emit "conf.d order: opentelemetry loads last"
+    last=$(ls /php/etc/php/conf.d/ | sort | tail -n1)
+    [ "$last" = "50-opentelemetry.ini" ] || \
+        die "50-opentelemetry.ini must sort last in conf.d so check_conflicts() sees every other module; '$last' sorts after it"
+    emit "conf.d order OK (last = $last)"
 fi
 
 # 4b. opcache (zend_extension): on PHP 8.5+ it's built statically into

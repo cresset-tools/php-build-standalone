@@ -35,8 +35,9 @@ for the distribution wire format see `DISTRIBUTION.md`.
   profiler — the production-safe complement to xdebug/pcov/spx) and
   `opentelemetry` (the `zend_observer` bridge the `open-telemetry/*`
   Composer packages hook into for auto-instrumentation). Neither takes a
-  bundled C-lib; both manifests carry an empty closure. They differ on
-  auto-load — see the MINIT-cost trap below.
+  bundled C-lib; both manifests carry an empty closure. Both auto-load,
+  `excimer` at the usual 20- and `opentelemetry` at 50- — see the prefix
+  trap below for why that number matters.
 - **ReactPHP event loops:** `ev` / `event` / `uv` are the three backends
   [reactphp.org/event-loop](https://reactphp.org/event-loop/) documents as
   current (`ExtEvLoop` / `ExtEventLoop` / `ExtUvLoop`); without one, ReactPHP
@@ -422,19 +423,26 @@ per-store-path tarball.
   fills it via `DL_FETCH_SYMBOL` at MINIT. The manifest schema has no
   cross-extension `requires` field, so nothing at the index layer enforces
   the pairing — bougie's install list has to carry it.
-- **conf.d auto-load is a MINIT-cost decision, not a taste one.**
-  `excimer` auto-loads (`20-excimer.ini`) because its MINIT only registers
-  constants and classes — inert until userland constructs an
-  `ExcimerProfiler`, and profiling backends feature-detect on
-  `class_exists('ExcimerProfiler')`, so *not* shipping it would look like a
-  silent failure. `opentelemetry` does NOT auto-load (`confFragment = null`,
-  like xdebug and pcov) because `otel_observer.c` calls
-  `zend_observer_fcall_register()` at MINIT unconditionally, which switches
-  PHP's observer path on for every function call process-wide. There is no
-  `opentelemetry.disabled` INI — the only escape is
-  `opentelemetry.conflicts`, a module-name list meant for standing down next
-  to a vendor APM. Check what an extension does at MINIT before giving it a
-  fragment.
+- **`opentelemetry` loads at 50, and the prefix is load-bearing.**
+  `check_conflicts()` scans the live `module_registry` at MINIT for the
+  names in `opentelemetry.conflicts` and stands the extension down if it
+  finds one — the supported way to sit beside a vendor APM. A module that
+  has not registered yet is invisible to that scan, so opentelemetry has
+  to load after everything else: after the 20- core bucket and after the
+  40- pair (`ev`, `event`, `msgpack`). Moving it back to 20 would silently
+  break the conflicts feature rather than fail loudly. The INI defaults to
+  empty, so the check is inert until configured.
+- **Check what an extension does at MINIT before giving it a fragment.**
+  `excimer` at 20- is free — its MINIT registers constants and classes and
+  nothing else, and profiling backends feature-detect on
+  `class_exists('ExcimerProfiler')`, so *withholding* the fragment is what
+  would look broken. `opentelemetry` genuinely costs something (a
+  process-wide `zend_observer_fcall_register()`), and it still auto-loads,
+  because a silent no-op in the userland `open-telemetry/*` packages is
+  worse to debug than the overhead. The rule is not "cheap MINIT gets a
+  fragment" — it is that `confFragment = null` is for things nobody wants
+  on by default (`xdebug`, `pcov`: debugging and coverage), not for things
+  that merely cost something.
 - **`event` is the only PECL ext whose build runs `bin/php`.** Its
   configure regenerates `php8/php_event.stub.php`, which fires PHP's
   `gen_stub.php` rule. The PHP dep isn't finalized at that point (RPATHs
