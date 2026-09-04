@@ -26,6 +26,30 @@ mkdir -p "$PBS_SOURCES"
 tar -xf "$PBS_SRC_OPENTELEMETRY" -C "$PBS_SOURCES"
 cd "$src_dir"
 
+# Darwin: upstream's config.m4 passes "-Wall -Wextra -Werror
+# -Wno-unused-parameter" as PHP_NEW_EXTENSION's cflags argument
+# (config.m4:93), which PHP's build system appends to every per-object
+# compile line *after* the CFLAGS we export. Our Darwin clang wrapper
+# prepends `-Wl,-headerpad_max_install_names` to every invocation
+# (toolchain-darwin.nix:49), including `-c` compile steps, so clang
+# emits `'linker' input unused [-Wunused-command-line-argument]` and
+# opentelemetry's -Werror turns it fatal on the very first object:
+#
+#   clang: error: -Wl,-headerpad_max_install_names: 'linker' input
+#   unused [-Werror,-Wunused-command-line-argument]
+#   make: *** [Makefile:209: opentelemetry.lo] Error 1
+#
+# -Qunused-arguments suppresses the warning's *emission*, so a later
+# -Werror in any form has nothing to promote — the same fix, for the
+# same reason, as php/build-spx.sh. (A `-Wno-error=unused-command-line-
+# argument` would survive upstream's blanket -Werror on clang 21, but
+# not a specific -Werror=unused-command-line-argument; -Qunused-arguments
+# is order-independent by construction.) Linux's clang wrapper already
+# bakes in -Wno-unused-command-line-argument, so this is Darwin-only.
+if [ -n "${MACOSX_DEPLOYMENT_TARGET:-}" ]; then
+  export CFLAGS="$CFLAGS -Qunused-arguments"
+fi
+
 "$PBS_DEP_PHP/bin/phpize"
 
 ./configure \
