@@ -242,6 +242,8 @@
               evSpec       = pickOnly sources.evVersions;
               eventSpec    = pickOnly sources.eventVersions;
               uvSpec       = pickOnly sources.uvVersions;
+              excimerSpec  = pickOnly sources.excimerVersions;
+              opentelemetrySpec = pickOnly sources.opentelemetryVersions;
 
               php = pkgs.callPackage ./php/php.nix ({
                 inherit mkDep phpSpec flavor;
@@ -299,6 +301,14 @@
                 inherit mkDep php uvSpec;
                 inherit (deps) libuv;
               };
+              # Observability: excimer (sampling profiler) and opentelemetry
+              # (zend_observer bridge). Neither takes a bundled C-lib input.
+              excimer = pkgs.callPackage ./php/excimer.nix {
+                inherit mkDep php excimerSpec;
+              };
+              opentelemetry = pkgs.callPackage ./php/opentelemetry.nix {
+                inherit mkDep php opentelemetrySpec;
+              };
               tree = pkgs.callPackage ./shared/tree.nix {
                 bundledDeps = sharedDeps;
                 # tree still carries every .so — PECL extensions and PHP's
@@ -310,7 +320,7 @@
                 # = [] drops every .so before the tarball is emitted).
                 interpreterDeps = [
                   php xdebug imagick vips redis igbinary msgpack apcu pcov spx
-                  ev event uv
+                  ev event uv excimer opentelemetry
                 ]
                 # protobuf 5.x requires PHP >= 8.2 (package.xml <min>8.2.0).
                 # On 8.1 the protobuf derivation is never forced, so it never
@@ -479,6 +489,35 @@
                 # and resolves it with DL_FETCH_SYMBOL at MINIT, so uv.so
                 # dlopens standalone. Default 20- prefix applies.
                 uv          = mkExt { extDrv = uv;      extName = "uv";      extVersion = uvSpec.version;      confFragment = "extension=uv"; };
+                # Observability pair. Both are regular `extension=` modules
+                # (STANDARD_MODULE_HEADER + ZEND_GET_MODULE), NOT
+                # zend_extensions — so neither sets zendExtension, same as spx
+                # and pcov. Neither has a bundled C-lib, so both manifests
+                # carry an empty closure.
+                #
+                # They differ on auto-load, and the reason is what each does at
+                # MINIT:
+                #
+                #   excimer registers constants and the Excimer* classes and
+                #     nothing else — it is completely inert until userland
+                #     constructs an ExcimerProfiler. Auto-loading costs nothing
+                #     and is required for the feature detection that Sentry's
+                #     profiler and friends do (`class_exists('ExcimerProfiler')`),
+                #     which silently disables profiling if the classes are
+                #     missing. So it gets the normal 20- fragment.
+                excimer     = mkExt { extDrv = excimer; extName = "excimer"; extVersion = excimerSpec.version; confFragment = "extension=excimer"; };
+                #
+                #   opentelemetry calls zend_observer_fcall_register() at MINIT
+                #     unconditionally (otel_observer.c), which switches on PHP's
+                #     observer path for every function call process-wide. The
+                #     only escape is `opentelemetry.conflicts` — a list of module
+                #     names whose presence disables it, meant for sitting next to
+                #     a vendor APM — there is no plain `disabled` INI. Paying
+                #     that on every project just because the tarball was
+                #     extracted is wrong, so it ships without an auto-loader
+                #     (confFragment=null, mirroring xdebug and pcov) and the user
+                #     opts in with -dextension=opentelemetry or a project conf.d.
+                opentelemetry = mkExt { extDrv = opentelemetry; extName = "opentelemetry"; extVersion = opentelemetrySpec.version; confFragment = null; };
                 mbstring    = mkBuiltinExt "mbstring";
                 intl        = mkBuiltinExt "intl";
                 curl        = mkBuiltinExt "curl";

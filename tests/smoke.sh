@@ -223,6 +223,46 @@ else
     emit "NOTICE: event.so not found at $_event_so — skipping ExtEventLoop gate"
 fi
 
+# 4f. Observability pair: excimer (sampling profiler) and opentelemetry
+#     (zend_observer bridge). Both are regular `extension=` modules with no
+#     bundled C-lib, so a bare -dextension= load is the whole contract.
+#     Each gate skips with a NOTICE when its .so isn't extracted alongside
+#     /php; set EXCIMER_SO / OPENTELEMETRY_SO for an explicit path.
+#
+#     -n for the same reason as 4e: excimer ships an auto-loading conf.d
+#     fragment, so without it the explicit -dextension= double-loads.
+#     opentelemetry ships none by design (it registers a global
+#     zend_observer at MINIT), which makes this gate the only place its
+#     load path gets exercised at all.
+emit "observability extensions"
+
+_excimer_so="${EXCIMER_SO:-$ext_dir/excimer.so}"
+if [ -f "$_excimer_so" ]; then
+    # ExcimerProfiler must exist: profiling backends feature-detect on the
+    # class and silently disable themselves when it is missing.
+    out=$("$PHP" -n -dextension="$_excimer_so" \
+                  -r 'echo class_exists("ExcimerProfiler") ? "excimer=ok\n" : "excimer=missing\n";') \
+        || die "excimer load failed"
+    printf '%s\n' "$out"
+    [ "$out" = "excimer=ok" ] || die "excimer did not register ExcimerProfiler: $out"
+else
+    emit "NOTICE: excimer.so not found at $_excimer_so — skipping excimer gate"
+fi
+
+_otel_so="${OPENTELEMETRY_SO:-$ext_dir/opentelemetry.so}"
+if [ -f "$_otel_so" ]; then
+    # The hook() function is the entire userland surface — the
+    # open-telemetry/* packages call it to register auto-instrumentation,
+    # and without it they degrade to manual instrumentation only.
+    out=$("$PHP" -n -dextension="$_otel_so" \
+                  -r 'echo function_exists("OpenTelemetry\\Instrumentation\\hook") ? "otel=ok\n" : "otel=missing\n";') \
+        || die "opentelemetry load failed"
+    printf '%s\n' "$out"
+    [ "$out" = "otel=ok" ] || die "opentelemetry did not register hook(): $out"
+else
+    emit "NOTICE: opentelemetry.so not found at $_otel_so — skipping opentelemetry gate"
+fi
+
 # 4b. opcache (zend_extension): on PHP 8.5+ it's built statically into
 #     bin/php and registers automatically. On 8.1–8.4 opcache.so ships
 #     only as a per-ext tarball, so the bare interpreter has no opcache

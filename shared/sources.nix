@@ -566,6 +566,56 @@
     };
   };
 
+  # --- Observability -------------------------------------------------
+  #
+  # The profiling/tracing set, alongside xdebug (step debugging), pcov
+  # (coverage) and spx (flame-graph profiling). Neither of these needs a
+  # bundled C-library: excimer's timer backend is POSIX timers / kqueue
+  # from libc, and opentelemetry's config.m4 is upstream's skeleton with
+  # every dependency probe still commented out.
+
+  # excimer PECL extension. Low-overhead sampling profiler from Wikimedia —
+  # the production complement to xdebug and spx, which are both too heavy to
+  # leave on under load. Sentry's PHP profiler and Laravel Nightwatch drive
+  # it. 1.2.x declares <min>7.1.0</min> with no ceiling.
+  #
+  # Links librt (timer_create) + libpthread on Linux and takes the kqueue
+  # path on Darwin — both system libraries, so the manifest closure stays
+  # empty. Building against the CentOS 7 sysroot is load-bearing here in a
+  # way it usually isn't: config.m4 probes for `gettid` (glibc 2.30+) and
+  # `pthread_attr_setsigmask_np` (glibc 2.32+), neither of which exists at
+  # our 2.17 floor, so both probes fail and excimer compiles its portable
+  # fallbacks — which is exactly what we want to ship.
+  excimerVersions = {
+    "1.2" = {
+      version = "1.2.6";
+      url = "https://pecl.php.net/get/excimer-1.2.6.tgz";
+      sha256 = "7b5fe1f68f2b1a62bd0394d4bf165eafe6b7ceb3fc20ab885e733d356db0d034";
+    };
+  };
+
+  # opentelemetry PECL extension. Registers zend_observer fcall handlers so
+  # the userland open-telemetry/* Composer packages can auto-instrument
+  # function calls without patching application code. Without it those
+  # packages still work but only for manual instrumentation.
+  #
+  # No external C-library: upstream's config.m4 is the `pecl generate`
+  # skeleton with every PKG_CHECK_MODULES / PHP_CHECK_LIBRARY block left
+  # commented out, and PHP_NEW_EXTENSION names only opentelemetry.c and
+  # otel_observer.c. It does compile with `-Wall -Wextra -Werror`, which
+  # our clang 18 has to clear — see php/build-opentelemetry.sh.
+  #
+  # 1.2.x declares <min>7.1.0</min> with no ceiling. Note this ships only
+  # the observer API; OTLP export happens in userland, over HTTP+protobuf
+  # (we ship ext-protobuf) rather than gRPC (we do not ship ext-grpc).
+  opentelemetryVersions = {
+    "1.2" = {
+      version = "1.2.1";
+      url = "https://pecl.php.net/get/opentelemetry-1.2.1.tgz";
+      sha256 = "de8315ed3299536f327360a37f03618ab8684c02fbf8dfd8f489c025d88a6498";
+    };
+  };
+
   # --- ReactPHP event-loop backends -----------------------------------
   #
   # ReactPHP picks its EventLoop implementation at runtime from whichever

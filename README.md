@@ -120,6 +120,18 @@ the toolchain is a thin wrapper around nixpkgs's `clang`. `@rpath/`-relative
   `socket_ce`, a data symbol exported by `sockets.so`, and PHP binds data
   relocations eagerly at `dlopen`, so neither loads without it. `uv` weak-links
   the same symbol and loads standalone.
+- **excimer 1.2.6 / opentelemetry 1.2.1** as per-ext downloads — the
+  observability pair. `excimer` is Wikimedia's sampling profiler: unlike
+  xdebug (step debugging), pcov (coverage) and spx (flame-graph UI), it is
+  cheap enough to leave enabled under real traffic, and it is what Sentry's
+  PHP profiler drives. `opentelemetry` exposes PHP's `zend_observer` fcall
+  handlers so the `open-telemetry/*` Composer packages can auto-instrument
+  function calls; span export stays in userland, over OTLP/HTTP+protobuf
+  (we ship `protobuf`) rather than OTLP/gRPC (we do not ship `grpc`).
+  Neither needs a bundled C library. **`excimer` auto-loads; `opentelemetry`
+  does not** — it registers a process-wide observer at MINIT, so you enable
+  it deliberately with `-dextension=opentelemetry` or a project conf.d,
+  the same opt-in model as xdebug and pcov.
 
 ### What ships in the interpreter tarball (the core)
 
@@ -169,6 +181,8 @@ fetches the matching per-store-path tarballs on demand:
 | **ev** *(requires sockets)* | — (libev is vendored in the PECL source) |
 | **event** *(requires sockets)* | libevent, openssl, zlib |
 | **uv** | libuv |
+| **excimer** | — (librt/pthread come from libc) |
+| **opentelemetry** *(opt-in load)* | — |
 | **gettext** *(Linux)* | — (glibc + musl both implement gettext in libc) |
 
 Each per-store-path tarball lives at `store/<name>-<ver>-<hash>/` after

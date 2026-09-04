@@ -23,13 +23,20 @@ for the distribution wire format see `DISTRIBUTION.md`.
   runs on Alpine; PHP + extensions only, no service/tool bundles — added 0.2.5),
   and `aarch64-apple-darwin` (macOS 11+). No aarch64-linux yet.
 - **Per-ext tarballs:** xdebug, imagick, redis, vips *(Linux only)*,
-  igbinary, msgpack, apcu, pcov, spx, ev, event, uv, plus every shared
+  igbinary, msgpack, apcu, pcov, spx, ev, event, uv, excimer,
+  opentelemetry, plus every shared
   extension PHP's configure produces (curl, gd, intl, mbstring, mysqli,
   pdo_mysql, pdo, pgsql, pdo_pgsql, sqlite3, pdo_sqlite, bz2, zip, soap,
   exif, bcmath, calendar, ftp, shmop, sockets, sysv{msg,sem,shm}, gmp, xsl,
   ctype, dom, fileinfo, iconv, phar, posix, simplexml, tokenizer, xml,
   xmlreader, xmlwriter, mbstring, opcache *(.so on 8.1–8.4; static into
   bin/php on 8.5)*, gettext *(Linux only)*).
+- **Observability:** `excimer` (Wikimedia's low-overhead sampling
+  profiler — the production-safe complement to xdebug/pcov/spx) and
+  `opentelemetry` (the `zend_observer` bridge the `open-telemetry/*`
+  Composer packages hook into for auto-instrumentation). Neither takes a
+  bundled C-lib; both manifests carry an empty closure. They differ on
+  auto-load — see the MINIT-cost trap below.
 - **ReactPHP event loops:** `ev` / `event` / `uv` are the three backends
   [reactphp.org/event-loop](https://reactphp.org/event-loop/) documents as
   current (`ExtEvLoop` / `ExtEventLoop` / `ExtUvLoop`); without one, ReactPHP
@@ -415,6 +422,19 @@ per-store-path tarball.
   fills it via `DL_FETCH_SYMBOL` at MINIT. The manifest schema has no
   cross-extension `requires` field, so nothing at the index layer enforces
   the pairing — bougie's install list has to carry it.
+- **conf.d auto-load is a MINIT-cost decision, not a taste one.**
+  `excimer` auto-loads (`20-excimer.ini`) because its MINIT only registers
+  constants and classes — inert until userland constructs an
+  `ExcimerProfiler`, and profiling backends feature-detect on
+  `class_exists('ExcimerProfiler')`, so *not* shipping it would look like a
+  silent failure. `opentelemetry` does NOT auto-load (`confFragment = null`,
+  like xdebug and pcov) because `otel_observer.c` calls
+  `zend_observer_fcall_register()` at MINIT unconditionally, which switches
+  PHP's observer path on for every function call process-wide. There is no
+  `opentelemetry.disabled` INI — the only escape is
+  `opentelemetry.conflicts`, a module-name list meant for standing down next
+  to a vendor APM. Check what an extension does at MINIT before giving it a
+  fragment.
 - **`event` is the only PECL ext whose build runs `bin/php`.** Its
   configure regenerates `php8/php_event.stub.php`, which fires PHP's
   `gen_stub.php` rule. The PHP dep isn't finalized at that point (RPATHs
