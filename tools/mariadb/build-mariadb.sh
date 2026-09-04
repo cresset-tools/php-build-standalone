@@ -92,12 +92,12 @@ cd build
 # github at make time, which the Nix sandbox blocks. CMake's download step
 # checks <DOWNLOAD_DIR>/<filename> against URL_HASH and skips the network
 # fetch if a matching file is already there. Copy the Nix-fetched zip
-# (PBS_SRC_LIBFMT, identical contents to upstream's pinned 12.1.0 release)
+# (PBS_SRC_LIBFMT, identical contents to upstream's pinned 12.2.0 release)
 # into the location cmake's libfmt ExternalProject_Add expects:
-# <build>/extra/libfmt/src/fmt-12.1.0.zip. The URL_MD5 check in libfmt.cmake
+# <build>/extra/libfmt/src/fmt-12.2.0.zip. The URL_MD5 check in libfmt.cmake
 # verifies the same bytes, so no patching of the cmake module is needed.
 mkdir -p extra/libfmt/src
-cp "$PBS_SRC_LIBFMT" extra/libfmt/src/fmt-12.1.0.zip
+cp "$PBS_SRC_LIBFMT" extra/libfmt/src/fmt-12.2.0.zip
 
 # MariaDB's cmake/maintainer.cmake adds -Werror to the warning set when
 # building from a source tree (any CMAKE_BUILD_TYPE that isn't an installed
@@ -110,6 +110,17 @@ cp "$PBS_SRC_LIBFMT" extra/libfmt/src/fmt-12.1.0.zip
 # so demoting just this one back to a warning is the surgical fix.
 export CFLAGS="${CFLAGS:-} -Wno-error=cast-function-type-strict"
 export CXXFLAGS="${CXXFLAGS:-} -Wno-error=cast-function-type-strict"
+
+# PLUGIN_DUCKDB=NO joins the storage engines we already decline below.
+# 11.4.13 added storage/duckdb — an embedded OLAP engine vendored as a
+# git submodule inside the tarball. It is Linux-only (its CMakeLists
+# returns early on anything else), so it changes nothing on Darwin, but
+# on Linux it builds by default and would drag the whole of DuckDB into
+# a tarball meant for local development. It also cannot build here as-is:
+# its ExternalProject PATCH_COMMAND shells out to `git apply`, and git is
+# not among the derivation's inputs, so the patch step dies with 127.
+# Declining the plugin is both the cheaper and the more faithful answer —
+# adding git would buy us an engine we do not ship.
 
 cmake -G "Unix Makefiles" \
   -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
@@ -154,6 +165,7 @@ cmake -G "Unix Makefiles" \
   -DPLUGIN_COLUMNSTORE=NO \
   -DPLUGIN_S3=NO \
   -DPLUGIN_OQGRAPH=NO \
+  -DPLUGIN_DUCKDB=NO \
   -DPLUGIN_CRACKLIB_PASSWORD_CHECK=NO \
   -DPLUGIN_PROVIDER_BZIP2=NO \
   -DPLUGIN_PROVIDER_LZ4=NO \
