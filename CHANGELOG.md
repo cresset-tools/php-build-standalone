@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.2.18](https://github.com/cresset-tools/php-build-standalone/compare/v0.2.17...v0.2.18) (2026-09-04)
+
+
+### Features
+
+* **ext:** add the observability pair — excimer and opentelemetry ([13fe6cb](https://github.com/cresset-tools/php-build-standalone/commit/13fe6cb4f75d531b22674ddd1cda372829bdf544))
+
+
+### Bug Fixes
+
+* **ext:** unbreak the opentelemetry build on Darwin ([#113](https://github.com/cresset-tools/php-build-standalone/issues/113)) ([4a7a2a8](https://github.com/cresset-tools/php-build-standalone/commit/4a7a2a83459d948a562726565f1219a64b5789e0))
+
 ## [0.2.17](https://github.com/cresset-tools/php-build-standalone/compare/v0.2.16...v0.2.17) (2026-08-26)
 
 
