@@ -16,8 +16,9 @@
 #
 # `mariadbSpec` is sources.mariadb — kept as a separate arg so flake.nix
 # can pin alternate MariaDB versions in the future without duplicating
-# this derivation.
-{ mkDep, pkgs, mariadbSpec
+# this derivation. `libfmtSpec` is sources.mariadb-libfmt, the archive
+# MariaDB's own cmake wants to download at build time.
+{ mkDep, pkgs, mariadbSpec, libfmtSpec
 , zlib, openssl, ncurses, libedit, pcre2
 , libxcrypt ? null  # Linux-only; Darwin's libc provides crypt(3) natively.
 }:
@@ -28,17 +29,19 @@ let
   # cmake expects and let build-mariadb.sh place it where the download
   # step looks — the URL_HASH check then succeeds without touching the
   # network. This MUST track the version in the MariaDB tarball's own
-  # cmake/libfmt.cmake and move in the same commit as a MariaDB bump: the
-  # staged filename is version-keyed, so a stale pin doesn't fail loudly —
-  # cmake simply doesn't find the file it wants and falls back to the
-  # network, which then dies in the sandbox as an opaque download error.
-  # (That is exactly what MariaDB 11.4.13 did, moving 12.1.0 -> 12.2.0.)
-  # Checking: grep FMT_VERSION or the URL in <src>/cmake/libfmt.cmake.
-  libfmtVersion = "12.2.0";
-  libfmtSrc = pkgs.fetchurl {
-    url = "https://github.com/fmtlib/fmt/releases/download/${libfmtVersion}/fmt-${libfmtVersion}.zip";
-    sha256 = "a2f4a8d51178f954e4c339007f77edd76ba0cb2e36f87a48e5a5403d9be5878f";
-  };
+  # cmake/libfmt.cmake: the staged filename is version-keyed, so a stale
+  # pin doesn't fail loudly — cmake simply doesn't find the file it wants
+  # and falls back to the network, which then dies in the sandbox as an
+  # opaque download error. (That is exactly what MariaDB 11.4.13 did,
+  # moving 12.1.0 -> 12.2.0.)
+  #
+  # The pin lives in sources.mariadb-libfmt so shared/update/
+  # mariadb-libfmt.sh can move it alongside a MariaDB bump instead of
+  # waiting for someone to notice; build-mariadb.sh still asserts the two
+  # agree, since the updater only runs on the weekly schedule and a
+  # hand-edited sources.mariadb would otherwise skip the check.
+  libfmtVersion = libfmtSpec.version;
+  libfmtSrc = pkgs.fetchurl { inherit (libfmtSpec) url sha256; };
 in
 mkDep {
   name = "mariadb";
