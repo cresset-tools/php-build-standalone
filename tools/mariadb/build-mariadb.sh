@@ -30,6 +30,7 @@ set -euo pipefail
 : "${PBS_DEP_LIBEDIT:?}"
 : "${PBS_DEP_PCRE2:?}"
 : "${PBS_SRC_LIBFMT:?}"
+: "${PBS_LIBFMT_VERSION:?}"
 
 # MariaDB's bundled PCRE2 path triggers an ExternalProject_Add download
 # at CMake-configure time, which fails inside the Nix sandbox (no network).
@@ -92,12 +93,32 @@ cd build
 # github at make time, which the Nix sandbox blocks. CMake's download step
 # checks <DOWNLOAD_DIR>/<filename> against URL_HASH and skips the network
 # fetch if a matching file is already there. Copy the Nix-fetched zip
-# (PBS_SRC_LIBFMT, identical contents to upstream's pinned 12.1.0 release)
-# into the location cmake's libfmt ExternalProject_Add expects:
-# <build>/extra/libfmt/src/fmt-12.1.0.zip. The URL_MD5 check in libfmt.cmake
-# verifies the same bytes, so no patching of the cmake module is needed.
+# (PBS_SRC_LIBFMT, identical contents to the release upstream pins) into the
+# location cmake's libfmt ExternalProject_Add expects:
+# <build>/extra/libfmt/src/fmt-<version>.zip. The URL_MD5 check in
+# libfmt.cmake verifies the same bytes, so no patching of the cmake module
+# is needed.
+#
+# The filename is version-keyed, so a PBS_LIBFMT_VERSION that disagrees with
+# the tarball's cmake/libfmt.cmake stages a file cmake never looks at and
+# the build falls through to a sandboxed network fetch. Fail here instead,
+# where the cause is legible, rather than 20 minutes later as a download
+# error.
 mkdir -p extra/libfmt/src
-cp "$PBS_SRC_LIBFMT" extra/libfmt/src/fmt-12.1.0.zip
+cp "$PBS_SRC_LIBFMT" "extra/libfmt/src/fmt-${PBS_LIBFMT_VERSION}.zip"
+
+# libfmt.cmake lists more than one candidate (a legacy release for GCC
+# < 4.9 and the current one for everything else), so assert membership
+# rather than guessing which branch applies to this toolchain.
+fmt_wanted="$(sed -nE 's|.*/fmt/releases/download/([0-9]+\.[0-9]+\.[0-9]+)/.*|\1|p' \
+  ../cmake/libfmt.cmake 2>/dev/null || true)"
+if [ -n "$fmt_wanted" ] && ! printf '%s\n' "$fmt_wanted" | grep -qx "$PBS_LIBFMT_VERSION"; then
+  echo "build-mariadb: libfmt pin mismatch — cmake/libfmt.cmake references" >&2
+  printf '  %s\n' $fmt_wanted >&2
+  echo "  but PBS_LIBFMT_VERSION is $PBS_LIBFMT_VERSION." >&2
+  echo "  Update libfmtVersion + sha256 in tools/mariadb/mariadb.nix." >&2
+  exit 1
+fi
 
 # MariaDB's cmake/maintainer.cmake adds -Werror to the warning set when
 # building from a source tree (any CMAKE_BUILD_TYPE that isn't an installed
@@ -111,6 +132,15 @@ cp "$PBS_SRC_LIBFMT" extra/libfmt/src/fmt-12.1.0.zip
 export CFLAGS="${CFLAGS:-} -Wno-error=cast-function-type-strict"
 export CXXFLAGS="${CXXFLAGS:-} -Wno-error=cast-function-type-strict"
 
+# -DPLUGIN_DUCKDB=NO: MariaDB 11.4.13 added a DuckDB storage engine
+# (storage/duckdb, MODULE_ONLY) that builds a vendored DuckDB from
+# third_parties/ via ExternalProject. Its patch step shells out to a tool
+# the sandbox doesn't carry (exits 127), and DuckDB itself is an enormous
+# C++ analytics engine — well outside what this local-dev server bundle is
+# for. Disabled alongside the other heavyweight opt-outs.
+#
+# NOTE: every line below is one backslash-continued command — a `#` comment
+# between the flags would swallow the remainder of the invocation.
 cmake -G "Unix Makefiles" \
   -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
   -DCMAKE_INSTALL_PREFIX="$PBS_DEPS" \
@@ -147,6 +177,7 @@ cmake -G "Unix Makefiles" \
   -DWITH_UNIT_TESTS=OFF \
   -DWITH_EMBEDDED_SERVER=OFF \
   -DWITH_WSREP=OFF \
+  -DPLUGIN_DUCKDB=NO \
   -DPLUGIN_ROCKSDB=NO \
   -DPLUGIN_MROONGA=NO \
   -DPLUGIN_SPIDER=NO \

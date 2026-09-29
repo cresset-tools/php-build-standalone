@@ -27,11 +27,17 @@ let
   # sandbox (no network). We pre-fetch the exact pinned URL the upstream
   # cmake expects and let build-mariadb.sh place it where the download
   # step looks — the URL_HASH check then succeeds without touching the
-  # network. Pinned against MariaDB 11.4.10's cmake/libfmt.cmake; bump
-  # in lockstep with MariaDB.
+  # network. This MUST track the version in the MariaDB tarball's own
+  # cmake/libfmt.cmake and move in the same commit as a MariaDB bump: the
+  # staged filename is version-keyed, so a stale pin doesn't fail loudly —
+  # cmake simply doesn't find the file it wants and falls back to the
+  # network, which then dies in the sandbox as an opaque download error.
+  # (That is exactly what MariaDB 11.4.13 did, moving 12.1.0 -> 12.2.0.)
+  # Checking: grep FMT_VERSION or the URL in <src>/cmake/libfmt.cmake.
+  libfmtVersion = "12.2.0";
   libfmtSrc = pkgs.fetchurl {
-    url = "https://github.com/fmtlib/fmt/releases/download/12.1.0/fmt-12.1.0.zip";
-    sha256 = "695fd197fa5aff8fc67b5f2bbc110490a875cdf7a41686ac8512fb480fa8ada7";
+    url = "https://github.com/fmtlib/fmt/releases/download/${libfmtVersion}/fmt-${libfmtVersion}.zip";
+    sha256 = "a2f4a8d51178f954e4c339007f77edd76ba0cb2e36f87a48e5a5403d9be5878f";
   };
 in
 mkDep {
@@ -43,6 +49,9 @@ mkDep {
        ++ pkgs.lib.optionals (libxcrypt != null) [ libxcrypt ];
   extraEnv = {
     PBS_SRC_LIBFMT = libfmtSrc;
+    # build-mariadb.sh stages the zip under the version-keyed name cmake
+    # looks for; pass the version so the two can't drift apart.
+    PBS_LIBFMT_VERSION = libfmtVersion;
   };
   # CMake + bison are the build-system entry points. pkg-config is used by
   # the OpenSSL detection probe. perl is needed by MariaDB's build-time
