@@ -677,6 +677,7 @@
           mariadbBundledDeps = map (n: deps.${n}) mariadbBundledDepNames;
           mariadb = pkgs.callPackage ./tools/mariadb/mariadb.nix ({
             inherit mkDep mariadbSpec;
+            libfmtSpec = sources.mariadb-libfmt;
             inherit (deps) zlib openssl ncurses libedit pcre2;
           } // pkgs.lib.optionalAttrs (!darwin) {
             inherit (deps) libxcrypt;
