@@ -187,11 +187,20 @@ because the Nix CLI treats `.` as an attribute-path separator.
 
 ### Bumping a version
 
-Driven by `nix run .#update <pkg>` (`shared/update/<pkg>.sh`).
+Driven by `scripts/update.py [--package <pkg>] [--dry-run]`, which runs
+the per-package scripts under `shared/update/<pkg>.sh` and is the **sole
+writer** of `shared/sources.nix` — the scripts only emit
+`{version,url,sha256}` JSON on stdout. (There is no `.#update` flake
+app; `.github/workflows/update-sources.yml` calls the script directly.)
 The PHP bump helper is `scripts/update-php-version.sh`; the C-lib bump
-helper is `scripts/update-lib.sh`. Either edits `shared/sources.nix`
-in place; commit message follows Conventional Commits (release-please
-drives versioning).
+helper is `scripts/update-lib.sh`. Commit messages follow Conventional
+Commits (release-please drives versioning).
+
+That "sole writer" rule is why a pin some *other* file needs still lives
+in `sources.nix`: `sources.mariadb-libfmt` is the fmt archive MariaDB's
+own `cmake/libfmt.cmake` wants to download at build time, and it sits
+there so `shared/update/mariadb-libfmt.sh` can move it in step with a
+MariaDB bump. `tools/mariadb/build-mariadb.sh` asserts the two agree.
 
 When a PHP minor's patch version moves, the previously-shipped patch's
 tag is superseded — `auto-freeze-superseded.sh` captures the old
