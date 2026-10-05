@@ -29,9 +29,9 @@
   # OpenSSL 3.5.x is the current LTS line (supported through 2030). PBS
   # tracks 3.5.6; same pin and sha256 here.
   openssl = {
-    url = "https://github.com/openssl/openssl/releases/download/openssl-3.5.8/openssl-3.5.8.tar.gz";
-    sha256 = "a8f84a39918ec6415ce765d9b429d313ba97b8143169c172e734b9514464f5b2";
-    version = "3.5.8";
+    url = "https://github.com/openssl/openssl/releases/download/openssl-3.5.9/openssl-3.5.9.tar.gz";
+    sha256 = "603f5602e2eef00d77fbd429d34dcd5822bb301757a1bc9cdb24c670f1eb859a";
+    version = "3.5.9";
   };
 
   # libxml2 — foundational for dom/xml/xmlreader/xmlwriter/simplexml
@@ -89,9 +89,9 @@
 
   # libpng — for gd extension. Depends on zlib.
   libpng = {
-    url = "https://download.sourceforge.net/libpng/libpng-1.6.58.tar.gz";
-    sha256 = "8c9b05b675ca7301a458df2c2e46f26e1d41ff36b8863f8c33530bc58c2e6225";
-    version = "1.6.58";
+    url = "https://download.sourceforge.net/libpng/libpng-1.6.59.tar.gz";
+    sha256 = "86a3e4b501f7f50e392c4e456ea158893e9a595b1c63eb88c7bb9f6cf8772dad";
+    version = "1.6.59";
   };
 
   # libjpeg-turbo — for gd extension. cmake-based; SIMD disabled (would
