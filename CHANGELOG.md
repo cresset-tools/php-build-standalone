@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.2.19](https://github.com/cresset-tools/php-build-standalone/compare/v0.2.18...v0.2.19) (2026-10-07)
+
+
+### Bug Fixes
+
+* **ext:** auto-load opentelemetry, at a prefix its conflicts check can use ([e53e909](https://github.com/cresset-tools/php-build-standalone/commit/e53e909402b49b084f7282ab2ace53b97830889e))
+
+
+### Dependencies
+
+* bump pinned upstreams (automated weekly) ([#111](https://github.com/cresset-tools/php-build-standalone/issues/111)) ([f5f10d1](https://github.com/cresset-tools/php-build-standalone/commit/f5f10d1f793de29e5bf1509515a056c1d4e02b95))
+* bump pinned upstreams via scripts/update.py ([#118](https://github.com/cresset-tools/php-build-standalone/issues/118)) ([611b012](https://github.com/cresset-tools/php-build-standalone/commit/611b01217b10631760adb73ef5656651dcaf1ba8))
+
 ## [0.2.18](https://github.com/cresset-tools/php-build-standalone/compare/v0.2.17...v0.2.18) (2026-09-04)
 
 
