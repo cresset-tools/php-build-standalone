@@ -9,6 +9,10 @@
 # The /releases endpoint already filters draft/prerelease tags (RCs like
 # mariadb-11.4.5-rc surface as prerelease and get dropped); the regex
 # pin enforces the LTS line on top of that.
+#
+# NOTE: shared/update/mariadb-libfmt.sh resolves the same tag with the same
+# regex, so it can read that release's cmake/libfmt.cmake and keep the
+# vendored-libfmt pin in step. Change the regex here, change it there.
 . "$(dirname "$0")/../../scripts/update-lib.sh"
 
 tag=$(pbs_latest_github_release MariaDB/server '^mariadb-11\.4\.[0-9]+$')

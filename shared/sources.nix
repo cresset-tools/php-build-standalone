@@ -708,6 +708,27 @@
     version = "11.4.13";
   };
 
+  # libfmt, as MariaDB wants it — not a PBS dependency in its own right.
+  # MariaDB's cmake/libfmt.cmake fetches this archive with a file(DOWNLOAD)
+  # at build time, which the Nix sandbox forbids, so build-mariadb.sh
+  # pre-stages it under the version-keyed filename cmake looks for. The pin
+  # therefore has to track whatever the MariaDB tarball above asks for; when
+  # it doesn't, cmake ignores the staged file and falls back to the network,
+  # where the build dies on DNS. MariaDB 11.4.13 moved 12.1.0 -> 12.2.0 and
+  # did exactly that.
+  #
+  # It lives here rather than beside the derivation so the bump can be
+  # automated: scripts/update.py is the sole writer of sources.nix and
+  # update scripts only emit data, so a pin the orchestrator cannot see is
+  # a pin nothing can move. shared/update/mariadb-libfmt.sh reads the
+  # version out of the matching release's cmake/libfmt.cmake, and
+  # build-mariadb.sh asserts the two agree before building.
+  mariadb-libfmt = {
+    url = "https://github.com/fmtlib/fmt/releases/download/12.2.0/fmt-12.2.0.zip";
+    sha256 = "a2f4a8d51178f954e4c339007f77edd76ba0cb2e36f87a48e5a5403d9be5878f";
+    version = "12.2.0";
+  };
+
   # Oracle MySQL Community Server. Unlike the single-entry tool pins above,
   # MySQL ships as TWO server lines — 8.0 (the previous LTS, EOL ~Apr 2026)
   # and 8.4 (the current LTS) — so this is a version map keyed by minor,

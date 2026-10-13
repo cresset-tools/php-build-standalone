@@ -116,7 +116,8 @@ if [ -n "$fmt_wanted" ] && ! printf '%s\n' "$fmt_wanted" | grep -qx "$PBS_LIBFMT
   echo "build-mariadb: libfmt pin mismatch — cmake/libfmt.cmake references" >&2
   printf '  %s\n' $fmt_wanted >&2
   echo "  but PBS_LIBFMT_VERSION is $PBS_LIBFMT_VERSION." >&2
-  echo "  Update libfmtVersion + sha256 in tools/mariadb/mariadb.nix." >&2
+  echo "  Fix with: scripts/update.py --package mariadb-libfmt" >&2
+  echo "  (or edit sources.mariadb-libfmt in shared/sources.nix by hand)." >&2
   exit 1
 fi
 
