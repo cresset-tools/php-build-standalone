@@ -197,6 +197,19 @@ The PHP bump helper is `scripts/update-php-version.sh`; the C-lib bump
 helper is `scripts/update-lib.sh`. Commit messages follow Conventional
 Commits (release-please drives versioning).
 
+The orchestrator refuses two kinds of bump: one that moves a pin
+*backwards* (`is_regression` — a version we already shipped is frozen as
+superseded, so re-pinning it makes the index builder reject the whole
+tree), and one that moves a stable pin onto a *prerelease*
+(`is_prerelease`). It refuses only the offending entry, so the rest of
+the week's bumps still land in the PR; `update-sources.yml` then fails
+the run after the PR exists, so a refusal is red rather than a log line.
+If upstream really did change scheme, edit `sources.nix` by hand.
+
+Prerelease -> final is allowed, and a pin that is already a prerelease is
+left to move freely — `sources.igbinaryVersions."3.2"` is deliberately an
+RC (see the comment there), and the rule is not meant to fight it.
+
 That "sole writer" rule is why a pin some *other* file needs still lives
 in `sources.nix`: `sources.mariadb-libfmt` is the fmt archive MariaDB's
 own `cmake/libfmt.cmake` wants to download at build time, and it sits
