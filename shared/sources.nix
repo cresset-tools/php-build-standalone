@@ -59,9 +59,9 @@
   # sqlite — for pdo_sqlite. The autoconf tarball name encodes the version
   # numerically (3470200 = 3.47.2), see build-sqlite.sh.
   sqlite = {
-    url = "https://www.sqlite.org/2026/sqlite-autoconf-3530400.tar.gz";
-    sha256 = "0e9483900e92cd5de8fd48d16bf9200145a61f7fd5be542a5ac81d8a9516eb9c";
-    version = "3.53.4";
+    url = "https://www.sqlite.org/2026/sqlite-autoconf-3540000.tar.gz";
+    sha256 = "134ec0802dda5795816e25d25872d20b312cb3973438c49b30bc40b7705ea9ed";
+    version = "3.54.0";
   };
 
   # oniguruma — regex engine for mbstring. NOTE: the tarball extracts
@@ -134,9 +134,9 @@
   # openssl (the latter for AES-encrypted entries). Skips lzma/zstd
   # which we don't bundle.
   libzip = {
-    url = "https://github.com/nih-at/libzip/releases/download/v1.11.4/libzip-1.11.4.tar.gz";
-    sha256 = "82e9f2f2421f9d7c2466bbc3173cd09595a88ea37db0d559a9d0a2dc60dc722e";
-    version = "1.11.4";
+    url = "https://github.com/nih-at/libzip/releases/download/v1.12/libzip-1.12.tar.gz";
+    sha256 = "03db61e150b136b1692a9953f9fdab148808c4e504c1b7c5acad8ec7a50321cb";
+    version = "1.12";
   };
 
   # ICU — for the intl extension. First C++ dep. We static-link libstdc++
@@ -395,9 +395,9 @@
       sha256 = "ffa9e0982e82eeaea848f57687b425ed173aa278fe563001310ae2638db5c251";
     };
     "8.2" = {
-      version = "8.2.34";
-      url = "https://www.php.net/distributions/php-8.2.34.tar.xz";
-      sha256 = "5351330c54de240f54f7527c26ef292e239749e6fe11db0330acb5317e02bb39";
+      version = "8.2.33";
+      url = "https://www.php.net/distributions/php-8.2.33.tar.xz";
+      sha256 = "fbdeace9b38220436a4c8fd79b900df92878151db145e641750743a283b514c1";
     };
     "8.3" = {
       version = "8.3.35";
@@ -859,9 +859,9 @@
   # gmake-based build; depends on NSPR. NSS releases track Firefox;
   # any modern tag works for certutil's purposes.
   nss = {
-    url = "https://archive.mozilla.org/pub/security/nss/releases/NSS_3_130_RTM/src/nss-3.130.tar.gz";
-    sha256 = "afab9f82c78bfa3e7e8b4a61ac31922675c58203f67ff385a2714df7fe9bd5c5";
-    version = "3.130";
+    url = "https://archive.mozilla.org/pub/security/nss/releases/NSS_3_131_RTM/src/nss-3.131.tar.gz";
+    sha256 = "ca0005bc77e9255d9942103e6f9756cfe311a3df72afa99860709e386eb3c167";
+    version = "3.131";
   };
 
   # mkcert — FiloSottile's local-CA generator. Pure-Go static binary;
