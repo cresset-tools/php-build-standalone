@@ -92,6 +92,7 @@ jobs:
         run: scripts/update.py --self-check
 
       - name: Run update.py
+        id: update
         env:
           # Lifts the GitHub API rate limit for the per-package scripts
           # that hit api.github.com (zlib, openssl, libsodium, …).
@@ -172,3 +173,14 @@ jobs:
           labels: |
             automated
             sources
+
+      # Turn the run red when update.py declined a pin — an upstream that
+      # regressed or went to a prerelease is a human-sized problem, not
+      # something to leave as a log line. This runs AFTER the PR step on
+      # purpose: update.py exits 0 on a refusal so the week's other bumps
+      # still reach the PR, and only then do we fail the job.
+      - name: Fail on refused pins
+        if: steps.update.outputs.refused != '' && steps.update.outputs.refused != '0'
+        run: |
+          echo "::error::${{ steps.update.outputs.refused }} pin update(s) were refused — see the Run update.py step and the job summary. The rest of the bumps are in the PR."
+          exit 1

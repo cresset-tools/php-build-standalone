@@ -198,6 +198,26 @@ def is_regression(old: str, new: str) -> bool:
     return kn < ko
 
 
+def is_prerelease(v: str) -> bool:
+    """True when `v` carries a prerelease marker (rc/beta/alpha/dev/pre).
+
+    PBS ships release builds, so the orchestrator declines to bump a pin
+    onto a prerelease. Most update scripts already can't offer one —
+    pbs_latest_github_release filters draft/prerelease via the API — so
+    this firing means a script's filter missed something and is worth a
+    look rather than a silent skip.
+
+    Note this governs what the updater may *write*. sources.nix carries
+    one deliberate, hand-pinned exception (igbinary 3.2.17RC1, the first
+    release that builds against PHP 8.4+, which PECL itself labels
+    stable); nothing auto-updates igbinary, so this never sees it.
+    """
+    if not v:
+        return False
+    m = _VER_RE.match(v.strip())
+    return bool(m and m["pre"])
+
+
 # (old, new, expect_regression) — exercised by --self-check.
 _VERSION_CASES = [
     ("8.2.34", "8.2.33", True),    # the php.net flap this guard exists for
@@ -233,6 +253,24 @@ _VERSION_CASES = [
 ]
 
 
+# (version, expect_prerelease) — exercised by --self-check.
+_PRERELEASE_CASES = [
+    ("3.2.17RC1", True),
+    ("3.2.17rc1", True),
+    ("3.2.17", False),
+    ("1.0.0beta2", True),
+    ("1.0.0alpha1", True),
+    ("1.0.0dev", True),
+    ("8.2.34", False),
+    ("1.11.4", False),
+    ("20260512-3.1", False),   # a date, not a prerelease
+    ("7.1.2-21", False),       # trailing patch component
+    ("21.0.11+10", False),     # build metadata
+    ("18.6", False),
+    ("", False),
+]
+
+
 def self_check() -> int:
     bad = 0
     for old, new, want in _VERSION_CASES:
@@ -241,11 +279,17 @@ def self_check() -> int:
             print(f"FAIL is_regression({old!r}, {new!r}) = {got}, want {want}",
                   file=sys.stderr)
             bad += 1
+    for v, want in _PRERELEASE_CASES:
+        got = is_prerelease(v)
+        if got != want:
+            print(f"FAIL is_prerelease({v!r}) = {got}, want {want}",
+                  file=sys.stderr)
+            bad += 1
+    total = len(_VERSION_CASES) + len(_PRERELEASE_CASES)
     if bad:
-        print(f"{bad}/{len(_VERSION_CASES)} version-ordering cases failed",
-              file=sys.stderr)
+        print(f"{bad}/{total} version cases failed", file=sys.stderr)
         return 1
-    print(f"version ordering: {len(_VERSION_CASES)} cases OK")
+    print(f"version ordering + prerelease detection: {total} cases OK")
     return 0
 
 
@@ -383,7 +427,7 @@ def main() -> int:
     text = SOURCES_NIX.read_text()
     any_changes = False
     failures = 0
-    regressions: list[tuple[str, str, str]] = []
+    refused: list[tuple[str, str, str, str]] = []
 
     for t, new, err in results:
         if err is not None:
@@ -408,16 +452,20 @@ def main() -> int:
         # the index builder refuse the whole tree. Refuse just this entry
         # and let every other bump through — the weekly run opens one PR
         # for all packages, and failing here would discard the good ones.
+        why = None
         if is_regression(old_v, new_v):
+            why = "upstream older than pinned"
+        elif is_prerelease(new_v) and not is_prerelease(old_v):
+            why = "upstream offered a prerelease"
+        if why:
             print(f"  {t.dotted}: REFUSED {old_v} -> {new_v} "
-                  f"(upstream older than pinned; pin left alone)", flush=True)
+                  f"({why}; pin left alone)", flush=True)
             if os.environ.get("GITHUB_ACTIONS"):
                 print(
-                    f"::warning file=shared/sources.nix::{t.dotted}: refused "
-                    f"regression {old_v} -> {new_v} (upstream offered an older "
-                    f"version); pin left at {old_v}",
+                    f"::error file=shared/sources.nix::{t.dotted}: refused "
+                    f"{old_v} -> {new_v} ({why}); pin left at {old_v}",
                 )
-            regressions.append((t.dotted, old_v, new_v))
+            refused.append((t.dotted, old_v, new_v, why))
             continue
 
         print(f"  {t.dotted}: {old_v} -> {new_v}")
@@ -447,20 +495,37 @@ def main() -> int:
     elif args.dry_run and any_changes:
         print("(dry-run; no files written)")
 
-    if regressions:
+    if refused:
         sys.stdout.flush()
-        print(f"\n{len(regressions)} pin(s) left untouched because upstream "
-              f"offered an older version:", file=sys.stderr)
-        for dotted, old_v, new_v in regressions:
-            print(f"  {dotted}: upstream {new_v} < pinned {old_v}", file=sys.stderr)
-        print("If one of these is a deliberate scheme change rather than an "
-              "upstream flap, edit shared/sources.nix by hand.", file=sys.stderr)
+        print(f"\n{len(refused)} pin(s) left untouched:", file=sys.stderr)
+        for dotted, old_v, new_v, why in refused:
+            print(f"  {dotted}: {old_v} -> {new_v} refused ({why})",
+                  file=sys.stderr)
+        print("If one of these is a deliberate change rather than an upstream "
+              "flap, edit shared/sources.nix by hand.", file=sys.stderr)
 
-    # Regressions deliberately do NOT fail the run: update-sources.yml
-    # invokes this under `set -e`, so a non-zero exit would abort before
-    # create-pull-request and throw away every other package's bump for
-    # one flapping upstream. The refusal surfaces as a GitHub warning
-    # annotation plus the summary above.
+    # A refusal must not abort this process: update-sources.yml invokes it
+    # under `set -e`, so exiting non-zero here would skip
+    # create-pull-request and throw away every other package's bump over
+    # one bad entry. Instead we report the count as a step output and let
+    # the workflow fail a later step, once the good bumps are safely in
+    # the PR. See "Fail on refused pins" in update-sources.yml.
+    gh_output = os.environ.get("GITHUB_OUTPUT")
+    if gh_output:
+        with open(gh_output, "a", encoding="utf-8") as fh:
+            fh.write(f"refused={len(refused)}\n")
+
+    gh_summary = os.environ.get("GITHUB_STEP_SUMMARY")
+    if gh_summary and refused:
+        with open(gh_summary, "a", encoding="utf-8") as fh:
+            fh.write("### Refused pin updates\n\n")
+            fh.write("| package | pinned | offered | reason |\n")
+            fh.write("| --- | --- | --- | --- |\n")
+            for dotted, old_v, new_v, why in refused:
+                fh.write(f"| `{dotted}` | `{old_v}` | `{new_v}` | {why} |\n")
+            fh.write("\nThe pins above were left alone; every other bump in "
+                     "this run still landed in the PR.\n")
+
     return 1 if failures else 0
 
 
