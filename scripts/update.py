@@ -124,6 +124,131 @@ def run_script(t: UpdateTarget, current: dict) -> dict | None:
     return result
 
 
+# ----- version ordering ----------------------------------------------------
+#
+# Only used to answer one question: is the version an update script just
+# offered OLDER than the one already pinned? Upstream metadata flaps, and a
+# regressed pin is worse than a missed bump — see is_regression().
+
+# dev < alpha < beta < rc < final. Longer spellings first in the pattern so
+# "alpha"/"beta" win over the bare "a"/"b" forms.
+_PRE_RANK = {"dev": 0, "alpha": 1, "a": 1, "beta": 2, "b": 2, "pre": 3, "rc": 3}
+_FINAL_RANK = (99, 0)
+
+_VER_RE = re.compile(
+    r"^(?P<rel>\d+(?:[._-]\d+)*)"
+    r"(?:[._-]?(?P<pre>dev|alpha|beta|pre|rc|a|b)\.?(?P<pren>\d*))?"
+    r"(?P<rest>.*)$",
+    re.IGNORECASE,
+)
+
+
+def _natural(s: str) -> tuple:
+    """Digit runs compared numerically, so "+10" sorts above "+9"."""
+    return tuple(
+        (1, int(run)) if run.isdigit() else (0, run)
+        for run in re.findall(r"\d+|\D+", s)
+    )
+
+
+def version_key(v: str) -> tuple:
+    """Sort key for a pinned version string.
+
+    Shaped (release, prerelease, remainder) so that:
+      * numeric components compare numerically — 3.10 > 3.9, 1.12 > 1.11.4
+      * a prerelease sorts BELOW the matching final — 3.2.17RC1 < 3.2.17,
+        which matters because igbinary is pinned at an RC and promoting it
+        to the final release must not look like a downgrade
+      * trailing build metadata still orders naturally — 21.0.11+10 >
+        21.0.11+9 (jdk)
+
+    Returns an empty release tuple for anything that doesn't start with a
+    number; is_regression() declines to judge those rather than guess.
+    """
+    m = _VER_RE.match(v.strip())
+    if not m:
+        return ((), _FINAL_RANK, _natural(v))
+    rel = tuple(int(x) for x in re.split(r"[._-]", m["rel"]))
+    if m["pre"]:
+        pre = (_PRE_RANK[m["pre"].lower()], int(m["pren"] or 0))
+    else:
+        pre = _FINAL_RANK
+    return (rel, pre, _natural(m["rest"] or ""))
+
+
+def is_regression(old: str, new: str) -> bool:
+    """True when `new` is strictly older than `old`.
+
+    Guards against upstream metadata flapping. php.net's release endpoint
+    briefly reported 8.2.33 while 8.2.34 was the pinned current release;
+    the resulting bump regressed the pin and collided with the already
+    frozen 8.2.33 artifact ("tag ... appears in both a live build and
+    frozen file"), taking out assemble + the reproducibility audit on
+    PR #120 while every build leg stayed green.
+
+    Declines to judge when either side has no leading numeric release, so
+    an unrecognised scheme is left to behave as it did before rather than
+    being refused on a guess.
+    """
+    if not old or not new:
+        return False
+    ko, kn = version_key(old), version_key(new)
+    if not ko[0] or not kn[0]:
+        return False
+    return kn < ko
+
+
+# (old, new, expect_regression) — exercised by --self-check.
+_VERSION_CASES = [
+    ("8.2.34", "8.2.33", True),    # the php.net flap this guard exists for
+    ("8.2.34", "8.2.35", False),
+    ("8.2.34", "8.2.34", False),
+    ("3.9", "3.10", False),        # numeric, not lexicographic
+    ("3.10", "3.9", True),
+    ("3.130", "3.131", False),     # nss
+    ("1.11.4", "1.12", False),     # libzip dropped a component
+    ("1.12", "1.11.4", True),
+    ("3.53.4", "3.54.0", False),   # sqlite
+    ("27.3.4.11", "27.3.4.12", False),
+    ("8.5.9", "8.5.10", False),    # the bump that started all this
+    ("20260512-3.1", "20261001-3.1", False),   # libedit's date scheme
+    ("20261001-3.1", "20260512-3.1", True),
+    ("7.1.2-21", "7.1.2-22", False),           # imagemagick
+    ("7.1.2-22", "7.1.2-21", True),
+    ("7.1.2-21", "7.1.3", False),
+    ("21.0.11+10", "21.0.12+1", False),        # jdk build metadata
+    ("21.0.11+9", "21.0.11+10", False),
+    ("21.0.11+10", "21.0.11+9", True),
+    ("3.2.17RC1", "3.2.17", False),            # igbinary: RC -> final
+    ("3.2.17", "3.2.17RC1", True),
+    ("3.2.17RC1", "3.2.17RC2", False),
+    ("3.2.17RC2", "3.2.17RC1", True),
+    ("1.0.0beta2", "1.0.0", False),
+    ("1.0.0", "1.0.0beta2", True),
+    ("1.0.0alpha1", "1.0.0beta1", False),
+    ("", "1.2.3", False),          # missing side: decline to judge
+    ("1.2.3", "", False),
+    ("weird", "1.2.3", False),     # unparseable: decline to judge
+    ("1.2.3", "weird", False),
+]
+
+
+def self_check() -> int:
+    bad = 0
+    for old, new, want in _VERSION_CASES:
+        got = is_regression(old, new)
+        if got != want:
+            print(f"FAIL is_regression({old!r}, {new!r}) = {got}, want {want}",
+                  file=sys.stderr)
+            bad += 1
+    if bad:
+        print(f"{bad}/{len(_VERSION_CASES)} version-ordering cases failed",
+              file=sys.stderr)
+        return 1
+    print(f"version ordering: {len(_VERSION_CASES)} cases OK")
+    return 0
+
+
 # ----- sources.nix rewriting -----------------------------------------------
 
 def find_block(text: str, attr_path: list[str]) -> tuple[int, int]:
@@ -213,7 +338,13 @@ def main() -> int:
                     help="git-commit each package's bump separately.")
     ap.add_argument("--workers", "-j", type=int, default=4,
                     help="Parallel script workers (default 4).")
+    ap.add_argument("--self-check", action="store_true",
+                    help="Verify the version-ordering guard and exit. Runs no "
+                         "update scripts and touches no files.")
     args = ap.parse_args()
+
+    if args.self_check:
+        return self_check()
 
     targets = discover_targets()
     if args.package:
@@ -252,6 +383,7 @@ def main() -> int:
     text = SOURCES_NIX.read_text()
     any_changes = False
     failures = 0
+    regressions: list[tuple[str, str, str]] = []
 
     for t, new, err in results:
         if err is not None:
@@ -269,6 +401,25 @@ def main() -> int:
 
         old_v = cur.get("version", "?")
         new_v = new["version"]
+
+        # Never walk a pin backwards. Upstream metadata flaps, and a
+        # regressed pin is worse than a missed bump: a version we have
+        # already shipped is frozen as superseded, so re-pinning it makes
+        # the index builder refuse the whole tree. Refuse just this entry
+        # and let every other bump through — the weekly run opens one PR
+        # for all packages, and failing here would discard the good ones.
+        if is_regression(old_v, new_v):
+            print(f"  {t.dotted}: REFUSED {old_v} -> {new_v} "
+                  f"(upstream older than pinned; pin left alone)", flush=True)
+            if os.environ.get("GITHUB_ACTIONS"):
+                print(
+                    f"::warning file=shared/sources.nix::{t.dotted}: refused "
+                    f"regression {old_v} -> {new_v} (upstream offered an older "
+                    f"version); pin left at {old_v}",
+                )
+            regressions.append((t.dotted, old_v, new_v))
+            continue
+
         print(f"  {t.dotted}: {old_v} -> {new_v}")
 
         text = apply_update(text, t.attr_path, {
@@ -296,6 +447,20 @@ def main() -> int:
     elif args.dry_run and any_changes:
         print("(dry-run; no files written)")
 
+    if regressions:
+        sys.stdout.flush()
+        print(f"\n{len(regressions)} pin(s) left untouched because upstream "
+              f"offered an older version:", file=sys.stderr)
+        for dotted, old_v, new_v in regressions:
+            print(f"  {dotted}: upstream {new_v} < pinned {old_v}", file=sys.stderr)
+        print("If one of these is a deliberate scheme change rather than an "
+              "upstream flap, edit shared/sources.nix by hand.", file=sys.stderr)
+
+    # Regressions deliberately do NOT fail the run: update-sources.yml
+    # invokes this under `set -e`, so a non-zero exit would abort before
+    # create-pull-request and throw away every other package's bump for
+    # one flapping upstream. The refusal surfaces as a GitHub warning
+    # annotation plus the summary above.
     return 1 if failures else 0
 
 

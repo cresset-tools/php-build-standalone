@@ -83,6 +83,14 @@ jobs:
       - name: Install Nix
         uses: DeterminateSystems/determinate-nix-action@v3
 
+      # Cheap pre-flight for the version-ordering guard that stops a
+      # flapping upstream from walking a pin backwards (see is_regression
+      # in scripts/update.py). Runs no update scripts and touches no
+      # files; it lives here because this workflow is the only consumer
+      # of that logic, and the repo has no other harness for scripts/.
+      - name: Check the version-ordering guard
+        run: scripts/update.py --self-check
+
       - name: Run update.py
         env:
           # Lifts the GitHub API rate limit for the per-package scripts

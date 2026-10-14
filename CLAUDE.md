@@ -197,6 +197,13 @@ The PHP bump helper is `scripts/update-php-version.sh`; the C-lib bump
 helper is `scripts/update-lib.sh`. Commit messages follow Conventional
 Commits (release-please drives versioning).
 
+The orchestrator refuses any bump that would move a pin *backwards*
+(`is_regression`), because a version we already shipped is frozen as
+superseded and re-pinning it makes the index builder reject the whole
+tree. It refuses only that entry — the rest of the week's bumps still
+land — and surfaces the refusal as a CI warning annotation. If upstream
+really did change scheme, edit `sources.nix` by hand.
+
 That "sole writer" rule is why a pin some *other* file needs still lives
 in `sources.nix`: `sources.mariadb-libfmt` is the fmt archive MariaDB's
 own `cmake/libfmt.cmake` wants to download at build time, and it sits

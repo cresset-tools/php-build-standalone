@@ -2,3 +2,7 @@
 # ./result-2 etc. — they point into /nix/store and shouldn't be tracked.
 /result
 /result-*
+
+# Python bytecode. scripts/update.py doesn't produce this when run as a
+# script, but importing it (e.g. to exercise --self-check's helpers) does.
+__pycache__/
