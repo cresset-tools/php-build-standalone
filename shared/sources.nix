@@ -477,10 +477,20 @@
   # PHP values. Commonly used as a serializer backend for Redis (phpredis)
   # and Memcached. No external C-library — pure C built via phpize.
   #
-  # 3.2.17RC1 is the first release that compiles against PHP 8.4+ — the
-  # 3.2.16 stable predates PHP's removal of `ext/standard/php_smart_string.h`
-  # (replaced by Zend/zend_smart_string.h) and fails to build on 8.4/8.5.
-  # PECL's <s>stable</s> tag flags 3.2.17RC1 as stable despite the RC suffix.
+  # 3.2.17RC1 is the newest release PECL has, and it is pinned deliberately
+  # despite the RC suffix — PECL's own <s> tag marks it `stable`.
+  #
+  # It is also load-bearing: 3.2.16 predates PHP's removal of
+  # `ext/standard/php_smart_string.h` (replaced by Zend/zend_smart_string.h).
+  # Measured 2026-10-14: 3.2.16 still builds against 8.4 but dies on 8.5 with
+  # `fatal error: 'ext/standard/php_smart_string.h' file not found`, so the RC
+  # cannot be dropped until upstream ships 3.2.17 final. (The note here used
+  # to say 8.4 failed as well; it does not.)
+  #
+  # Nothing auto-updates igbinary — there is no shared/update/igbinaryVersions
+  # script — so update.py's refuse-prereleases rule never fires on it, and the
+  # rule explicitly allows prerelease -> final, so 3.2.17 will be takeable the
+  # moment it exists.
   igbinaryVersions = {
     "3.2" = {
       version = "3.2.17RC1";
