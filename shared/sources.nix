@@ -59,9 +59,9 @@
   # sqlite — for pdo_sqlite. The autoconf tarball name encodes the version
   # numerically (3470200 = 3.47.2), see build-sqlite.sh.
   sqlite = {
-    url = "https://www.sqlite.org/2026/sqlite-autoconf-3530400.tar.gz";
-    sha256 = "0e9483900e92cd5de8fd48d16bf9200145a61f7fd5be542a5ac81d8a9516eb9c";
-    version = "3.53.4";
+    url = "https://www.sqlite.org/2026/sqlite-autoconf-3540100.tar.gz";
+    sha256 = "926ef8d3eab93fbf6e06011901273eec076b25594a4e1cdadd50c987f4f6d64e";
+    version = "3.54.1";
   };
 
   # oniguruma — regex engine for mbstring. NOTE: the tarball extracts
@@ -116,9 +116,9 @@
   # zlib + bzip2 for compressed font tables. We disable libpng/harfbuzz/
   # brotli to keep the dep graph tractable for v1.
   freetype = {
-    url = "https://download.savannah.gnu.org/releases/freetype/freetype-2.14.3.tar.xz";
-    sha256 = "36bc4f1cc413335368ee656c42afca65c5a3987e8768cc28cf11ba775e785a5f";
-    version = "2.14.3";
+    url = "https://download.savannah.gnu.org/releases/freetype/freetype-2.15.0.tar.xz";
+    sha256 = "93cd47eb719c325107f2d3cf087d06299e944c3b48a40b55537302304dea1dd5";
+    version = "2.15.0";
   };
 
   # nghttp2 — HTTP/2 protocol library; libcurl uses it for HTTP/2 support.
@@ -134,9 +134,9 @@
   # openssl (the latter for AES-encrypted entries). Skips lzma/zstd
   # which we don't bundle.
   libzip = {
-    url = "https://github.com/nih-at/libzip/releases/download/v1.11.4/libzip-1.11.4.tar.gz";
-    sha256 = "82e9f2f2421f9d7c2466bbc3173cd09595a88ea37db0d559a9d0a2dc60dc722e";
-    version = "1.11.4";
+    url = "https://github.com/nih-at/libzip/releases/download/v1.12.1/libzip-1.12.1.tar.gz";
+    sha256 = "3b66fe92cbc768d8d4d16e1427bfb7399e15d9c2795c2fc482e7b30a6332a422";
+    version = "1.12.1";
   };
 
   # ICU — for the intl extension. First C++ dep. We static-link libstdc++
@@ -155,9 +155,9 @@
   # are explicitly disabled so configure doesn't auto-detect host system
   # libs.
   libcurl = {
-    url = "https://curl.se/download/curl-8.22.0.tar.gz";
-    sha256 = "d54dd598bf05927a726deb38df31c6a255ba83ff1de57c5d1464dac3ed8f44a1";
-    version = "8.22.0";
+    url = "https://curl.se/download/curl-8.23.0.tar.gz";
+    sha256 = "e3de77cfa6367083c776a26647fc9f633b538c06c3baa73d931a252ac8f72b49";
+    version = "8.23.0";
   };
 
   # ncurses — terminfo/terminal-capability library; needed by libedit as its
@@ -772,7 +772,7 @@
       version = "8.0.46";
     };
     "8.4" = {
-      url = "https://cdn.mysql.com/Downloads/MySQL-8.4/mysql-8.4.11.tar.gz";
+      url = "https://cdn.mysql.com/archives/mysql-8.4/mysql-8.4.11.tar.gz";
       sha256 = "eb3051164d625dd346a8203f76e0d5d5d9aec51dbe9d51788e39ec6b3f1394c2";
       version = "8.4.11";
     };
@@ -869,9 +869,9 @@
   # gmake-based build; depends on NSPR. NSS releases track Firefox;
   # any modern tag works for certutil's purposes.
   nss = {
-    url = "https://archive.mozilla.org/pub/security/nss/releases/NSS_3_130_RTM/src/nss-3.130.tar.gz";
-    sha256 = "afab9f82c78bfa3e7e8b4a61ac31922675c58203f67ff385a2714df7fe9bd5c5";
-    version = "3.130";
+    url = "https://archive.mozilla.org/pub/security/nss/releases/NSS_3_131_RTM/src/nss-3.131.tar.gz";
+    sha256 = "ca0005bc77e9255d9942103e6f9756cfe311a3df72afa99860709e386eb3c167";
+    version = "3.131";
   };
 
   # mkcert — FiloSottile's local-CA generator. Pure-Go static binary;
