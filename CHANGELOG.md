@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.20](https://github.com/cresset-tools/php-build-standalone/compare/v0.2.19...v0.2.20) (2026-10-21)
+
+
+### Bug Fixes
+
+* **php-runtime:** bump PHP to 8.2.35 / 8.3.36 / 8.4.27 / 8.5.12 (security) ([3903d90](https://github.com/cresset-tools/php-build-standalone/commit/3903d902aa4e4405952bcffc3430664e2f743664))
+
 ## [0.2.19](https://github.com/cresset-tools/php-build-standalone/compare/v0.2.18...v0.2.19) (2026-10-21)
 
 
