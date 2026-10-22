@@ -2,10 +2,14 @@
 # Verify that every interpreter / service version bump in sources.nix has
 # a corresponding frozen entry for the superseded version.
 #
-# Usage: lint-frozen-coverage.sh [--against <git-ref>]
+# Usage: lint-frozen-coverage.sh [--against <ref>]
 #
 # Options:
-#   --against <ref>   compare against this git ref instead of origin/main.
+#   --against <ref>   compare against this ref (a jj revision or a git rev)
+#                     instead of main@origin / origin/main, then main.
+#
+# Run from the php-runtime root: works in the standalone repo, the cresset
+# monorepo checkout, and a jj workspace of it (see "Read the baseline").
 #
 # Checks:
 #   1. For each PHP minor present in BOTH current and baseline sources.nix:
@@ -47,34 +51,6 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-# ---- Resolve base ref ----
-resolve_base_ref() {
-  if [[ -n "$BASE_REF" ]]; then
-    echo "$BASE_REF"
-    return
-  fi
-  if git rev-parse --verify "origin/main" >/dev/null 2>&1; then
-    echo "origin/main"
-    return
-  fi
-  if git rev-parse --verify "main" >/dev/null 2>&1; then
-    echo "main"
-    return
-  fi
-  echo ""
-}
-
-base_ref="$(resolve_base_ref)"
-if [[ -z "$base_ref" ]]; then
-  echo "WARN: cannot find origin/main or main; skipping frozen-coverage lint." >&2
-  exit 0
-fi
-
-if ! git rev-parse --verify "$base_ref" >/dev/null 2>&1; then
-  echo "WARN: ref '$base_ref' not found; skipping frozen-coverage lint." >&2
-  exit 0
-fi
-
 # ---- Stage current + baseline sources.nix to tempfiles ----
 # Using `nix eval --expr 'import ./shared/sources.nix'` would resolve
 # the path through the flake's tree (staged/HEAD), making unstaged edits
@@ -86,20 +62,63 @@ prev_file="$(mktemp --suffix=.nix)"
 trap 'rm -f "$curr_file" "$prev_file"' EXIT
 
 cp shared/sources.nix "$curr_file"
-# The baseline ref may predate the shared/php restructure (when
-# sources.nix lived at php-unix/sources.nix), or this lint may run
-# against a branch that simply hasn't introduced sources.nix yet.
-# Fall back to the legacy path; if neither exists in base_ref, there's
-# nothing to compare against — emit a WARN and exit clean rather than
-# hard-failing the CI gate.
-if git show "$base_ref:shared/sources.nix" > "$prev_file" 2>/dev/null; then
-  :
-elif git show "$base_ref:php-unix/sources.nix" > "$prev_file" 2>/dev/null; then
-  :
-else
-  echo "WARN: neither shared/sources.nix nor php-unix/sources.nix exists in $base_ref; skipping lint." >&2
-  exit 0
+
+# ---- Read the baseline sources.nix ----
+# Kept identical to auto-freeze-superseded.sh (both scripts are inlined by
+# writeShellApplication, so they cannot source a shared helper).
+#
+# This directory is a repo root in the standalone php-build-standalone
+# clone, but products/bougie/php-runtime/ in the cresset monorepo — a
+# colocated jj/git checkout, or a jj workspace with no .git at all. Paths
+# are therefore resolved against the cwd, never the VCS root: jj's file
+# paths are cwd-relative, and so is git's `<rev>:./path` form. (A bare
+# `<rev>:path` is root-relative; in the monorepo it matched nothing and
+# the lint exited 0 having checked nothing.)
+in_jj=0
+if command -v jj >/dev/null 2>&1 && jj --ignore-working-copy root >/dev/null 2>&1; then
+  in_jj=1
 fi
+in_git=0
+if git rev-parse --git-dir >/dev/null 2>&1; then
+  in_git=1
+fi
+
+show_at() { # <ref> <path>: print the file at ref, via whichever VCS knows the ref
+  if [[ $in_jj == 1 ]] && jj --ignore-working-copy file show -r "$1" "$2" 2>/dev/null; then
+    return 0
+  fi
+  if [[ $in_git == 1 ]] && git show "$1:./$2" 2>/dev/null; then
+    return 0
+  fi
+  return 1
+}
+
+if [[ -n "$BASE_REF" ]]; then
+  candidates=("$BASE_REF")
+else
+  candidates=()
+  if [[ $in_jj == 1 ]]; then candidates+=("main@origin" "main"); fi
+  if [[ $in_git == 1 ]]; then candidates+=("origin/main" "main"); fi
+fi
+
+# php-unix/sources.nix: where sources.nix lived before the shared/php split.
+base_ref=""
+for ref in "${candidates[@]}"; do
+  for path in shared/sources.nix php-unix/sources.nix; do
+    if show_at "$ref" "$path" > "$prev_file"; then
+      base_ref="$ref"
+      break 2
+    fi
+  done
+done
+
+# Fail loudly: a skipped lint is indistinguishable from a passing one.
+if [[ -z "$base_ref" ]]; then
+  echo "lint-frozen-coverage: no baseline sources.nix found (tried: ${candidates[*]:-none; not in a jj or git repo})." >&2
+  echo "lint-frozen-coverage: run from the php-runtime root, fetch origin, or pass --against <ref>." >&2
+  exit 1
+fi
+echo "lint-frozen-coverage: baseline is $base_ref" >&2
 
 curr_versions="$(nix eval --json --impure --expr \
   "(import $curr_file).phpVersions" \

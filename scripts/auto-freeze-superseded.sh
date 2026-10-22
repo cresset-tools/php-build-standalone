@@ -7,10 +7,14 @@
 # already satisfies lint-frozen-coverage.
 #
 # Usage:
-#   auto-freeze-superseded.sh [--against <git-ref>]
+#   auto-freeze-superseded.sh [--against <ref>]
 #
 # Options:
-#   --against <ref>  Baseline to diff against. Default origin/main, then main.
+#   --against <ref>  Baseline to diff against: a jj revision or a git rev.
+#                    Default main@origin / origin/main, then main.
+#
+# Run from the php-runtime root: works in the standalone repo, the cresset
+# monorepo checkout, and a jj workspace of it (see "Read the baseline").
 #
 # Detection mirrors scripts/lint-frozen-coverage.sh (intentional — the lint
 # defines the invariant; this script is the matching producer):
@@ -54,32 +58,6 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-resolve_base_ref() {
-  if [[ -n "$BASE_REF" ]]; then
-    echo "$BASE_REF"
-    return
-  fi
-  if git rev-parse --verify "origin/main" >/dev/null 2>&1; then
-    echo "origin/main"
-    return
-  fi
-  if git rev-parse --verify "main" >/dev/null 2>&1; then
-    echo "main"
-    return
-  fi
-  echo ""
-}
-
-base_ref="$(resolve_base_ref)"
-if [[ -z "$base_ref" ]]; then
-  echo "auto-freeze: cannot find origin/main or main; nothing to diff against." >&2
-  exit 0
-fi
-if ! git rev-parse --verify "$base_ref" >/dev/null 2>&1; then
-  echo "auto-freeze: ref '$base_ref' not found; skipping." >&2
-  exit 0
-fi
-
 # Stage current + baseline sources.nix to tempfiles so we can `nix eval`
 # both as plain files (same approach as lint-frozen-coverage.sh).
 curr_file="$(mktemp --suffix=.nix)"
@@ -87,14 +65,63 @@ prev_file="$(mktemp --suffix=.nix)"
 trap 'rm -f "$curr_file" "$prev_file"' EXIT
 
 cp shared/sources.nix "$curr_file"
-if git show "$base_ref:shared/sources.nix" > "$prev_file" 2>/dev/null; then
-  :
-elif git show "$base_ref:php-unix/sources.nix" > "$prev_file" 2>/dev/null; then
-  :
-else
-  echo "auto-freeze: neither shared/sources.nix nor php-unix/sources.nix exists in $base_ref; skipping." >&2
-  exit 0
+
+# ---- Read the baseline sources.nix ----
+# Kept identical to lint-frozen-coverage.sh (both scripts are inlined by
+# writeShellApplication, so they cannot source a shared helper).
+#
+# This directory is a repo root in the standalone php-build-standalone
+# clone, but products/bougie/php-runtime/ in the cresset monorepo — a
+# colocated jj/git checkout, or a jj workspace with no .git at all. Paths
+# are therefore resolved against the cwd, never the VCS root: jj's file
+# paths are cwd-relative, and so is git's `<rev>:./path` form. (A bare
+# `<rev>:path` is root-relative; in the monorepo it matched nothing and
+# the script exited 0 having frozen nothing.)
+in_jj=0
+if command -v jj >/dev/null 2>&1 && jj --ignore-working-copy root >/dev/null 2>&1; then
+  in_jj=1
 fi
+in_git=0
+if git rev-parse --git-dir >/dev/null 2>&1; then
+  in_git=1
+fi
+
+show_at() { # <ref> <path>: print the file at ref, via whichever VCS knows the ref
+  if [[ $in_jj == 1 ]] && jj --ignore-working-copy file show -r "$1" "$2" 2>/dev/null; then
+    return 0
+  fi
+  if [[ $in_git == 1 ]] && git show "$1:./$2" 2>/dev/null; then
+    return 0
+  fi
+  return 1
+}
+
+if [[ -n "$BASE_REF" ]]; then
+  candidates=("$BASE_REF")
+else
+  candidates=()
+  if [[ $in_jj == 1 ]]; then candidates+=("main@origin" "main"); fi
+  if [[ $in_git == 1 ]]; then candidates+=("origin/main" "main"); fi
+fi
+
+# php-unix/sources.nix: where sources.nix lived before the shared/php split.
+base_ref=""
+for ref in "${candidates[@]}"; do
+  for path in shared/sources.nix php-unix/sources.nix; do
+    if show_at "$ref" "$path" > "$prev_file"; then
+      base_ref="$ref"
+      break 2
+    fi
+  done
+done
+
+# Fail loudly: a skipped diff is indistinguishable from "nothing to freeze".
+if [[ -z "$base_ref" ]]; then
+  echo "auto-freeze: no baseline sources.nix found (tried: ${candidates[*]:-none; not in a jj or git repo})." >&2
+  echo "auto-freeze: run from the php-runtime root, fetch origin, or pass --against <ref>." >&2
+  exit 1
+fi
+echo "auto-freeze: baseline is $base_ref" >&2
 
 curr_php="$(nix eval --json --impure --expr \
   "(import $curr_file).phpVersions" \
