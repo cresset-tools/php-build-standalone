@@ -181,7 +181,12 @@ fi
 # that remove the xcrun check automatically revert to the unpatched path.
 if [ -n "${MACOSX_DEPLOYMENT_TARGET:-}" ] && \
    grep -q 'Could not resolve macOS SDK path' tests/modules/Makefile 2>/dev/null; then
-  perl -i -pe 's/\bmodule_tests\b\s*//g' src/Makefile
+  # Use a leading-space anchor to avoid consuming the trailing newline when
+  # module_tests is the last token on a line (s/\s*// would eat it and merge
+  # the next line into the prerequisite list, causing "No rule to make target
+  # '@echo'"). The target-definition line (module_tests:) is unaffected since
+  # it has no leading space before the name.
+  perl -i -pe 's/ module_tests\b//g' src/Makefile
 fi
 make -j"$NIX_BUILD_CORES" BUILD_TLS=yes USE_SYSTEMD=no \
   CC="$CC" LD="$CC" \
