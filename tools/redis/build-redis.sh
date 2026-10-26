@@ -173,22 +173,19 @@ fi
 # Darwin 8.10.3+: tests/modules/Makefile uses
 #   SDKROOT:=$(shell xcrun --sdk macosx --show-sdk-path)
 # and aborts with "Could not resolve macOS SDK path" when xcrun returns
-# empty inside the Nix sandbox. The test modules are not installed or
-# shipped; skip the module_tests dependency by building the individual
-# production targets instead of `all`. Each has its own src/Makefile rule
-# (redis-sentinel/check-rdb/check-aof are created as symlinks to
-# redis-server), so `make install` still finds everything it needs.
-# Detect the guard string so future releases that remove the xcrun check
-# automatically revert to the simpler `all` path.
+# empty inside the Nix sandbox. Both the `all` and `install` targets in
+# src/Makefile depend on module_tests (8.10.3 added it to install:); the
+# test modules are not installed or shipped. Strip `module_tests` from
+# src/Makefile dependency lines so neither `make all` nor `make install`
+# triggers the broken sub-make. Detect the guard string so future releases
+# that remove the xcrun check automatically revert to the unpatched path.
 if [ -n "${MACOSX_DEPLOYMENT_TARGET:-}" ] && \
    grep -q 'Could not resolve macOS SDK path' tests/modules/Makefile 2>/dev/null; then
-  build_target="redis-server redis-cli redis-benchmark redis-sentinel redis-check-rdb redis-check-aof"
-else
-  build_target="all"
+  perl -i -pe 's/\bmodule_tests\b\s*//g' src/Makefile
 fi
 make -j"$NIX_BUILD_CORES" BUILD_TLS=yes USE_SYSTEMD=no \
   CC="$CC" LD="$CC" \
-  PREFIX="$PBS_DEPS" $build_target
+  PREFIX="$PBS_DEPS" all
 
 # `install` copies the binaries into $(PREFIX)/bin/ and sets up the
 # redis-sentinel / redis-check-rdb / redis-check-aof symlinks. `install:
