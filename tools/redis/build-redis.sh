@@ -169,9 +169,26 @@ fi
 # which clang-as-driver handles correctly, but raw ld64 wouldn't (no -bundle
 # semantics that match clang's driver behavior here). So LD=$CC is needed
 # on both platforms.
+#
+# Darwin 8.10.3+: tests/modules/Makefile uses
+#   SDKROOT:=$(shell xcrun --sdk macosx --show-sdk-path)
+# and aborts with "Could not resolve macOS SDK path" when xcrun returns
+# empty inside the Nix sandbox. The test modules are not installed or
+# shipped; skip the module_tests dependency by building the individual
+# production targets instead of `all`. Each has its own src/Makefile rule
+# (redis-sentinel/check-rdb/check-aof are created as symlinks to
+# redis-server), so `make install` still finds everything it needs.
+# Detect the guard string so future releases that remove the xcrun check
+# automatically revert to the simpler `all` path.
+if [ -n "${MACOSX_DEPLOYMENT_TARGET:-}" ] && \
+   grep -q 'Could not resolve macOS SDK path' tests/modules/Makefile 2>/dev/null; then
+  build_target="redis-server redis-cli redis-benchmark redis-sentinel redis-check-rdb redis-check-aof"
+else
+  build_target="all"
+fi
 make -j"$NIX_BUILD_CORES" BUILD_TLS=yes USE_SYSTEMD=no \
   CC="$CC" LD="$CC" \
-  PREFIX="$PBS_DEPS" all
+  PREFIX="$PBS_DEPS" $build_target
 
 # `install` copies the binaries into $(PREFIX)/bin/ and sets up the
 # redis-sentinel / redis-check-rdb / redis-check-aof symlinks. `install:
