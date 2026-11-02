@@ -169,6 +169,25 @@ fi
 # which clang-as-driver handles correctly, but raw ld64 wouldn't (no -bundle
 # semantics that match clang's driver behavior here). So LD=$CC is needed
 # on both platforms.
+#
+# Darwin 8.10.3+: tests/modules/Makefile uses
+#   SDKROOT:=$(shell xcrun --sdk macosx --show-sdk-path)
+# and aborts with "Could not resolve macOS SDK path" when xcrun returns
+# empty inside the Nix sandbox. Both the `all` and `install` targets in
+# src/Makefile depend on module_tests (8.10.3 added it to install:); the
+# test modules are not installed or shipped. Strip `module_tests` from
+# src/Makefile dependency lines so neither `make all` nor `make install`
+# triggers the broken sub-make. Detect the guard string so future releases
+# that remove the xcrun check automatically revert to the unpatched path.
+if [ -n "${MACOSX_DEPLOYMENT_TARGET:-}" ] && \
+   grep -q 'Could not resolve macOS SDK path' tests/modules/Makefile 2>/dev/null; then
+  # Use a leading-space anchor to avoid consuming the trailing newline when
+  # module_tests is the last token on a line (s/\s*// would eat it and merge
+  # the next line into the prerequisite list, causing "No rule to make target
+  # '@echo'"). The target-definition line (module_tests:) is unaffected since
+  # it has no leading space before the name.
+  perl -i -pe 's/ module_tests\b//g' src/Makefile
+fi
 make -j"$NIX_BUILD_CORES" BUILD_TLS=yes USE_SYSTEMD=no \
   CC="$CC" LD="$CC" \
   PREFIX="$PBS_DEPS" all
