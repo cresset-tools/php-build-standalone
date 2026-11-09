@@ -99,9 +99,9 @@
   # not the TurboJPEG one — we drop libturbojpeg.so to keep the tarball
   # lean and avoid /nix/store-leak in tjbench's RPATH.
   libjpeg-turbo = {
-    url = "https://github.com/libjpeg-turbo/libjpeg-turbo/releases/download/3.2.0/libjpeg-turbo-3.2.0.tar.gz";
-    sha256 = "6f30092cef9fb839779646608f4ee14ae3cbac989c47fa05e841b0841f09878e";
-    version = "3.2.0";
+    url = "https://github.com/libjpeg-turbo/libjpeg-turbo/releases/download/3.2.1/libjpeg-turbo-3.2.1.tar.gz";
+    sha256 = "c27ad72a68da151177929aa969ae773a2da5ac2af9ce946079314fdac8cece7f";
+    version = "3.2.1";
   };
 
   # libwebp — for gd extension. Internal libsharpyuv.so also gets built
@@ -125,9 +125,9 @@
   # We build with --enable-lib-only to skip the C++ apps (nghttp/nghttpd/
   # h2load) that pull in libev/libxml2/jansson/jemalloc.
   nghttp2 = {
-    url = "https://github.com/nghttp2/nghttp2/releases/download/v1.70.0/nghttp2-1.70.0.tar.gz";
-    sha256 = "aa317e2cf9dca6afa0aed68f8fad6ff303ec6982e25a78c75c0b65e2b9b3ded5";
-    version = "1.70.0";
+    url = "https://github.com/nghttp2/nghttp2/releases/download/v1.71.0/nghttp2-1.71.0.tar.gz";
+    sha256 = "0cdd35ecec77919b4b7b245f87fe8d2216e3d62da854eb0838c594ff058042fc";
+    version = "1.71.0";
   };
 
   # libzip — for the zip extension. cmake-based; uses zlib + bzip2 +
@@ -772,9 +772,9 @@
       version = "8.0.46";
     };
     "8.4" = {
-      url = "https://cdn.mysql.com/archives/mysql-8.4/mysql-8.4.11.tar.gz";
-      sha256 = "eb3051164d625dd346a8203f76e0d5d5d9aec51dbe9d51788e39ec6b3f1394c2";
-      version = "8.4.11";
+      url = "https://cdn.mysql.com/Downloads/MySQL-8.4/mysql-8.4.13.tar.gz";
+      sha256 = "f6ddc7f7fb6462bab8b533b13c06af3fff57fa9ca12259b81ab13cd9930b9d58";
+      version = "8.4.13";
     };
   };
 
@@ -792,9 +792,9 @@
   # shared/<dep>.nix files needed beyond what the PHP build already pulls
   # in.
   redis = {
-    url = "https://github.com/redis/redis/archive/refs/tags/8.10.2.tar.gz";
-    sha256 = "541a374b753a8405683dd88560465791acc98cf09445ef10ec1bd286904273e8";
-    version = "8.10.2";
+    url = "https://github.com/redis/redis/archive/refs/tags/8.10.3.tar.gz";
+    sha256 = "85ae62e175cc76f638015fa18cb384b549b6808a765425d9e9d47466f69532ea";
+    version = "8.10.3";
   };
 
   # Erlang/OTP. Built from source — there's no Temurin-equivalent prebuilt
@@ -869,9 +869,9 @@
   # gmake-based build; depends on NSPR. NSS releases track Firefox;
   # any modern tag works for certutil's purposes.
   nss = {
-    url = "https://archive.mozilla.org/pub/security/nss/releases/NSS_3_131_RTM/src/nss-3.131.tar.gz";
-    sha256 = "ca0005bc77e9255d9942103e6f9756cfe311a3df72afa99860709e386eb3c167";
-    version = "3.131";
+    url = "https://archive.mozilla.org/pub/security/nss/releases/NSS_3_132_RTM/src/nss-3.132.tar.gz";
+    sha256 = "ee9cf4837ba801141a804321c4462ad8f452ff4314275c6d5108a6b05af227ff";
+    version = "3.132";
   };
 
   # mkcert — FiloSottile's local-CA generator. Pure-Go static binary;
