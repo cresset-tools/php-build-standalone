@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.2.21](https://github.com/cresset-tools/php-build-standalone/compare/v0.2.20...v0.2.21) (2026-11-09)
+
+
+### Bug Fixes
+
+* **php-runtime:** make freeze baseline work in the monorepo and jj workspaces ([6a1fe18](https://github.com/cresset-tools/php-build-standalone/commit/6a1fe18fa38d4f5f1df5ec3b02df96fd5fec0eae))
+
+
+### Dependencies
+
+* bump pinned upstreams (automated weekly) ([#126](https://github.com/cresset-tools/php-build-standalone/issues/126)) ([97faaad](https://github.com/cresset-tools/php-build-standalone/commit/97faaad6ab9c2f016c8a5d5867067d414402013f))
+
 ## [0.2.20](https://github.com/cresset-tools/php-build-standalone/compare/v0.2.19...v0.2.20) (2026-10-21)
 
 
