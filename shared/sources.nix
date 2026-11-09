@@ -21,9 +21,9 @@
 
 {
   zlib = {
-    url = "https://github.com/madler/zlib/releases/download/v1.3.2/zlib-1.3.2.tar.gz";
-    sha256 = "bb329a0a2cd0274d05519d61c667c062e06990d72e125ee2dfa8de64f0119d16";
-    version = "1.3.2";
+    url = "https://github.com/madler/zlib/releases/download/v1.4/zlib-1.4.tar.gz";
+    sha256 = "02dd159783677a749c04adbdd02b55b8a2bcc7e054f51b76b549199a916ad584";
+    version = "1.4";
   };
 
   # OpenSSL 3.5.x is the current LTS line (supported through 2030). PBS
@@ -869,9 +869,9 @@
   # gmake-based build; depends on NSPR. NSS releases track Firefox;
   # any modern tag works for certutil's purposes.
   nss = {
-    url = "https://archive.mozilla.org/pub/security/nss/releases/NSS_3_132_RTM/src/nss-3.132.tar.gz";
-    sha256 = "ee9cf4837ba801141a804321c4462ad8f452ff4314275c6d5108a6b05af227ff";
-    version = "3.132";
+    url = "https://archive.mozilla.org/pub/security/nss/releases/NSS_3_133_RTM/src/nss-3.133.tar.gz";
+    sha256 = "4d752526b9846a1d962588cfbd09b7cc2a4f6a4effbd9157d58a30e8a2573065";
+    version = "3.133";
   };
 
   # mkcert — FiloSottile's local-CA generator. Pure-Go static binary;
