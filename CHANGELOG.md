@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.22](https://github.com/cresset-tools/php-build-standalone/compare/v0.2.21...v0.2.22) (2026-11-11)
+
+
+### Dependencies
+
+* bump pinned upstreams via scripts/update.py ([#127](https://github.com/cresset-tools/php-build-standalone/issues/127)) ([ce12e34](https://github.com/cresset-tools/php-build-standalone/commit/ce12e34ee25d1557c31fb4d6af2159418acc6374))
+
 ## [0.2.21](https://github.com/cresset-tools/php-build-standalone/compare/v0.2.20...v0.2.21) (2026-11-09)
 
 
