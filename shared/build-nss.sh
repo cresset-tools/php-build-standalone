@@ -75,6 +75,11 @@ export NSS_ENABLE_WERROR=0
 # files have no operational effect.
 export CROSS_COMPILE=1
 
+# NSS 3.134 builds lib/mozpkix (C++) unconditionally and links libssl3
+# against it. coreconf picks the C++ compiler from CCC and defaults it
+# to `g++`, which the hermetic toolchain does not have.
+export CCC="$CXX"
+
 # NSS source has several missing-include bugs (e.g. secport.c calls
 # putenv without <stdlib.h>). Clang 16+ rejects implicit declarations
 # in C99+ as hard errors by default, so we have to downgrade them
