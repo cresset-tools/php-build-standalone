@@ -187,6 +187,7 @@ fetches the matching per-store-path tarballs on demand:
 | **uv** | libuv |
 | **excimer** | — (librt/pthread come from libc) |
 | **opentelemetry** *(loads at 50-)* | — |
+| **parallel** *(ZTS only)* | — (pthreads come from libc) |
 | **gettext** *(Linux)* | — (glibc + musl both implement gettext in libc) |
 
 Each per-store-path tarball lives at `store/<name>-<ver>-<hash>/` after

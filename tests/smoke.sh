@@ -249,6 +249,20 @@ else
     emit "NOTICE: excimer.so not found at $_excimer_so — skipping excimer gate"
 fi
 
+# parallel only exists for thread-safe PHP, so this gate skips on every NTS
+# tarball. Loading is not enough of a contract here: run a closure on a
+# second thread and read its result back through the Future.
+_parallel_so="${PARALLEL_SO:-$ext_dir/parallel.so}"
+if [ -f "$_parallel_so" ]; then
+    out=$("$PHP" -n -dextension="$_parallel_so" \
+                  -r '$f = (new parallel\Runtime())->run(function (int $n) { return $n * 2; }, [21]); echo "parallel=", $f->value(), "\n";') \
+        || die "parallel load failed"
+    printf '%s\n' "$out"
+    [ "$out" = "parallel=42" ] || die "parallel did not run a task on a thread: $out"
+else
+    emit "NOTICE: parallel.so not found at $_parallel_so — skipping parallel gate"
+fi
+
 _otel_so="${OPENTELEMETRY_SO:-$ext_dir/opentelemetry.so}"
 if [ -f "$_otel_so" ]; then
     # The hook() function is the entire userland surface — the
