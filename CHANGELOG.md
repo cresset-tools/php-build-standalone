@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.2.22](https://github.com/cresset-tools/php-build-standalone/compare/v0.2.21...v0.2.22) (2026-11-19)
+
+
+### Features
+
+* **php-runtime:** add PHP 8.6 ([f9ed0e4](https://github.com/cresset-tools/php-build-standalone/commit/f9ed0e4540cebe62e1ca9bde89524c4bd189060c))
+
+
+### Bug Fixes
+
+* **php-runtime:** link PHP 8.6 ZTS on Darwin ([eb8e430](https://github.com/cresset-tools/php-build-standalone/commit/eb8e4309b2d333083cf8d3b796dbb8cc21bb71ce))
+* **php-runtime:** use FlakeHub Cache on the Mac mini too ([00b8579](https://github.com/cresset-tools/php-build-standalone/commit/00b8579824773a65f71894b4c1b36484fa11966c))
+
+
+### Dependencies
+
+* bump pinned upstreams via scripts/update.py ([#127](https://github.com/cresset-tools/php-build-standalone/issues/127)) ([ce12e34](https://github.com/cresset-tools/php-build-standalone/commit/ce12e34ee25d1557c31fb4d6af2159418acc6374))
+
+
+### CI
+
+* **php-runtime:** build the darwin legs on the Mac mini ([96a5510](https://github.com/cresset-tools/php-build-standalone/commit/96a5510c7a1fb38f40b8008fd6d19fd381d66308))
+
 ## [0.2.21](https://github.com/cresset-tools/php-build-standalone/compare/v0.2.20...v0.2.21) (2026-11-09)
 
 
