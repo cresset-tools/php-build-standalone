@@ -29,6 +29,13 @@
 }:
 let
   inherit (pkgs) stdenv lib;
+
+  # PHP 8.6 ZTS on Darwin: ext/tokenizer cannot link against the scanner
+  # globals now that they are a native thread-local (see
+  # patches-darwin/scanner-globals-tls.patch). The fix is selected here
+  # instead of through patches/ so that only these derivations change.
+  darwinScngFix = stdenv.isDarwin && flavor == "zts"
+    && lib.versionAtLeast phpSpec.version "8.6";
 in
 mkDep {
   # Keep `name = "php"` even for ZTS so the build script's $PBS_SRC_PHP /
@@ -58,7 +65,9 @@ mkDep {
 
     # Platform-divergent build-php.sh snippets, picked here on the Nix
     # side so the script itself stays OS-agnostic.
-    PBS_PHP_PRE_CONFIGURE = if stdenv.isDarwin
+    PBS_PHP_PRE_CONFIGURE = if darwinScngFix
+      then ./build-php-pre-configure-darwin-86.sh
+      else if stdenv.isDarwin
       then ./build-php-pre-configure-darwin.sh
       else if pbsMusl then ./build-php-pre-configure-musl.sh
       else ./build-php-pre-configure-linux.sh;
@@ -92,6 +101,10 @@ mkDep {
       # as the glibc leg's CentOS sysroot.
       else if pbsMusl then "--with-gettext=shared,__PBS_SYSROOT__"
       else "--with-gettext=shared,__PBS_SYSROOT__/usr";
+  } // lib.optionalAttrs darwinScngFix {
+    # Consumed by build-php-pre-configure-darwin-86.sh.
+    PBS_PHP_PRE_CONFIGURE_DARWIN_BASE = ./build-php-pre-configure-darwin.sh;
+    PBS_PHP_DARWIN_SCNG_PATCH = ./patches-darwin/scanner-globals-tls.patch;
   } // lib.optionalAttrs stdenv.isDarwin {
     # nixpkgs darwin.libresolv provides build-time -L/<store>/lib +
     # libresolv.dylib for ld to satisfy `-lresolv` (used by ext/standard/dns).

@@ -254,6 +254,13 @@ on the current PHP version. Naming convention is enforced — drop a
 patch file in, the dispatcher picks it up. Overlapping ranges within a
 group (same `NNNN`) fail loudly.
 
+`php/patches/` is an input to every PHP derivation, so adding a file
+there changes the hash of every minor on every platform. A fix that only
+one platform/minor needs can instead be applied from a pre-configure
+snippet selected in `php/php.nix`: `build-php-pre-configure-darwin-86.sh`
+applies `php/patches-darwin/scanner-globals-tls.patch` for Darwin ZTS on
+8.6+ and leaves every other derivation untouched.
+
 The relocation glue is the header-only `main/pbs_relocate.h`, dropped
 in by `prepare-php.sh`; patches call into it to resolve `$prefix` from
 `/proc/self/exe` at runtime.
