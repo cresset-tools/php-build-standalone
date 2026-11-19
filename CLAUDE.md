@@ -14,7 +14,8 @@ for the distribution wire format see `DISTRIBUTION.md`.
 
 ## What ships today
 
-- **PHP 8.1.34 / 8.2.31 / 8.3.31 / 8.4.21 / 8.5.6**, each as both **NTS and
+- **PHP 8.1 / 8.2 / 8.3 / 8.4 / 8.5 / 8.6** (patch pins in
+  `shared/sources.nix`), each as both **NTS and
   ZTS** flavors (ZTS was added on `feat/zts-build`, commit `d218cd9`).
   CLI + FPM SAPIs.
 - **Targets:** `x86_64-unknown-linux-gnu` (glibc 2.17 floor, manylinux2014
@@ -30,7 +31,9 @@ for the distribution wire format see `DISTRIBUTION.md`.
   exif, bcmath, calendar, ftp, shmop, sockets, sysv{msg,sem,shm}, gmp, xsl,
   ctype, dom, fileinfo, iconv, phar, posix, simplexml, tokenizer, xml,
   xmlreader, xmlwriter, mbstring, opcache *(.so on 8.1–8.4; static into
-  bin/php on 8.5)*, gettext *(Linux only)*).
+  bin/php on 8.5+)*, gettext *(Linux only)*). Not every PECL extension
+  builds on every minor — `extensionUnavailable` in `shared/sources.nix`
+  is the list (most of them on 8.6, protobuf on 8.1).
 - **Observability:** `excimer` (Wikimedia's low-overhead sampling
   profiler — the production-safe complement to xdebug/pcov/spx) and
   `opentelemetry` (the `zend_observer` bridge the `open-telemetry/*`
@@ -228,6 +231,21 @@ The matrix is driven by `phpVersions` in `shared/sources.nix`. Add an
 entry there; the flake fans out NTS + ZTS variants automatically.
 Patches in `php/patches/` are range-suffixed (`@81-99`, `@84-99`,
 etc.) — extend ranges only if the new minor needs different handling.
+
+The rest of the checklist, none of which the flake does for you:
+
+- Add the minor's rows to the `build-tarball` matrix (glibc, Darwin,
+  musl × NTS, ZTS) and to the `distro-matrix` list in
+  `.github/workflows/build.yml`.
+- Add `shared/update/phpVersions/<minor>.sh` so the weekly bump tracks it.
+- Build the tree with `--keep-going` and see which PECL extensions
+  compile. A new minor usually removes internal APIs the pinned releases
+  still use. For each failure, in order of preference: point the minor at
+  a newer series through `extensionMatrix` in `shared/sources.nix` (leaves
+  the other minors' artifacts byte-identical), or list the extension in
+  `extensionUnavailable` until upstream releases. Check the existing
+  minors' `release` derivation paths are unchanged afterwards.
+- `latestPhp` is a separate, deliberate bump.
 
 ### Patches against PHP source
 

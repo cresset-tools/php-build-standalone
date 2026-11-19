@@ -213,13 +213,22 @@
           # Build one complete PHP variant from a phpVersions key.
           # Bundled C deps are shared; only the PHP and per-extension
           # derivations differ between variants.
-          # Per-extension series resolver. Today each <ext>Versions map has
-          # exactly one entry; pick it. If/when an extension grows a second
-          # series with PHP-minor-specific selection, replace this with a
-          # lookup against an extensionMatrix table in sources.nix.
+          # Per-extension series resolver for the common case: an
+          # <ext>Versions map with exactly one entry.
           pickOnly = attrs:
             let names = builtins.attrNames attrs; in
             assert builtins.length names == 1; attrs.${builtins.head names};
+
+          # Series for extension `ext` on PHP minor `phpKey`: the
+          # sources.extensionMatrix row when the extension has one (its
+          # per-minor key, else `default`), otherwise the map's only entry.
+          pickFor = phpKey: ext:
+            let
+              attrs = sources."${ext}Versions";
+              row   = sources.extensionMatrix.${ext} or null;
+            in
+              if row == null then pickOnly attrs
+              else attrs.${row.${phpKey} or row.default};
 
           # `flavor` is "nts" (default) or "zts". Threaded through every
           # downstream derivation so each PHP variant + its per-ext tarballs
@@ -229,21 +238,25 @@
           mkPhpVariant = phpKey: flavor:
             let
               phpSpec      = sources.phpVersions.${phpKey};
-              xdebugSpec   = pickOnly sources.xdebugVersions;
-              imagickSpec  = pickOnly sources.imagickVersions;
-              redisSpec    = pickOnly sources.redisVersions;
-              vipsSpec     = pickOnly sources.vipsVersions;
-              igbinarySpec = pickOnly sources.igbinaryVersions;
-              msgpackSpec  = pickOnly sources.msgpackVersions;
-              apcuSpec     = pickOnly sources.apcuVersions;
-              pcovSpec     = pickOnly sources.pcovVersions;
-              spxSpec      = pickOnly sources.spxVersions;
-              protobufSpec = pickOnly sources.protobufVersions;
-              evSpec       = pickOnly sources.evVersions;
-              eventSpec    = pickOnly sources.eventVersions;
-              uvSpec       = pickOnly sources.uvVersions;
-              excimerSpec  = pickOnly sources.excimerVersions;
-              opentelemetrySpec = pickOnly sources.opentelemetryVersions;
+              xdebugSpec   = pickFor phpKey "xdebug";
+              imagickSpec  = pickFor phpKey "imagick";
+              redisSpec    = pickFor phpKey "redis";
+              vipsSpec     = pickFor phpKey "vips";
+              igbinarySpec = pickFor phpKey "igbinary";
+              msgpackSpec  = pickFor phpKey "msgpack";
+              apcuSpec     = pickFor phpKey "apcu";
+              pcovSpec     = pickFor phpKey "pcov";
+              spxSpec      = pickFor phpKey "spx";
+              protobufSpec = pickFor phpKey "protobuf";
+              evSpec       = pickFor phpKey "ev";
+              eventSpec    = pickFor phpKey "event";
+              uvSpec       = pickFor phpKey "uv";
+              excimerSpec  = pickFor phpKey "excimer";
+              opentelemetrySpec = pickFor phpKey "opentelemetry";
+
+              # PECL extensions with no release that builds against this
+              # PHP minor; dropped from both `tree` and `extensions`.
+              peclUnavailable = sources.extensionUnavailable.${phpKey} or [ ];
 
               php = pkgs.callPackage ./php/php.nix ({
                 inherit mkDep phpSpec flavor;
@@ -318,15 +331,28 @@
                 # paths. The pruning to the Debian-faithful interpreter
                 # shape happens in tarball.nix at staging time (coreExtensions
                 # = [] drops every .so before the tarball is emitted).
-                interpreterDeps = [
-                  php xdebug imagick vips redis igbinary msgpack apcu pcov spx
-                  ev event uv excimer opentelemetry
-                ]
-                # protobuf 5.x requires PHP >= 8.2 (package.xml <min>8.2.0).
-                # On 8.1 the protobuf derivation is never forced, so it never
-                # tries (and fails) to build against the 8.1 interpreter; 8.1
-                # gets protobuf via the frozen 4.33.6 artifact instead.
-                ++ pkgs.lib.optional (phpKey != "8.1") protobuf;
+                # A PECL extension listed in sources.extensionUnavailable for
+                # this minor is never forced, so it never tries (and fails)
+                # to build against an interpreter it does not support.
+                # The list order feeds the tree derivation, so keep it stable.
+                interpreterDeps = [ php ] ++ map (e: e.drv) (builtins.filter
+                  (e: !(builtins.elem e.name peclUnavailable)) [
+                    { name = "xdebug";        drv = xdebug; }
+                    { name = "imagick";       drv = imagick; }
+                    { name = "vips";          drv = vips; }
+                    { name = "redis";         drv = redis; }
+                    { name = "igbinary";      drv = igbinary; }
+                    { name = "msgpack";       drv = msgpack; }
+                    { name = "apcu";          drv = apcu; }
+                    { name = "pcov";          drv = pcov; }
+                    { name = "spx";           drv = spx; }
+                    { name = "ev";            drv = ev; }
+                    { name = "event";         drv = event; }
+                    { name = "uv";            drv = uv; }
+                    { name = "excimer";       drv = excimer; }
+                    { name = "opentelemetry"; drv = opentelemetry; }
+                    { name = "protobuf";      drv = protobuf; }
+                  ]);
                 inherit toolchain;
                 pbsMusl = musl;
                 phpVersion = phpSpec.version;
@@ -419,7 +445,7 @@
               #     pdo_mysql.ini and pdo.ini is benign — PHP reorders
               #     MINIT to honor ZEND_MOD_REQUIRED("pdo") regardless
               #     of conf.d order.
-              extensions = ({
+              extensions = removeAttrs ({
                 xdebug      = mkExt { extDrv = xdebug;   extName = "xdebug";   extVersion = xdebugSpec.version;   confFragment = null; zendExtension = true; };
                 imagick     = mkExt { extDrv = imagick;  extName = "imagick";  extVersion = imagickSpec.version;  confFragment = "extension=imagick"; };
                 redis       = mkExt { extDrv = redis;    extName = "redis";    extVersion = redisSpec.version;    confFragment = "extension=redis"; };
@@ -586,11 +612,8 @@
                 ffi         = mkBuiltinExt "ffi";
                 readline    = mkBuiltinExt "readline";
                 mysqlnd     = mkBuiltinExt "mysqlnd";
-              } // pkgs.lib.optionalAttrs (phpKey != "8.1") {
-                # protobuf 5.x dropped PHP 8.1 (package.xml <min>8.2.0), so
-                # the live build ships it only on 8.2–8.5. PHP 8.1 keeps the
-                # prior 4.33.6 build via its frozen artifact (frozen/php-8.1.json),
-                # spliced into the 8.1 section at index-generation time.
+                # protobuf: see sources.extensionUnavailable for the
+                # minors that do not get a live build.
                 protobuf = mkExt { extDrv = protobuf; extName = "protobuf"; extVersion = protobufSpec.version; confFragment = "extension=protobuf"; };
               } // pkgs.lib.optionalAttrs (!darwin) {
                 # gettext is Linux-only (glibc + musl): both implement the
@@ -598,12 +621,12 @@
                 # Apple's libc lack a real libintl), so no gettext.so to
                 # package there.
                 gettext = mkBuiltinExt "gettext";
-              } // pkgs.lib.optionalAttrs (phpKey != "8.5") {
+              } // pkgs.lib.optionalAttrs (pkgs.lib.versionOlder phpKey "8.5") {
                 # opcache: --enable-opcache produces opcache.so on 8.1–8.4.
                 # PHP 8.5 made opcache always-static (built into bin/php);
                 # there's no opcache.so to package, so the per-ext tarball
-                # is unavailable on that branch. bougie's default-install
-                # list must skip opcache for 8.5 (it's already loaded).
+                # is unavailable from that branch on. bougie's default-install
+                # list must skip opcache for 8.5+ (it's already loaded).
                 #
                 # confFragment uses `zend_extension=` not `extension=` —
                 # opcache registers as a Zend extension and PHP rejects
@@ -617,7 +640,7 @@
                   confFragment = "zend_extension=opcache";
                   zendExtension = true;
                 };
-              });
+              }) peclUnavailable;
 
               # Release aggregate: collects every artifact for this PHP
               # variant into a single $out directory, ready for upload.
