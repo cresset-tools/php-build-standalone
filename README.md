@@ -96,12 +96,15 @@ the toolchain is a thin wrapper around nixpkgs's `clang`. `@rpath/`-relative
 
 ### Built (across the whole build matrix)
 
-- **PHP 8.1.34 / 8.2.31 / 8.3.31 / 8.4.21 / 8.5.6** — five separate variants,
+- **PHP 8.1 / 8.2 / 8.3 / 8.4 / 8.5 / 8.6** — six separate variants,
   each NTS, CLI + FPM SAPIs. Patch versions track the latest stable in each
   line (and pin above the libxml2 2.13 compatibility floor: 8.1.30 / 8.2.20
-  / 8.3.8). The dep stack below is shared across all five.
-- **xdebug 3.5.1** as a per-ext download. 3.5 is the first xdebug release
-  supporting PHP 8.5; it covers 8.1 through 8.5.
+  / 8.3.8). The dep stack below is shared across all six.
+- **xdebug 3.5** as a per-ext download on PHP 8.1 through 8.5, and the
+  3.6 prerelease on PHP 8.6 (the first line that supports it).
+- **PHP 8.6 ships a reduced PECL set** — xdebug, opentelemetry, ev, event
+  and uv — until the others publish an 8.6-compatible release. Every
+  built-in extension is available as usual.
 - **imagick 3.8.1** as a per-ext download, linked against bundled
   ImageMagick 7. Single pin covers PHP 8.1 through 8.5.
 - **redis 6.3.0** (phpredis) as a per-ext download. No external C-library
@@ -144,7 +147,7 @@ modern frameworks, and the `php -a` REPL all assume:
   xmlreader, xmlwriter — plus the always-built-in set (Core / Zend /
   standard, date, hash, json, pcre, reflection, spl, mysqlnd, libxml,
   readline). opcache is a zend_extension, statically linked into bin/php
-  on PHP 8.5 and shipped as a .so on 8.1–8.4.
+  on PHP 8.5+ and shipped as a .so on 8.1–8.4.
 - **Bundled C libraries:** zlib 1.3.2, openssl 3.5.6, libxml2 2.13.9,
   libsodium 1.0.22, libedit 20251016-3.1, ncurses 6.6 (+ libiconv 1.19 on
   Darwin only — apple-sdk strips iconv headers; glibc provides iconv natively).

@@ -12,11 +12,12 @@
 #   - phpVersions describes PHP itself only (version + tarball + sha256),
 #     keyed by major.minor (e.g. "8.5").
 #   - <ext>Versions (xdebugVersions, imagickVersions, redisVersions,
-#     vipsVersions) are independent single-entry maps keyed by series tag.
-#     Today every PHP minor pairs with the one entry in each map; the
-#     resolver in flake.nix takes the single value directly. When/if a
-#     second series ever needs different PHP coverage, add an
-#     extensionMatrix sibling table here with a per-PHP-minor selector.
+#     vipsVersions, …) are independent maps keyed by series tag. Most
+#     have a single entry that every PHP minor pairs with; the resolver in
+#     flake.nix takes it directly. An extension with a second series is
+#     listed in extensionMatrix, which selects a series per PHP minor.
+#   - extensionUnavailable lists the PECL extensions a PHP minor has no
+#     live build of.
 #   - latestPhp is the key used for the `default` flake output.
 
 {
@@ -414,16 +415,22 @@
       url = "https://www.php.net/distributions/php-8.5.12.tar.xz";
       sha256 = "08bc2eba2a588654ade1357174aa646b761556c862dda0678345ee29ed481209";
     };
+    "8.6" = {
+      version = "8.6.0";
+      url = "https://www.php.net/distributions/php-8.6.0.tar.xz";
+      sha256 = "5f84beaa3d763aee1e4feed99bf54ec692c383b322e25626807b589238c3a087";
+    };
   };
 
-  # xdebug version matrix. Keyed by series tag. The flake's resolver reads
-  # the single entry directly today; if a second series ever needs different
-  # PHP coverage, add an extensionMatrix sibling table that selects per
-  # PHP minor.
+  # xdebug version matrix. Keyed by series tag; extensionMatrix below picks
+  # the series per PHP minor.
   #
-  # We pin xdebug 3.5.1 because it is the first xdebug release with PHP 8.5
-  # support (3.4.x's configure refuses any PHP >= 8.5.0). 3.5.x covers PHP
-  # 8.1 through 8.5, so a single entry suffices for the whole range we ship.
+  # 3.5.x covers PHP 8.1 through 8.5 (3.4.x's configure refuses any PHP >=
+  # 8.5.0, and 3.5.x's refuses >= 8.6.0). 3.6 is the first line that accepts
+  # PHP 8.6, and it drops 8.1, so the two series coexist. 3.6 is a
+  # hand-pinned prerelease: an alpha xdebug on 8.6 beats none. It has no
+  # script under shared/update/, so move it by hand, and to the first
+  # stable 3.6.x when that ships.
   #
   # This is the headline use case for the entire project: dynamic-linked
   # PHP that can dlopen xdebug for development workflows. Building xdebug
@@ -434,6 +441,11 @@
       version = "3.5.3";
       url = "https://xdebug.org/files/xdebug-3.5.3.tgz";
       sha256 = "f073de91bea046106abf4d6071c963ea71e58571df6ce58948ceca89d121cb2d";
+    };
+    "3.6" = {
+      version = "3.6.0alpha1";
+      url = "https://xdebug.org/files/xdebug-3.6.0alpha1.tgz";
+      sha256 = "5f464dfbba2f2aec384f9a10cb42cbfb2b3c07274b70491c46080b707271fcde";
     };
   };
 
@@ -624,6 +636,11 @@
       url = "https://pecl.php.net/get/opentelemetry-1.2.1.tgz";
       sha256 = "de8315ed3299536f327360a37f03618ab8684c02fbf8dfd8f489c025d88a6498";
     };
+    "1.5" = {
+      version = "1.5.0";
+      url = "https://pecl.php.net/get/opentelemetry-1.5.0.tgz";
+      sha256 = "796676e071b2c6502c4dbdacccd1a2b29e12bf81d5d514b7ba85ce37de232073";
+    };
   };
 
   # --- ReactPHP event-loop backends -----------------------------------
@@ -652,6 +669,11 @@
       version = "1.2.3";
       url = "https://pecl.php.net/get/ev-1.2.3.tgz";
       sha256 = "5ea937d3b81c24fd76a6772c2b202a13bc561a4348743a011bd1a7a39eb9fdba";
+    };
+    "1.3" = {
+      version = "1.3.1";
+      url = "https://pecl.php.net/get/ev-1.3.1.tgz";
+      sha256 = "19447cadd7dc9f180995556c3bbc40000b186f599d5b974bc9a9c36a5df381e9";
     };
   };
 
@@ -689,6 +711,49 @@
       url = "https://pecl.php.net/get/uv-0.3.0.tgz";
       sha256 = "a11f9c987f4c466b70c79050714fcf0c916753c560421279bbe0f6b7dc737d3e";
     };
+    "0.3.1" = {
+      version = "0.3.1";
+      url = "https://pecl.php.net/get/uv-0.3.1.tgz";
+      sha256 = "1b18d961543f76eebae300893987b3f198874d9f039cf472ac6257f85a28db77";
+    };
+  };
+
+  # Per-PHP-minor series selection for the <ext>Versions maps above. An
+  # extension listed here has more than one series entry; `default` names
+  # the series every PHP minor gets unless it has its own key. Extensions
+  # not listed have exactly one series, which every minor uses.
+  #
+  # The 8.6 rows exist because the default pins predate 8.6 and fail to
+  # compile against it. They are scoped to 8.6 rather than bumped for
+  # every minor so that adding 8.6 leaves the 8.1–8.5 artifacts untouched;
+  # fold a row back into a single series when the default pin catches up.
+  extensionMatrix = {
+    xdebug        = { default = "3.5";   "8.6" = "3.6"; };
+    opentelemetry = { default = "1.2";   "8.6" = "1.5"; };
+    ev            = { default = "1.2";   "8.6" = "1.3"; };
+    uv            = { default = "0.3";   "8.6" = "0.3.1"; };
+  };
+
+  # PECL extensions that have no live build on a PHP minor, because no
+  # release compiles against it. flake.nix drops them from that minor's
+  # tree and extension set, so they are absent from its index section.
+  #
+  # 8.1: protobuf 5.x dropped PHP 8.1 (package.xml <min>8.2.0). 8.1 keeps
+  # the prior 4.33.6 build via its frozen artifact (frozen/php-8.1.json),
+  # spliced into the 8.1 section at index-generation time.
+  #
+  # 8.6: removed the XtOffsetOf / zval_dtor / INI_* / WRONG_PARAM_COUNT /
+  # EMPTY_SWITCH_DEFAULT_CASE aliases (UPGRADING.INTERNALS), and none of
+  # these had a compatible release when 8.6 was added (2026-11). Most have
+  # the fix merged upstream and unreleased; pcov and vips have none. Remove
+  # a name once a release builds — via extensionMatrix if the new release
+  # should not also move the older minors.
+  extensionUnavailable = {
+    "8.1" = [ "protobuf" ];
+    "8.6" = [
+      "apcu" "excimer" "igbinary" "imagick" "msgpack"
+      "pcov" "protobuf" "redis" "spx" "vips"
+    ];
   };
 
   # The key into phpVersions that `default` and the unqualified CLI output

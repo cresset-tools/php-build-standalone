@@ -52,7 +52,7 @@ rm -f "$script"
 #    files — every loadable
 #    extension travels via its own per-ext tarball. The set below is the
 #    intersection of modules statically linked into bin/php across every
-#    supported PHP minor (8.1–8.5); 8.2+ also has random, and PHP 8.5+
+#    supported PHP minor (8.1–8.6); 8.2+ also has random, and PHP 8.5+
 #    statically builds opcache + ships lexbor/uri. Those version-specific
 #    members are not asserted here.
 emit "php -m"
