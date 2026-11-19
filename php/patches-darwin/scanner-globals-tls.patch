@@ -1,0 +1,22 @@
+PHP 8.6 keeps the language scanner globals in native thread-local storage
+and has shared extensions reference that variable directly. Mach-O cannot
+do that: shared extensions link with -undefined dynamic_lookup, and ld
+rejects a thread-local reference to a symbol it cannot see ("illegal
+thread local variable reference to regular symbol
+_language_scanner_globals"), which breaks ext/tokenizer in ZTS builds.
+
+Take the route Windows already takes for the same reason: a shared
+extension reaches the scanner globals through language_scanner_globals_id.
+The core keeps the direct thread-local access.
+
+--- a/Zend/zend_globals_macros.h
++++ b/Zend/zend_globals_macros.h
+@@ -49,7 +49,7 @@
+ /* Language Scanner */
+ #ifdef ZTS
+ extern ZEND_API ts_rsrc_id language_scanner_globals_id;
+-# if defined(ZEND_WIN32) && !defined(LIBZEND_EXPORTS)
++# if (defined(ZEND_WIN32) && !defined(LIBZEND_EXPORTS)) || (defined(__APPLE__) && defined(ZEND_COMPILE_DL_EXT))
+ # define LANG_SCNG(v) TSRMG(language_scanner_globals_id, zend_php_scanner_globals *, v)
+ # else
+ #  ifdef ZEND_WIN32
