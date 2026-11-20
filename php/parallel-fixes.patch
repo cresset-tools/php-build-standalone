@@ -1,0 +1,166 @@
+Fixes for parallel 1.2.15, none of them in a release yet. Drop this file
+once a release carries all three.
+
+1. PHP 8.6: HT_PACKED_SIZE became an inline function, so the
+   `#ifdef HT_PACKED_SIZE` feature tests turned false and packed arrays
+   were walked as Bucket arrays (segfault on any list crossing threads).
+   Upstream: https://github.com/krakjoe/parallel/pull/393 (merged).
+
+2. PHP 8.6: zend_closure.this_ptr changed from a zval to a zend_object*.
+   parallel mirrors that struct, so a bound closure crossing threads
+   corrupted the heap.
+   Upstream: https://github.com/krakjoe/parallel/pull/429
+
+3. All versions: a Closure over an internal function (strlen(...)) was
+   treated as an op_array and segfaulted. It is now rejected like any
+   other illegal value.
+   Upstream: https://github.com/krakjoe/parallel/pull/430
+
+With these, upstream's suite is clean on 8.1-8.6 zts, bar three 8.6 tests
+whose expected output lacks new deprecation notices (021, 051, 063).
+
+--- a/src/check.c
++++ b/src/check.c
+@@ -487,6 +487,11 @@
+ 
+ static zend_always_inline bool php_parallel_check_closure(zend_closure_t *closure)
+ { /* {{{ */
++	/* a Closure over an internal function (e.g. strlen(...)) has no op_array */
++	if (closure->func.type != ZEND_USER_FUNCTION) {
++		return 0;
++	}
++
+ 	return php_parallel_check_statics(&closure->func, NULL, NULL) &&
+ 	       php_parallel_check_function(&closure->func, NULL, NULL);
+ } /* }}} */
+--- a/src/copy.c
++++ b/src/copy.c
+@@ -220,7 +220,7 @@
+ 		return ht;
+ 	}
+ 
+-#ifdef HT_PACKED_SIZE
++#if PHP_VERSION_ID >= 80200
+ 	// if array is packed, copy it as packed
+ 	if (HT_IS_PACKED(ht)) {
+ 		HT_SET_DATA_ADDR(ht, php_parallel_copy_memory_func(HT_GET_DATA_ADDR(source),
+@@ -301,7 +301,7 @@
+ 
+ 	HT_SET_DATA_ADDR(ht, emalloc(HT_SIZE(ht)));
+ 	memcpy(HT_GET_DATA_ADDR(ht), HT_GET_DATA_ADDR(source), HT_HASH_SIZE(ht->nTableMask));
+-#ifdef HT_PACKED_SIZE
++#if PHP_VERSION_ID >= 80200
+ 	if (HT_IS_PACKED(ht)) {
+ 		zval *p = ht->arPacked, *q = source->arPacked, *p_end = p + ht->nNumUsed;
+ 		for (; p < p_end; p++, q++) {
+@@ -388,7 +388,7 @@
+ #endif
+ 		}
+ 
+-#ifdef HT_PACKED_SIZE
++#if PHP_VERSION_ID >= 80200
+ 		if (HT_IS_PACKED(table)) {
+ 			zval *p = table->arPacked, *end = p + table->nNumUsed;
+ 			while (p < end) {
+@@ -435,6 +435,43 @@
+ 	}
+ }
+ 
++/*
++ * zend_closure.this_ptr is a zval up to PHP 8.5 and a zend_object* from 8.6.
++ */
++static zend_always_inline void php_parallel_copy_closure_this_ctor(zend_closure_t *closure, bool persistent)
++{
++#if PHP_VERSION_ID >= 80600
++	if (closure->this_ptr) {
++		zval zv;
++
++		ZVAL_OBJ(&zv, closure->this_ptr);
++		PARALLEL_ZVAL_COPY(&zv, &zv, persistent);
++
++		closure->this_ptr = Z_TYPE(zv) == IS_OBJECT ? Z_OBJ(zv) : NULL;
++	}
++#else
++	if (Z_TYPE(closure->this_ptr) == IS_OBJECT) {
++		PARALLEL_ZVAL_COPY(&closure->this_ptr, &closure->this_ptr, persistent);
++	}
++#endif
++}
++
++static zend_always_inline void php_parallel_copy_closure_this_dtor(zend_closure_t *closure)
++{
++#if PHP_VERSION_ID >= 80600
++	if (closure->this_ptr) {
++		zval zv;
++
++		ZVAL_OBJ(&zv, closure->this_ptr);
++		PARALLEL_ZVAL_DTOR(&zv);
++	}
++#else
++	if (Z_TYPE(closure->this_ptr) == IS_OBJECT) {
++		PARALLEL_ZVAL_DTOR(&closure->this_ptr);
++	}
++#endif
++}
++
+ static zend_always_inline zend_object *php_parallel_copy_closure_persistent(zend_object *source)
+ {
+ 	zend_closure_t *closure = (zend_closure_t *)source;
+@@ -446,9 +483,7 @@
+ 
+ 	copy->func.common.fn_flags |= ZEND_ACC_CLOSURE;
+ 
+-	if (Z_TYPE(copy->this_ptr) == IS_OBJECT) {
+-		PARALLEL_ZVAL_COPY(&copy->this_ptr, &copy->this_ptr, 1);
+-	}
++	php_parallel_copy_closure_this_ctor(copy, 1);
+ 
+ 	php_parallel_dependencies_store(&copy->func);
+ 
+@@ -507,9 +542,7 @@
+ 
+ 	php_parallel_copy_closure_init_run_time_cache(function);
+ 
+-	if (Z_TYPE(copy->this_ptr) == IS_OBJECT) {
+-		PARALLEL_ZVAL_COPY(&copy->this_ptr, &copy->this_ptr, 0);
+-	}
++	php_parallel_copy_closure_this_ctor(copy, 0);
+ 
+ 	php_parallel_dependencies_load((zend_function *)function);
+ 
+@@ -540,9 +573,7 @@
+ 		php_parallel_copy_hash_dtor(closure->func.op_array.static_variables, 1);
+ 	}
+ 
+-	if (Z_TYPE(closure->this_ptr) == IS_OBJECT) {
+-		PARALLEL_ZVAL_DTOR(&closure->this_ptr);
+-	}
++	php_parallel_copy_closure_this_dtor(closure);
+ 
+ 	pefree(closure, 1);
+ }
+@@ -816,7 +847,9 @@
+ 
+ static zend_always_inline zend_object *php_parallel_copy_object_ctor(zend_object *source, bool persistent)
+ {
+-	if (source->ce == zend_ce_closure) {
++	/* a Closure over an internal function has no op_array to copy, it takes
++	 * the generic path below and arrives as parallel\Runtime\Object\Unavailable */
++	if (source->ce == zend_ce_closure && ((zend_closure_t *)source)->func.type == ZEND_USER_FUNCTION) {
+ 		return php_parallel_copy_closure_ctor(source, persistent);
+ 	}
+ 
+--- a/src/copy.h
++++ b/src/copy.h
+@@ -42,7 +42,11 @@
+ typedef struct _zend_closure_t {
+ 	zend_object       std;
+ 	zend_function     func;
++#if PHP_VERSION_ID >= 80600
++	zend_object      *this_ptr;
++#else
+ 	zval              this_ptr;
++#endif
+ 	zend_class_entry *called_scope;
+ 	zif_handler       orig_internal_handler;
+ } zend_closure_t;

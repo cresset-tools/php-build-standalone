@@ -253,10 +253,13 @@
               uvSpec       = pickFor phpKey "uv";
               excimerSpec  = pickFor phpKey "excimer";
               opentelemetrySpec = pickFor phpKey "opentelemetry";
+              parallelSpec = pickFor phpKey "parallel";
 
               # PECL extensions with no release that builds against this
-              # PHP minor; dropped from both `tree` and `extensions`.
-              peclUnavailable = sources.extensionUnavailable.${phpKey} or [ ];
+              # PHP minor, plus the thread-safe-only ones on a non-zts
+              # flavor; dropped from both `tree` and `extensions`.
+              peclUnavailable = (sources.extensionUnavailable.${phpKey} or [ ])
+                ++ (if flavor == "zts" then [ ] else sources.ztsOnlyExtensions);
 
               php = pkgs.callPackage ./php/php.nix ({
                 inherit mkDep phpSpec flavor;
@@ -319,6 +322,10 @@
               excimer = pkgs.callPackage ./php/excimer.nix {
                 inherit mkDep php excimerSpec;
               };
+              # Userland threads; zts flavor only (sources.ztsOnlyExtensions).
+              parallel = pkgs.callPackage ./php/parallel.nix {
+                inherit mkDep php parallelSpec;
+              };
               opentelemetry = pkgs.callPackage ./php/opentelemetry.nix {
                 inherit mkDep php opentelemetrySpec;
               };
@@ -352,6 +359,7 @@
                     { name = "excimer";       drv = excimer; }
                     { name = "opentelemetry"; drv = opentelemetry; }
                     { name = "protobuf";      drv = protobuf; }
+                    { name = "parallel";      drv = parallel; }
                   ]);
                 inherit toolchain;
                 pbsMusl = musl;
@@ -532,6 +540,10 @@
                 #     which silently disables profiling if the classes are
                 #     missing. So it gets the normal 20- fragment.
                 excimer     = mkExt { extDrv = excimer; extName = "excimer"; extVersion = excimerSpec.version; confFragment = "extension=excimer"; };
+                # parallel is inert until userland constructs a
+                # parallel\Runtime, so it auto-loads like excimer. Present on
+                # the zts flavor only — peclUnavailable removes it elsewhere.
+                parallel    = mkExt { extDrv = parallel; extName = "parallel"; extVersion = parallelSpec.version; confFragment = "extension=parallel"; };
                 #
                 #   opentelemetry also auto-loads, but at prefix 50 rather than
                 #     the default 20. It does call zend_observer_fcall_register()
