@@ -190,9 +190,9 @@
   # is compiled and installed — see build-libpq.sh. Wired against our bundled
   # OpenSSL so libpq supports TLS connections (sslmode=require et al).
   libpq = {
-    url = "https://ftp.postgresql.org/pub/source/v18.6/postgresql-18.6.tar.bz2";
-    sha256 = "555610c24d53e4316da5b7d3fc25c279d96856d5e0e23ee308c328c5fa881d9f";
-    version = "18.6";
+    url = "https://ftp.postgresql.org/pub/source/v19.0/postgresql-19.0.tar.bz2";
+    sha256 = "a89fd70efbad6a08c7dbed8d4872e3af30170d9e5ca9dc7906523be95b4e692d";
+    version = "19.0";
   };
 
   # libtiff — TIFF reader/writer, an ImageMagick delegate. Depends on zlib
@@ -396,24 +396,24 @@
       sha256 = "ffa9e0982e82eeaea848f57687b425ed173aa278fe563001310ae2638db5c251";
     };
     "8.2" = {
-      version = "8.2.35";
-      url = "https://www.php.net/distributions/php-8.2.35.tar.xz";
-      sha256 = "5737b98601fe5ab1b8c5db0c82ed3158acb9283ed3081ffe2faffb9ac81455e6";
+      version = "8.2.36";
+      url = "https://www.php.net/distributions/php-8.2.36.tar.xz";
+      sha256 = "df50a00d2b453096608bf2bd98a9fab9a3df8678a77b93011b65c3cfe9a018fa";
     };
     "8.3" = {
-      version = "8.3.36";
-      url = "https://www.php.net/distributions/php-8.3.36.tar.xz";
-      sha256 = "dd54693aa334c5c4d72e9aee96b082c2473750a18a6c1d105789c93a3b1692fd";
+      version = "8.3.37";
+      url = "https://www.php.net/distributions/php-8.3.37.tar.xz";
+      sha256 = "0237af84478b7a7649d3964153f1b8653d622550b846f56d63062de683fb86bb";
     };
     "8.4" = {
-      version = "8.4.27";
-      url = "https://www.php.net/distributions/php-8.4.27.tar.xz";
-      sha256 = "dcf93923b0e38e0d5252b25b796520b5a47761a08b3488b6d0b5d1115764d3f0";
+      version = "8.4.28";
+      url = "https://www.php.net/distributions/php-8.4.28.tar.xz";
+      sha256 = "0c8ec360e5dd8154f270b2fd50cd44ecc824e6ee39c85f911312b80d4daecd72";
     };
     "8.5" = {
-      version = "8.5.12";
-      url = "https://www.php.net/distributions/php-8.5.12.tar.xz";
-      sha256 = "08bc2eba2a588654ade1357174aa646b761556c862dda0678345ee29ed481209";
+      version = "8.5.13";
+      url = "https://www.php.net/distributions/php-8.5.13.tar.xz";
+      sha256 = "607602acaf0c3061818e9916ec44a058e8b3d43959a83862b9cd3ec7bf5b785f";
     };
     "8.6" = {
       version = "8.6.0";
@@ -778,9 +778,9 @@
   # bundled-dep set the PHP build uses is reused — no new shared/<dep>.nix
   # files are needed for MariaDB itself.
   mariadb = {
-    url = "https://archive.mariadb.org/mariadb-11.4.13/source/mariadb-11.4.13.tar.gz";
-    sha256 = "1bb254b106d0a7ca871cfa18fa6e18d4b80a7430f9ec9d1571ec4271a13def96";
-    version = "11.4.13";
+    url = "https://archive.mariadb.org/mariadb-11.4.14/source/mariadb-11.4.14.tar.gz";
+    sha256 = "5295025835da449871518606f50c1134047df978e43939e4553737dd078e1261";
+    version = "11.4.14";
   };
 
   # libfmt, as MariaDB wants it — not a PBS dependency in its own right.
@@ -922,9 +922,9 @@
   # the most recent stable as of early 2026; bumps should track NSS's
   # `coreconf/coreconf.dep` floor.
   nspr = {
-    url = "https://archive.mozilla.org/pub/nspr/releases/v4.40/src/nspr-4.40.tar.gz";
-    sha256 = "c0c1884c627f3db7a783f7c7314c695226b2043696791d15519e7e0578c19bdc";
-    version = "4.40";
+    url = "https://archive.mozilla.org/pub/nspr/releases/v4.41/src/nspr-4.41.tar.gz";
+    sha256 = "c562b8ddfe93704b7dc077be013f01448fdc6c124b1821c0f10471a71cb2e9e6";
+    version = "4.41";
   };
 
   # NSS — Network Security Services. Mozilla's TLS/crypto/cert-DB
@@ -934,9 +934,9 @@
   # gmake-based build; depends on NSPR. NSS releases track Firefox;
   # any modern tag works for certutil's purposes.
   nss = {
-    url = "https://archive.mozilla.org/pub/security/nss/releases/NSS_3_133_RTM/src/nss-3.133.tar.gz";
-    sha256 = "4d752526b9846a1d962588cfbd09b7cc2a4f6a4effbd9157d58a30e8a2573065";
-    version = "3.133";
+    url = "https://archive.mozilla.org/pub/security/nss/releases/NSS_3_134_RTM/src/nss-3.134.tar.gz";
+    sha256 = "bb3b300b457f44da9a9486917c3b33bbc5935ae3cdf60aa759a6880889439c50";
+    version = "3.134";
   };
 
   # mkcert — FiloSottile's local-CA generator. Pure-Go static binary;
