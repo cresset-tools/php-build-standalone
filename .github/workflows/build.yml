@@ -194,15 +194,19 @@ jobs:
         uses: DeterminateSystems/determinate-nix-action@v3
 
       # The self-hosted Mac mini has Determinate Nix installed system-wide,
-      # so it skips the install above and just puts that Nix on PATH. Its two
-      # runners share one macOS user, so Magic Nix Cache gets a per-job
-      # nix.conf (XDG_CONFIG_HOME in the job's temp dir) and, below, a port
-      # per runner; otherwise concurrent jobs clash.
+      # so it skips the install above and just puts that Nix on PATH. It
+      # also does the FlakeHub login the install step would have done:
+      # without this workflow's identity, Magic Nix Cache can't find the
+      # FlakeHub project (401). Its two runners share one macOS user, so
+      # Magic Nix Cache gets a per-job nix.conf (XDG_CONFIG_HOME in the
+      # job's temp dir) and, below, a port per runner; otherwise concurrent
+      # jobs clash.
       - name: Use the Mac mini's Nix
         if: runner.environment == 'self-hosted'
         run: |
           echo /nix/var/nix/profiles/default/bin >> "$GITHUB_PATH"
           echo "XDG_CONFIG_HOME=$RUNNER_TEMP/xdg-config" >> "$GITHUB_ENV"
+          /usr/local/bin/determinate-nixd login github-action
 
       - name: Set up FlakeHub Cache
         uses: DeterminateSystems/flakehub-cache-action@v3.24.2
@@ -308,15 +312,19 @@ jobs:
         uses: DeterminateSystems/determinate-nix-action@v3
 
       # The self-hosted Mac mini has Determinate Nix installed system-wide,
-      # so it skips the install above and just puts that Nix on PATH. Its two
-      # runners share one macOS user, so Magic Nix Cache gets a per-job
-      # nix.conf (XDG_CONFIG_HOME in the job's temp dir) and, below, a port
-      # per runner; otherwise concurrent jobs clash.
+      # so it skips the install above and just puts that Nix on PATH. It
+      # also does the FlakeHub login the install step would have done:
+      # without this workflow's identity, Magic Nix Cache can't find the
+      # FlakeHub project (401). Its two runners share one macOS user, so
+      # Magic Nix Cache gets a per-job nix.conf (XDG_CONFIG_HOME in the
+      # job's temp dir) and, below, a port per runner; otherwise concurrent
+      # jobs clash.
       - name: Use the Mac mini's Nix
         if: runner.environment == 'self-hosted'
         run: |
           echo /nix/var/nix/profiles/default/bin >> "$GITHUB_PATH"
           echo "XDG_CONFIG_HOME=$RUNNER_TEMP/xdg-config" >> "$GITHUB_ENV"
+          /usr/local/bin/determinate-nixd login github-action
 
       - name: Set up FlakeHub Cache
         uses: DeterminateSystems/flakehub-cache-action@v3.24.2
@@ -377,15 +385,19 @@ jobs:
         uses: DeterminateSystems/determinate-nix-action@v3
 
       # The self-hosted Mac mini has Determinate Nix installed system-wide,
-      # so it skips the install above and just puts that Nix on PATH. Its two
-      # runners share one macOS user, so Magic Nix Cache gets a per-job
-      # nix.conf (XDG_CONFIG_HOME in the job's temp dir) and, below, a port
-      # per runner; otherwise concurrent jobs clash.
+      # so it skips the install above and just puts that Nix on PATH. It
+      # also does the FlakeHub login the install step would have done:
+      # without this workflow's identity, Magic Nix Cache can't find the
+      # FlakeHub project (401). Its two runners share one macOS user, so
+      # Magic Nix Cache gets a per-job nix.conf (XDG_CONFIG_HOME in the
+      # job's temp dir) and, below, a port per runner; otherwise concurrent
+      # jobs clash.
       - name: Use the Mac mini's Nix
         if: runner.environment == 'self-hosted'
         run: |
           echo /nix/var/nix/profiles/default/bin >> "$GITHUB_PATH"
           echo "XDG_CONFIG_HOME=$RUNNER_TEMP/xdg-config" >> "$GITHUB_ENV"
+          /usr/local/bin/determinate-nixd login github-action
 
       - name: Set up FlakeHub Cache
         uses: DeterminateSystems/flakehub-cache-action@v3.24.2
@@ -445,15 +457,19 @@ jobs:
         uses: DeterminateSystems/determinate-nix-action@v3
 
       # The self-hosted Mac mini has Determinate Nix installed system-wide,
-      # so it skips the install above and just puts that Nix on PATH. Its two
-      # runners share one macOS user, so Magic Nix Cache gets a per-job
-      # nix.conf (XDG_CONFIG_HOME in the job's temp dir) and, below, a port
-      # per runner; otherwise concurrent jobs clash.
+      # so it skips the install above and just puts that Nix on PATH. It
+      # also does the FlakeHub login the install step would have done:
+      # without this workflow's identity, Magic Nix Cache can't find the
+      # FlakeHub project (401). Its two runners share one macOS user, so
+      # Magic Nix Cache gets a per-job nix.conf (XDG_CONFIG_HOME in the
+      # job's temp dir) and, below, a port per runner; otherwise concurrent
+      # jobs clash.
       - name: Use the Mac mini's Nix
         if: runner.environment == 'self-hosted'
         run: |
           echo /nix/var/nix/profiles/default/bin >> "$GITHUB_PATH"
           echo "XDG_CONFIG_HOME=$RUNNER_TEMP/xdg-config" >> "$GITHUB_ENV"
+          /usr/local/bin/determinate-nixd login github-action
 
       - name: Set up FlakeHub Cache
         uses: DeterminateSystems/flakehub-cache-action@v3.24.2
@@ -514,15 +530,19 @@ jobs:
         uses: DeterminateSystems/determinate-nix-action@v3
 
       # The self-hosted Mac mini has Determinate Nix installed system-wide,
-      # so it skips the install above and just puts that Nix on PATH. Its two
-      # runners share one macOS user, so Magic Nix Cache gets a per-job
-      # nix.conf (XDG_CONFIG_HOME in the job's temp dir) and, below, a port
-      # per runner; otherwise concurrent jobs clash.
+      # so it skips the install above and just puts that Nix on PATH. It
+      # also does the FlakeHub login the install step would have done:
+      # without this workflow's identity, Magic Nix Cache can't find the
+      # FlakeHub project (401). Its two runners share one macOS user, so
+      # Magic Nix Cache gets a per-job nix.conf (XDG_CONFIG_HOME in the
+      # job's temp dir) and, below, a port per runner; otherwise concurrent
+      # jobs clash.
       - name: Use the Mac mini's Nix
         if: runner.environment == 'self-hosted'
         run: |
           echo /nix/var/nix/profiles/default/bin >> "$GITHUB_PATH"
           echo "XDG_CONFIG_HOME=$RUNNER_TEMP/xdg-config" >> "$GITHUB_ENV"
+          /usr/local/bin/determinate-nixd login github-action
 
       - name: Set up FlakeHub Cache
         uses: DeterminateSystems/flakehub-cache-action@v3.24.2
@@ -622,15 +642,19 @@ jobs:
         uses: DeterminateSystems/determinate-nix-action@v3
 
       # The self-hosted Mac mini has Determinate Nix installed system-wide,
-      # so it skips the install above and just puts that Nix on PATH. Its two
-      # runners share one macOS user, so Magic Nix Cache gets a per-job
-      # nix.conf (XDG_CONFIG_HOME in the job's temp dir) and, below, a port
-      # per runner; otherwise concurrent jobs clash.
+      # so it skips the install above and just puts that Nix on PATH. It
+      # also does the FlakeHub login the install step would have done:
+      # without this workflow's identity, Magic Nix Cache can't find the
+      # FlakeHub project (401). Its two runners share one macOS user, so
+      # Magic Nix Cache gets a per-job nix.conf (XDG_CONFIG_HOME in the
+      # job's temp dir) and, below, a port per runner; otherwise concurrent
+      # jobs clash.
       - name: Use the Mac mini's Nix
         if: runner.environment == 'self-hosted'
         run: |
           echo /nix/var/nix/profiles/default/bin >> "$GITHUB_PATH"
           echo "XDG_CONFIG_HOME=$RUNNER_TEMP/xdg-config" >> "$GITHUB_ENV"
+          /usr/local/bin/determinate-nixd login github-action
 
       - name: Set up FlakeHub Cache
         uses: DeterminateSystems/flakehub-cache-action@v3.24.2
@@ -673,15 +697,19 @@ jobs:
         uses: DeterminateSystems/determinate-nix-action@v3
 
       # The self-hosted Mac mini has Determinate Nix installed system-wide,
-      # so it skips the install above and just puts that Nix on PATH. Its two
-      # runners share one macOS user, so Magic Nix Cache gets a per-job
-      # nix.conf (XDG_CONFIG_HOME in the job's temp dir) and, below, a port
-      # per runner; otherwise concurrent jobs clash.
+      # so it skips the install above and just puts that Nix on PATH. It
+      # also does the FlakeHub login the install step would have done:
+      # without this workflow's identity, Magic Nix Cache can't find the
+      # FlakeHub project (401). Its two runners share one macOS user, so
+      # Magic Nix Cache gets a per-job nix.conf (XDG_CONFIG_HOME in the
+      # job's temp dir) and, below, a port per runner; otherwise concurrent
+      # jobs clash.
       - name: Use the Mac mini's Nix
         if: runner.environment == 'self-hosted'
         run: |
           echo /nix/var/nix/profiles/default/bin >> "$GITHUB_PATH"
           echo "XDG_CONFIG_HOME=$RUNNER_TEMP/xdg-config" >> "$GITHUB_ENV"
+          /usr/local/bin/determinate-nixd login github-action
 
       - name: Set up FlakeHub Cache
         uses: DeterminateSystems/flakehub-cache-action@v3.24.2
