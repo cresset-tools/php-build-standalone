@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.2.23](https://github.com/cresset-tools/php-build-standalone/compare/v0.2.22...v0.2.23) (2026-11-20)
+
+
+### Bug Fixes
+
+* **php-runtime:** build NSS with the toolchain's C++ compiler ([55c26d0](https://github.com/cresset-tools/php-build-standalone/commit/55c26d0a21a7530f0870da177b81c3a7a85b3619))
+* **php-runtime:** isolate Magic Nix Cache per Mac mini runner ([f174481](https://github.com/cresset-tools/php-build-standalone/commit/f1744811ed7207dc790602b5feecc9b5c87dc56c))
+* **php-runtime:** log the Mac mini in to FlakeHub per job ([c1572d2](https://github.com/cresset-tools/php-build-standalone/commit/c1572d2f9185586a147c80c976775630c6ef50d0))
+
+
+### Dependencies
+
+* bump pinned upstreams via scripts/update.py ([#130](https://github.com/cresset-tools/php-build-standalone/issues/130)) ([c0cb208](https://github.com/cresset-tools/php-build-standalone/commit/c0cb2082294eb492c98a5eb080bc46777edbeb87))
+
 ## [0.2.22](https://github.com/cresset-tools/php-build-standalone/compare/v0.2.21...v0.2.22) (2026-11-19)
 
 
