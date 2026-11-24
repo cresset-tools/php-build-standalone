@@ -837,7 +837,7 @@
       version = "8.0.46";
     };
     "8.4" = {
-      url = "https://cdn.mysql.com/Downloads/MySQL-8.4/mysql-8.4.13.tar.gz";
+      url = "https://cdn.mysql.com/archives/mysql-8.4/mysql-8.4.13.tar.gz";
       sha256 = "f6ddc7f7fb6462bab8b533b13c06af3fff57fa9ca12259b81ab13cd9930b9d58";
       version = "8.4.13";
     };
@@ -857,9 +857,9 @@
   # shared/<dep>.nix files needed beyond what the PHP build already pulls
   # in.
   redis = {
-    url = "https://github.com/redis/redis/archive/refs/tags/8.10.3.tar.gz";
-    sha256 = "85ae62e175cc76f638015fa18cb384b549b6808a765425d9e9d47466f69532ea";
-    version = "8.10.3";
+    url = "https://github.com/redis/redis/archive/refs/tags/8.12.0.tar.gz";
+    sha256 = "07e2477372566acf587e32c1abc8af088ad901fb2c725388ec9a5bef29c47319";
+    version = "8.12.0";
   };
 
   # Erlang/OTP. Built from source — there's no Temurin-equivalent prebuilt
