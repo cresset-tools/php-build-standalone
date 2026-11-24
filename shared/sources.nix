@@ -616,6 +616,20 @@
     };
   };
 
+  # parallel PECL extension. Userland threads: parallel\Runtime, Future,
+  # Channel and Events. Requires a thread-safe interpreter — config.m4
+  # aborts on NTS — so it is built for the zts flavor only (see
+  # ztsOnlyExtensions below). No external C-library; pthreads come from
+  # libc. 1.2.x declares <min>8.0.0</min>. 1.2.15 predates PHP 8.6 and
+  # needs php/parallel-fixes.patch to run there.
+  parallelVersions = {
+    "1.2" = {
+      version = "1.2.15";
+      url = "https://pecl.php.net/get/parallel-1.2.15.tgz";
+      sha256 = "27c4b2ca4bfa67efebe84541ac4d25547ba75b603139c8f0e136780d080fb924";
+    };
+  };
+
   # opentelemetry PECL extension. Registers zend_observer fcall handlers so
   # the userland open-telemetry/* Composer packages can auto-instrument
   # function calls without patching application code. Without it those
@@ -755,6 +769,11 @@
       "pcov" "protobuf" "redis" "spx" "vips"
     ];
   };
+
+  # PECL extensions that only exist for thread-safe PHP. flake.nix drops
+  # them from every non-zts variant's tree and extension set, the same way
+  # extensionUnavailable drops an extension from a minor.
+  ztsOnlyExtensions = [ "parallel" ];
 
   # The key into phpVersions that `default` and the unqualified CLI output
   # should resolve to. Bump this when a new stable PHP is promoted.
