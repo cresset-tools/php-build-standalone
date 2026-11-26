@@ -143,8 +143,6 @@
             # PECL source and so needs no entry here.
             libevent      = pkgs.callPackage ./shared/libevent.nix      { inherit mkDep openssl; };
             libuv         = pkgs.callPackage ./shared/libuv.nix         { inherit mkDep; };
-            # Backs the `memcached` PECL extension.
-            libmemcached  = pkgs.callPackage ./shared/libmemcached.nix  { inherit mkDep; };
             # NSPR + NSS underpin mkcert's certutil shipment; not linked
             # by anything in the PHP build itself. Kept in the common
             # `rec` block so both Linux and Darwin can pick them up
@@ -243,7 +241,6 @@
               xdebugSpec   = pickFor phpKey "xdebug";
               imagickSpec  = pickFor phpKey "imagick";
               redisSpec    = pickFor phpKey "redis";
-              memcachedSpec = pickFor phpKey "memcached";
               vipsSpec     = pickFor phpKey "vips";
               igbinarySpec = pickFor phpKey "igbinary";
               msgpackSpec  = pickFor phpKey "msgpack";
@@ -279,10 +276,6 @@
               };
               redis = pkgs.callPackage ./php/redis.nix {
                 inherit mkDep php redisSpec;
-              };
-              memcached = pkgs.callPackage ./php/memcached.nix {
-                inherit mkDep php memcachedSpec;
-                inherit (deps) libmemcached zlib;
               };
               vips = pkgs.callPackage ./php/vips.nix {
                 inherit mkDep php vipsSpec;
@@ -359,7 +352,6 @@
                     { name = "excimer";       drv = excimer; }
                     { name = "opentelemetry"; drv = opentelemetry; }
                     { name = "protobuf";      drv = protobuf; }
-                    { name = "memcached";     drv = memcached; }
                   ]);
                 inherit toolchain;
                 pbsMusl = musl;
@@ -457,10 +449,6 @@
                 xdebug      = mkExt { extDrv = xdebug;   extName = "xdebug";   extVersion = xdebugSpec.version;   confFragment = null; zendExtension = true; };
                 imagick     = mkExt { extDrv = imagick;  extName = "imagick";  extVersion = imagickSpec.version;  confFragment = "extension=imagick"; };
                 redis       = mkExt { extDrv = redis;    extName = "redis";    extVersion = redisSpec.version;    confFragment = "extension=redis"; };
-                # memcached: PECL ext over bundled libmemcached. Its session
-                # handler references ext/session, which is static in bin/php,
-                # so the default 20- prefix is fine (unlike msgpack below).
-                memcached   = mkExt { extDrv = memcached; extName = "memcached"; extVersion = memcachedSpec.version; confFragment = "extension=memcached"; };
                 vips        = mkExt { extDrv = vips;     extName = "vips";     extVersion = vipsSpec.version;     confFragment = "extension=vips"; };
                 igbinary    = mkExt { extDrv = igbinary; extName = "igbinary"; extVersion = igbinarySpec.version; confFragment = "extension=igbinary"; };
                 # confPrefix=40: msgpack 3.0.0's session-serializer integration
@@ -1056,44 +1044,51 @@
           # standalone Temurin (tools/jdk/) wired in at install/jdk/,
           # and a default plugin set (analysis-icu, analysis-phonetic)
           # pre-fetched and installed into install/plugins/<name>/.
-          # See shared/sources.nix `opensearch` for why we use the
+          # Fanned out over sources.opensearchVersions (2.x + 3.x) like
+          # mysqlVariants: one bundle per major line, all under one
+          # sections/tool/opensearch section (distinct per-version tags).
+          # See shared/sources.nix `opensearchVersions` for why we use the
           # Linux min tarball on both platforms (OpenSearch min is
           # 100% platform-agnostic JVM bytecode).
           #
           # `pluginSpecs` is a list of { name, spec } pairs — the
           # `name` becomes the install/plugins/<name>/ directory; the
-          # `spec` is the sources.nix entry with url+sha512+version.
-          # When adding a new default plugin, both add the
-          # sources.opensearch-<name> entry and append to this list.
-          opensearchSpec = sources.opensearch;
+          # `spec` is the line's `plugins.<name>` entry with
+          # url+sha512+version. To add a default plugin, add it to every
+          # line's `plugins` in sources.nix.
+          #
           # `jdk` is no longer threaded in: after the tool-closure
           # split (UNBUNDLE_PLAN.md) the JDK ships as its own tool
           # tarball, and the client materializes the install/jdk
           # symlink at install time.
-          opensearch = pkgs.callPackage ./tools/opensearch/opensearch.nix {
-            inherit opensearchSpec;
-            pluginSpecs = [
-              { name = "analysis-icu";       spec = sources.opensearch-analysis-icu; }
-              { name = "analysis-phonetic";  spec = sources.opensearch-analysis-phonetic; }
-            ];
-          };
-          opensearchTarball = pkgs.callPackage ./tools/opensearch/tarball.nix {
-            inherit opensearch jdkTarball sources nixpkgsRev;
-            opensearchVersion = opensearchSpec.version;
-          };
-          opensearchRelease = pkgs.stdenvNoCC.mkDerivation {
-            pname = "pbs-release-opensearch";
-            version = opensearchSpec.version;
-            dontUnpack = true;
-            dontConfigure = true;
-            dontBuild = true;
-            dontFixup = true;
-            nativeBuildInputs = [ pkgs.coreutils ];
-            installPhase = ''
-              mkdir -p "$out"
-              cp -a ${opensearchTarball}/. "$out/" && chmod -R u+w "$out"
-            '';
-          };
+          mkOpensearch = _key: opensearchSpec:
+            let
+              opensearch = pkgs.callPackage ./tools/opensearch/opensearch.nix {
+                inherit opensearchSpec;
+                pluginSpecs = pkgs.lib.mapAttrsToList
+                  (name: spec: { inherit name spec; })
+                  opensearchSpec.plugins;
+              };
+              opensearchTarball = pkgs.callPackage ./tools/opensearch/tarball.nix {
+                inherit opensearch jdkTarball sources nixpkgsRev;
+                opensearchVersion = opensearchSpec.version;
+              };
+              opensearchRelease = pkgs.stdenvNoCC.mkDerivation {
+                pname = "pbs-release-opensearch-${opensearchSpec.version}";
+                version = opensearchSpec.version;
+                dontUnpack = true;
+                dontConfigure = true;
+                dontBuild = true;
+                dontFixup = true;
+                nativeBuildInputs = [ pkgs.coreutils ];
+                installPhase = ''
+                  mkdir -p "$out"
+                  cp -a ${opensearchTarball}/. "$out/" && chmod -R u+w "$out"
+                '';
+              };
+            in { inherit opensearch opensearchTarball opensearchRelease; };
+          # Keyed by major ("2" / "3"), matching sources.opensearchVersions.
+          opensearchVariants = builtins.mapAttrs mkOpensearch sources.opensearchVersions;
 
           # ---- RabbitMQ tool bundle ----
           # Repackages upstream's generic-unix (pure Erlang bytecode) and
@@ -1139,8 +1134,9 @@
           allReleases =
             (map (v: v.release) (builtins.attrValues variants))
             ++ pkgs.lib.optionals (!musl) (
-                 [ mariadbRelease redisServerRelease erlangRelease mkcertRelease jdkRelease opensearchRelease rabbitmqRelease mailpitRelease ]
+                 [ mariadbRelease redisServerRelease erlangRelease mkcertRelease jdkRelease rabbitmqRelease mailpitRelease ]
                  ++ map (v: v.mysqlRelease) (builtins.attrValues mysqlVariants)
+                 ++ map (v: v.opensearchRelease) (builtins.attrValues opensearchVariants)
                );
           frozenFiles =
             let allFiles = pkgs.lib.filesystem.listFilesRecursive ./frozen;
@@ -1168,7 +1164,7 @@
                   erlang erlangTree erlangTarball erlangRelease
                   mkcert mkcertTree mkcertTarball mkcertRelease
                   jdk jdkTarball jdkRelease
-                  opensearch opensearchTarball opensearchRelease
+                  opensearchVariants
                   rabbitmq rabbitmqTarball rabbitmqRelease
                   mailpit mailpitTarball mailpitRelease;
         };
@@ -1333,12 +1329,15 @@
           jdk-tarball     = c.jdkTarball;
           jdk-release     = c.jdkRelease;
           # OpenSearch — available on both platforms, using different
-          # upstream tarballs (see shared/sources.nix `opensearch` for
+          # upstream tarballs (see shared/sources.nix `opensearchVersions` for
           # the per-platform rationale). On darwin the install tree
           # bundles our pbs-jdk under install/jdk/.
-          opensearch         = c.opensearch;
-          opensearch-tarball = c.opensearchTarball;
-          opensearch-release = c.opensearchRelease;
+          opensearch-2         = c.opensearchVariants."2".opensearch;
+          opensearch-2-tarball = c.opensearchVariants."2".opensearchTarball;
+          opensearch-2-release = c.opensearchVariants."2".opensearchRelease;
+          opensearch-3         = c.opensearchVariants."3".opensearch;
+          opensearch-3-tarball = c.opensearchVariants."3".opensearchTarball;
+          opensearch-3-release = c.opensearchVariants."3".opensearchRelease;
           # RabbitMQ — repackaged generic-unix tarball with our Erlang
           # injected under install/erlang/. Available on both linux and
           # darwin (single source tarball; pure Erlang bytecode).

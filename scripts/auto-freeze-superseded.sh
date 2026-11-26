@@ -224,7 +224,7 @@ freeze_service_bump mkcert
 # so its tags are `mysql-<ver>-<target>-default` and freeze-publish-entries.sh
 # files them into frozen/mysql.json by kind=tool. The `<ext>Versions` loop
 # below would glob `mysql-<ver>+php*-*` and match nothing.
-TOOL_VERSION_MAPS=(mysql)
+TOOL_VERSION_MAPS=(mysql opensearch)
 
 is_tool_version_map() {
   local name="$1"

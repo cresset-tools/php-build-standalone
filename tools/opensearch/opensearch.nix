@@ -20,7 +20,7 @@
 # Plugin handling: the Nix sandbox has no network access, so
 # `bin/opensearch-plugin install <name>` doesn't work at build time.
 # We pre-fetch each plugin's ZIP as a fixed-output derivation (via
-# sources.opensearch-analysis-*) and extract them ourselves. The on-disk
+# the line's `plugins` in sources.nix) and extract them ourselves. The on-disk
 # layout matches what `opensearch-plugin install` would produce:
 # install/plugins/<plugin-name>/{plugin-descriptor.properties, *.jar, …}.
 # OpenSearch's plugin loader at startup discovers plugins by walking
@@ -28,7 +28,7 @@
 #
 # Plugin version pinning: `opensearch.version` in each plugin's
 # plugin-descriptor.properties must match the running core. Bumping
-# sources.opensearch.version requires bumping the plugin versions in
+# a line's version in sources.opensearchVersions requires bumping its plugin versions in
 # lockstep — there's a `version` field on each plugin spec in
 # sources.nix to make that explicit.
 { pkgs, opensearchSpec, pluginSpecs }:
@@ -52,7 +52,7 @@ let
       echo "installing plugin ${p.name} (${p.spec.version})..."
       if [ "${p.spec.version}" != "${opensearchSpec.version}" ]; then
         echo "FATAL: plugin ${p.name} version (${p.spec.version}) doesn't match OpenSearch core (${opensearchSpec.version})" >&2
-        echo "  bump sources.opensearch-${p.name} in lockstep with sources.opensearch" >&2
+        echo "  bump plugins.${p.name} in lockstep with the line's version in sources.opensearchVersions" >&2
         exit 1
       fi
       mkdir -p "$out/plugins/${p.name}"

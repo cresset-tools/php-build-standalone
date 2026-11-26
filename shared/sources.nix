@@ -380,18 +380,6 @@
     version = "1.52.1";
   };
 
-  # libmemcached — the awesomized/libmemcached-awesome fork, the maintained
-  # continuation of libmemcached (the original stopped at 1.0.18 in 2014).
-  # Consumed by the `memcached` PECL extension. cmake-based and C++, so it
-  # goes through build-libmemcached.sh with static libstdc++ on Linux, like
-  # ICU. No GitHub release assets — the tag archive is the source, and it
-  # extracts to libmemcached-<version>/.
-  libmemcached = {
-    url = "https://github.com/awesomized/libmemcached/archive/refs/tags/1.2.0.tar.gz";
-    sha256 = "c42a29e9898ae2827b83d81e9a58ae9fa2889d9e72da79886920ba2d7e67df08";
-    version = "1.2.0";
-  };
-
   # PHP version matrix. Each entry is a PHP major.minor pinned to a specific
   # patch release. PHP entries describe PHP and only PHP — extension series
   # pairings live in the per-extension <ext>Versions maps below and are
@@ -484,18 +472,6 @@
       version = "6.3.0";
       url = "https://pecl.php.net/get/redis-6.3.0.tgz";
       sha256 = "0d5141f634bd1db6c1ddcda053d25ecf2c4fc1c395430d534fd3f8d51dd7f0b5";
-    };
-  };
-  # memcached PECL extension (php-memcached). libmemcached bindings: the
-  # Memcached class plus a `memcached` session.save_handler. Needs bundled
-  # libmemcached and zlib. 3.4.0 declares <min>7.0.0 with no ceiling.
-  # Built with session + JSON support only — see php/build-memcached.sh for
-  # why the igbinary / msgpack serializers stay off.
-  memcachedVersions = {
-    "3.4" = {
-      version = "3.4.0";
-      url = "https://pecl.php.net/get/memcached-3.4.0.tgz";
-      sha256 = "c163434eb0da97c8f45c7ad41d979d381f8b81c49402b1b90b063987fb37972e";
     };
   };
   # vips PECL extension version matrix. Keyed by series tag, parallel to
@@ -775,7 +751,7 @@
   extensionUnavailable = {
     "8.1" = [ "protobuf" ];
     "8.6" = [
-      "apcu" "excimer" "igbinary" "imagick" "memcached" "msgpack"
+      "apcu" "excimer" "igbinary" "imagick" "msgpack"
       "pcov" "protobuf" "redis" "spx" "vips"
     ];
   };
@@ -1019,9 +995,15 @@
     };
   };
 
-  # OpenSearch 2.19.5 (current 2.x LTS patch as of 2026-05-14). Single
-  # platform-agnostic source: upstream's stable **min** (core-only)
-  # release tarball. opensearch.nix wires our standalone Temurin
+  # OpenSearch, one entry per major line, keyed by major ("2", "3") and
+  # built side by side like mysqlVersions: flake.nix fans this out into
+  # opensearchVariants, all published under one sections/tool/opensearch
+  # section. 2.19.5 is the 2.x LTS patch pinned 2026-05-14; 3.10.1 is the
+  # current 3.x (2026-11-24) — Mage-OS 4.0 is tested against OpenSearch 3
+  # (mage-os/github-actions supported-version). Both need JDK 21+.
+  #
+  # Each line is a single platform-agnostic source: upstream's stable
+  # **min** (core-only) release tarball. opensearch.nix wires our standalone Temurin
   # (tools/jdk/) in at install/jdk/ on both linux and darwin — the
   # bundled-JDK shape is identical across platforms.
   #
@@ -1044,14 +1026,9 @@
   #
   # OpenSearch publishes sha512 sidecars but not sha256 — we use sha512
   # here (fetchurl accepts either).
-  opensearch = {
-    url = "https://artifacts.opensearch.org/releases/core/opensearch/2.19.5/opensearch-min-2.19.5-linux-x64.tar.gz";
-    sha512 = "9e74a9510044c53565a5aa72ba6a18cd0dcbe46fdd2666eeaf473528bd2f7ecf1bf0f8461154986270b8565c7feeb9543e246eaa956dd065c98db96fed83c389";
-    version = "2.19.5";
-  };
-
-  # OpenSearch plugins shipped by default in the tarball. The Nix
-  # sandbox has no network access, so we can't run
+  #
+  # `plugins`: the OpenSearch plugins shipped by default in the tarball.
+  # The Nix sandbox has no network access, so we can't run
   # `opensearch-plugin install` at build time — instead we pre-fetch
   # the plugin ZIPs as fixed-output derivations and extract them into
   # install/plugins/<name>/ in tools/opensearch/opensearch.nix.
@@ -1059,8 +1036,8 @@
   # The plugin version MUST match the OpenSearch version exactly —
   # OpenSearch refuses to load a plugin whose `opensearch.version` in
   # its plugin-descriptor.properties doesn't match the running core.
-  # Bumping sources.opensearch.version requires bumping the plugin
-  # versions in lockstep.
+  # Bumping a line's version requires bumping its plugin versions in
+  # lockstep.
   #
   # Plugin selection criteria: pick plugins that
   #   (1) are useful to a meaningful fraction of dev users,
@@ -1076,14 +1053,40 @@
   # analysis-phonetic: Soundex / Metaphone / Caverphone / etc.
   #   Common for name search ("find users named 'Smith' OR 'Smyth'").
   #   Pure JVM.
-  opensearch-analysis-icu = {
-    url = "https://artifacts.opensearch.org/releases/plugins/analysis-icu/2.19.5/analysis-icu-2.19.5.zip";
-    sha512 = "28df1bf2d505ccd4ec6e4f96150228671e4799d3102f266e651d359206eca68adcd1bd0d31c630b30ad54fbc950dc560aa8781b85d1790a15736d23e91f8b97b";
-    version = "2.19.5";
-  };
-  opensearch-analysis-phonetic = {
-    url = "https://artifacts.opensearch.org/releases/plugins/analysis-phonetic/2.19.5/analysis-phonetic-2.19.5.zip";
-    sha512 = "4994a3017df9cd086e4abe59ed2afe72084fc172c6ec2af953fb10f527e8f740062393e62c82ffd189a91ad930912b87661d82f7e1c5398c0e2b64f77ad1acb6";
-    version = "2.19.5";
+  opensearchVersions = {
+    "2" = {
+      url = "https://artifacts.opensearch.org/releases/core/opensearch/2.19.5/opensearch-min-2.19.5-linux-x64.tar.gz";
+      sha512 = "9e74a9510044c53565a5aa72ba6a18cd0dcbe46fdd2666eeaf473528bd2f7ecf1bf0f8461154986270b8565c7feeb9543e246eaa956dd065c98db96fed83c389";
+      version = "2.19.5";
+      plugins = {
+        analysis-icu = {
+          url = "https://artifacts.opensearch.org/releases/plugins/analysis-icu/2.19.5/analysis-icu-2.19.5.zip";
+          sha512 = "28df1bf2d505ccd4ec6e4f96150228671e4799d3102f266e651d359206eca68adcd1bd0d31c630b30ad54fbc950dc560aa8781b85d1790a15736d23e91f8b97b";
+          version = "2.19.5";
+        };
+        analysis-phonetic = {
+          url = "https://artifacts.opensearch.org/releases/plugins/analysis-phonetic/2.19.5/analysis-phonetic-2.19.5.zip";
+          sha512 = "4994a3017df9cd086e4abe59ed2afe72084fc172c6ec2af953fb10f527e8f740062393e62c82ffd189a91ad930912b87661d82f7e1c5398c0e2b64f77ad1acb6";
+          version = "2.19.5";
+        };
+      };
+    };
+    "3" = {
+      url = "https://artifacts.opensearch.org/releases/core/opensearch/3.10.1/opensearch-min-3.10.1-linux-x64.tar.gz";
+      sha512 = "c9d0864196d1f88f13c9aa57629ee01da3c5f5204d6fde6ba6028ca5b1846fa3bbe9c8c671836bec6d73e0d1080454cb72383e3f8106156e5da5bf7578175105";
+      version = "3.10.1";
+      plugins = {
+        analysis-icu = {
+          url = "https://artifacts.opensearch.org/releases/plugins/analysis-icu/3.10.1/analysis-icu-3.10.1.zip";
+          sha512 = "7075264902514584b70e2d60efc00193972d93554b6d057b56ee5d4709ff561a62f0382ddb62f59d2c81fcaedd3f8b18539b1c841656628c9d6ca7ecdbf98160";
+          version = "3.10.1";
+        };
+        analysis-phonetic = {
+          url = "https://artifacts.opensearch.org/releases/plugins/analysis-phonetic/3.10.1/analysis-phonetic-3.10.1.zip";
+          sha512 = "01d2d739ecf0353a4a0ad671fa04507633e157957b25d4a39b020c6db5e9a9d2886d9b87678d308c68f9860389ebfdf34784a7fc6c010164c51637e58e1426d5";
+          version = "3.10.1";
+        };
+      };
+    };
   };
 }
