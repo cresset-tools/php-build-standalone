@@ -200,7 +200,8 @@ jobs:
       # FlakeHub project (401). Its two runners share one macOS user, so
       # Magic Nix Cache gets a per-job nix.conf (XDG_CONFIG_HOME in the
       # job's temp dir) and, below, a port per runner; otherwise concurrent
-      # jobs clash.
+      # jobs clash. Neither port is Magic Nix Cache's default, which a rerun
+      # of a run older than this setup still uses.
       - name: Use the Mac mini's Nix
         if: runner.environment == 'self-hosted'
         run: |
@@ -211,8 +212,8 @@ jobs:
       - name: Set up FlakeHub Cache
         uses: DeterminateSystems/flakehub-cache-action@v3.24.2
         with:
-          listen: ${{ runner.name == 'mac-mini-2' && '127.0.0.1:37516' || '127.0.0.1:37515' }}
-          startup-notification-port: ${{ runner.name == 'mac-mini-2' && '41240' || '41239' }}
+          listen: ${{ runner.name == 'mac-mini-2' && '127.0.0.1:37518' || '127.0.0.1:37517' }}
+          startup-notification-port: ${{ runner.name == 'mac-mini-2' && '41242' || '41241' }}
 
       - name: Build tarball
         # Each nix build uses its own -o symlink so subsequent builds
@@ -318,7 +319,8 @@ jobs:
       # FlakeHub project (401). Its two runners share one macOS user, so
       # Magic Nix Cache gets a per-job nix.conf (XDG_CONFIG_HOME in the
       # job's temp dir) and, below, a port per runner; otherwise concurrent
-      # jobs clash.
+      # jobs clash. Neither port is Magic Nix Cache's default, which a rerun
+      # of a run older than this setup still uses.
       - name: Use the Mac mini's Nix
         if: runner.environment == 'self-hosted'
         run: |
@@ -329,8 +331,8 @@ jobs:
       - name: Set up FlakeHub Cache
         uses: DeterminateSystems/flakehub-cache-action@v3.24.2
         with:
-          listen: ${{ runner.name == 'mac-mini-2' && '127.0.0.1:37516' || '127.0.0.1:37515' }}
-          startup-notification-port: ${{ runner.name == 'mac-mini-2' && '41240' || '41239' }}
+          listen: ${{ runner.name == 'mac-mini-2' && '127.0.0.1:37518' || '127.0.0.1:37517' }}
+          startup-notification-port: ${{ runner.name == 'mac-mini-2' && '41242' || '41241' }}
 
       - name: Build mariadb tarball
         # mariadb-tarball is the redistributable artifact; mariadb-release is
@@ -391,7 +393,8 @@ jobs:
       # FlakeHub project (401). Its two runners share one macOS user, so
       # Magic Nix Cache gets a per-job nix.conf (XDG_CONFIG_HOME in the
       # job's temp dir) and, below, a port per runner; otherwise concurrent
-      # jobs clash.
+      # jobs clash. Neither port is Magic Nix Cache's default, which a rerun
+      # of a run older than this setup still uses.
       - name: Use the Mac mini's Nix
         if: runner.environment == 'self-hosted'
         run: |
@@ -402,8 +405,8 @@ jobs:
       - name: Set up FlakeHub Cache
         uses: DeterminateSystems/flakehub-cache-action@v3.24.2
         with:
-          listen: ${{ runner.name == 'mac-mini-2' && '127.0.0.1:37516' || '127.0.0.1:37515' }}
-          startup-notification-port: ${{ runner.name == 'mac-mini-2' && '41240' || '41239' }}
+          listen: ${{ runner.name == 'mac-mini-2' && '127.0.0.1:37518' || '127.0.0.1:37517' }}
+          startup-notification-port: ${{ runner.name == 'mac-mini-2' && '41242' || '41241' }}
 
       - name: Build redis tarball
         # redis-tarball is the redistributable artifact; redis-release is
@@ -463,7 +466,8 @@ jobs:
       # FlakeHub project (401). Its two runners share one macOS user, so
       # Magic Nix Cache gets a per-job nix.conf (XDG_CONFIG_HOME in the
       # job's temp dir) and, below, a port per runner; otherwise concurrent
-      # jobs clash.
+      # jobs clash. Neither port is Magic Nix Cache's default, which a rerun
+      # of a run older than this setup still uses.
       - name: Use the Mac mini's Nix
         if: runner.environment == 'self-hosted'
         run: |
@@ -474,8 +478,8 @@ jobs:
       - name: Set up FlakeHub Cache
         uses: DeterminateSystems/flakehub-cache-action@v3.24.2
         with:
-          listen: ${{ runner.name == 'mac-mini-2' && '127.0.0.1:37516' || '127.0.0.1:37515' }}
-          startup-notification-port: ${{ runner.name == 'mac-mini-2' && '41240' || '41239' }}
+          listen: ${{ runner.name == 'mac-mini-2' && '127.0.0.1:37518' || '127.0.0.1:37517' }}
+          startup-notification-port: ${{ runner.name == 'mac-mini-2' && '41242' || '41241' }}
 
       - name: Build erlang tarball
         # erlang-tarball is the redistributable artifact; erlang-release
@@ -536,7 +540,8 @@ jobs:
       # FlakeHub project (401). Its two runners share one macOS user, so
       # Magic Nix Cache gets a per-job nix.conf (XDG_CONFIG_HOME in the
       # job's temp dir) and, below, a port per runner; otherwise concurrent
-      # jobs clash.
+      # jobs clash. Neither port is Magic Nix Cache's default, which a rerun
+      # of a run older than this setup still uses.
       - name: Use the Mac mini's Nix
         if: runner.environment == 'self-hosted'
         run: |
@@ -547,8 +552,8 @@ jobs:
       - name: Set up FlakeHub Cache
         uses: DeterminateSystems/flakehub-cache-action@v3.24.2
         with:
-          listen: ${{ runner.name == 'mac-mini-2' && '127.0.0.1:37516' || '127.0.0.1:37515' }}
-          startup-notification-port: ${{ runner.name == 'mac-mini-2' && '41240' || '41239' }}
+          listen: ${{ runner.name == 'mac-mini-2' && '127.0.0.1:37518' || '127.0.0.1:37517' }}
+          startup-notification-port: ${{ runner.name == 'mac-mini-2' && '41242' || '41241' }}
 
       - name: Build mysql tarball
         # mysql-<v>-tarball is the redistributable artifact; mysql-<v>-release
@@ -648,7 +653,8 @@ jobs:
       # FlakeHub project (401). Its two runners share one macOS user, so
       # Magic Nix Cache gets a per-job nix.conf (XDG_CONFIG_HOME in the
       # job's temp dir) and, below, a port per runner; otherwise concurrent
-      # jobs clash.
+      # jobs clash. Neither port is Magic Nix Cache's default, which a rerun
+      # of a run older than this setup still uses.
       - name: Use the Mac mini's Nix
         if: runner.environment == 'self-hosted'
         run: |
@@ -659,8 +665,8 @@ jobs:
       - name: Set up FlakeHub Cache
         uses: DeterminateSystems/flakehub-cache-action@v3.24.2
         with:
-          listen: ${{ runner.name == 'mac-mini-2' && '127.0.0.1:37516' || '127.0.0.1:37515' }}
-          startup-notification-port: ${{ runner.name == 'mac-mini-2' && '41240' || '41239' }}
+          listen: ${{ runner.name == 'mac-mini-2' && '127.0.0.1:37518' || '127.0.0.1:37517' }}
+          startup-notification-port: ${{ runner.name == 'mac-mini-2' && '41242' || '41241' }}
 
       - name: Build release-bundle
         # FlakeHub Cache hits all per-minor inputs already built in
@@ -703,7 +709,8 @@ jobs:
       # FlakeHub project (401). Its two runners share one macOS user, so
       # Magic Nix Cache gets a per-job nix.conf (XDG_CONFIG_HOME in the
       # job's temp dir) and, below, a port per runner; otherwise concurrent
-      # jobs clash.
+      # jobs clash. Neither port is Magic Nix Cache's default, which a rerun
+      # of a run older than this setup still uses.
       - name: Use the Mac mini's Nix
         if: runner.environment == 'self-hosted'
         run: |
@@ -714,8 +721,8 @@ jobs:
       - name: Set up FlakeHub Cache
         uses: DeterminateSystems/flakehub-cache-action@v3.24.2
         with:
-          listen: ${{ runner.name == 'mac-mini-2' && '127.0.0.1:37516' || '127.0.0.1:37515' }}
-          startup-notification-port: ${{ runner.name == 'mac-mini-2' && '41240' || '41239' }}
+          listen: ${{ runner.name == 'mac-mini-2' && '127.0.0.1:37518' || '127.0.0.1:37517' }}
+          startup-notification-port: ${{ runner.name == 'mac-mini-2' && '41242' || '41241' }}
 
       - name: Build release-bundle (first pass)
         run: nix build .#release-bundle --impure -o result-1 --print-build-logs
