@@ -145,6 +145,8 @@
             libuv         = pkgs.callPackage ./shared/libuv.nix         { inherit mkDep; };
             # Backs the `memcached` PECL extension.
             libmemcached  = pkgs.callPackage ./shared/libmemcached.nix  { inherit mkDep; };
+            # libssh2 backs the `ssh2` PECL extension.
+            libssh2       = pkgs.callPackage ./shared/libssh2.nix       { inherit mkDep openssl zlib; };
             # NSPR + NSS underpin mkcert's certutil shipment; not linked
             # by anything in the PHP build itself. Kept in the common
             # `rec` block so both Linux and Darwin can pick them up
@@ -256,6 +258,7 @@
               uvSpec       = pickFor phpKey "uv";
               excimerSpec  = pickFor phpKey "excimer";
               opentelemetrySpec = pickFor phpKey "opentelemetry";
+              ssh2Spec     = pickFor phpKey "ssh2";
 
               # PECL extensions with no release that builds against this
               # PHP minor; dropped from both `tree` and `extensions`.
@@ -329,6 +332,10 @@
               opentelemetry = pkgs.callPackage ./php/opentelemetry.nix {
                 inherit mkDep php opentelemetrySpec;
               };
+              ssh2 = pkgs.callPackage ./php/ssh2.nix {
+                inherit mkDep php ssh2Spec;
+                inherit (deps) libssh2;
+              };
               tree = pkgs.callPackage ./shared/tree.nix {
                 bundledDeps = sharedDeps;
                 # tree still carries every .so — PECL extensions and PHP's
@@ -360,6 +367,7 @@
                     { name = "opentelemetry"; drv = opentelemetry; }
                     { name = "protobuf";      drv = protobuf; }
                     { name = "memcached";     drv = memcached; }
+                    { name = "ssh2";          drv = ssh2; }
                   ]);
                 inherit toolchain;
                 pbsMusl = musl;
@@ -566,6 +574,11 @@
                 #     40- pair above. The INI defaults to empty, so the check is
                 #     inert until someone configures it.
                 opentelemetry = mkExt { extDrv = opentelemetry; extName = "opentelemetry"; extVersion = opentelemetrySpec.version; confFragment = "extension=opentelemetry"; confPrefix = "50"; };
+                # ssh2 registers its functions and the ssh2.* stream wrappers
+                # at MINIT and opens nothing until ssh2_connect(); inert, so it
+                # auto-loads at the default 20- prefix like excimer. Closure:
+                # libssh2 (+ openssl, zlib through libssh2's own RPATH).
+                ssh2        = mkExt { extDrv = ssh2;    extName = "ssh2";    extVersion = ssh2Spec.version;    confFragment = "extension=ssh2"; };
                 mbstring    = mkBuiltinExt "mbstring";
                 intl        = mkBuiltinExt "intl";
                 curl        = mkBuiltinExt "curl";

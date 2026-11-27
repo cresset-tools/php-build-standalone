@@ -263,6 +263,22 @@ else
     emit "NOTICE: opentelemetry.so not found at $_otel_so — skipping opentelemetry gate"
 fi
 
+# 4h. ssh2 (libssh2 bindings) must dlopen and register its stream
+#     wrappers. A bare load proves the libssh2 -> openssl/zlib RPATH chain
+#     resolves; the ssh2.sftp wrapper is what most consumers actually use.
+#     -n for the same double-load reason as 4e. Set SSH2_SO to override.
+emit "ssh2 extension"
+_ssh2_so="${SSH2_SO:-$ext_dir/ssh2.so}"
+if [ -f "$_ssh2_so" ]; then
+    out=$("$PHP" -n -dextension="$_ssh2_so" \
+                  -r 'echo function_exists("ssh2_connect") && in_array("ssh2.sftp", stream_get_wrappers(), true) ? "ssh2=ok\n" : "ssh2=missing\n";') \
+        || die "ssh2 load failed"
+    printf '%s\n' "$out"
+    [ "$out" = "ssh2=ok" ] || die "ssh2 did not register ssh2_connect / ssh2.sftp://: $out"
+else
+    emit "NOTICE: ssh2.so not found at $_ssh2_so — skipping ssh2 gate"
+fi
+
 # 4g. conf.d load order: opentelemetry must come last.
 #     PHP parses conf.d in filename order, and opentelemetry's
 #     check_conflicts() inspects the live module registry at MINIT — it can
