@@ -256,6 +256,10 @@
               uvSpec       = pickFor phpKey "uv";
               excimerSpec  = pickFor phpKey "excimer";
               opentelemetrySpec = pickFor phpKey "opentelemetry";
+              zstdSpec     = pickFor phpKey "zstd";
+              lz4Spec      = pickFor phpKey "lz4";
+              lzfSpec      = pickFor phpKey "lzf";
+              snappySpec   = pickFor phpKey "snappy";
 
               # PECL extensions with no release that builds against this
               # PHP minor; dropped from both `tree` and `extensions`.
@@ -329,6 +333,19 @@
               opentelemetry = pkgs.callPackage ./php/opentelemetry.nix {
                 inherit mkDep php opentelemetrySpec;
               };
+              # Compression: each vendors its library, so no bundled C-lib.
+              zstd = pkgs.callPackage ./php/zstd.nix {
+                inherit mkDep php zstdSpec;
+              };
+              lz4 = pkgs.callPackage ./php/lz4.nix {
+                inherit mkDep php lz4Spec;
+              };
+              lzf = pkgs.callPackage ./php/lzf.nix {
+                inherit mkDep php lzfSpec;
+              };
+              snappy = pkgs.callPackage ./php/snappy.nix {
+                inherit mkDep php snappySpec;
+              };
               tree = pkgs.callPackage ./shared/tree.nix {
                 bundledDeps = sharedDeps;
                 # tree still carries every .so — PECL extensions and PHP's
@@ -360,6 +377,10 @@
                     { name = "opentelemetry"; drv = opentelemetry; }
                     { name = "protobuf";      drv = protobuf; }
                     { name = "memcached";     drv = memcached; }
+                    { name = "zstd";          drv = zstd; }
+                    { name = "lz4";           drv = lz4; }
+                    { name = "lzf";           drv = lzf; }
+                    { name = "snappy";        drv = snappy; }
                   ]);
                 inherit toolchain;
                 pbsMusl = musl;
@@ -627,6 +648,15 @@
                 # protobuf: see sources.extensionUnavailable for the
                 # minors that do not get a live build.
                 protobuf = mkExt { extDrv = protobuf; extName = "protobuf"; extVersion = protobufSpec.version; confFragment = "extension=protobuf"; };
+                # Compression: zstd / lz4 / lzf / snappy. Auto-load at 20-: MINIT only
+                # registers functions and stream filters, and installing one
+                # is the opt-in. cache-backend-redis feature-detects on
+                # function_exists() when compression_lib is unset, so a
+                # withheld fragment would leave it on gzip.
+                zstd = mkExt { extDrv = zstd; extName = "zstd"; extVersion = zstdSpec.version; confFragment = "extension=zstd"; };
+                lz4  = mkExt { extDrv = lz4;  extName = "lz4";  extVersion = lz4Spec.version;  confFragment = "extension=lz4"; };
+                lzf  = mkExt { extDrv = lzf;  extName = "lzf";  extVersion = lzfSpec.version;  confFragment = "extension=lzf"; };
+                snappy = mkExt { extDrv = snappy; extName = "snappy"; extVersion = snappySpec.version; confFragment = "extension=snappy"; };
               } // pkgs.lib.optionalAttrs (!darwin) {
                 # gettext is Linux-only (glibc + musl): both implement the
                 # gettext family in libc. Darwin opts out (apple-sdk_14 +
