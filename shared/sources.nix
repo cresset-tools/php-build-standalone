@@ -380,6 +380,18 @@
     version = "1.52.1";
   };
 
+  # libmemcached — the awesomized/libmemcached-awesome fork, the maintained
+  # continuation of libmemcached (the original stopped at 1.0.18 in 2014).
+  # Consumed by the `memcached` PECL extension. cmake-based and C++, so it
+  # goes through build-libmemcached.sh with static libstdc++ on Linux, like
+  # ICU. No GitHub release assets — the tag archive is the source, and it
+  # extracts to libmemcached-<version>/.
+  libmemcached = {
+    url = "https://github.com/awesomized/libmemcached/archive/refs/tags/1.2.0.tar.gz";
+    sha256 = "c42a29e9898ae2827b83d81e9a58ae9fa2889d9e72da79886920ba2d7e67df08";
+    version = "1.2.0";
+  };
+
   # PHP version matrix. Each entry is a PHP major.minor pinned to a specific
   # patch release. PHP entries describe PHP and only PHP — extension series
   # pairings live in the per-extension <ext>Versions maps below and are
@@ -472,6 +484,18 @@
       version = "6.3.0";
       url = "https://pecl.php.net/get/redis-6.3.0.tgz";
       sha256 = "0d5141f634bd1db6c1ddcda053d25ecf2c4fc1c395430d534fd3f8d51dd7f0b5";
+    };
+  };
+  # memcached PECL extension (php-memcached). libmemcached bindings: the
+  # Memcached class plus a `memcached` session.save_handler. Needs bundled
+  # libmemcached and zlib. 3.4.0 declares <min>7.0.0 with no ceiling.
+  # Built with session + JSON support only — see php/build-memcached.sh for
+  # why the igbinary / msgpack serializers stay off.
+  memcachedVersions = {
+    "3.4" = {
+      version = "3.4.0";
+      url = "https://pecl.php.net/get/memcached-3.4.0.tgz";
+      sha256 = "c163434eb0da97c8f45c7ad41d979d381f8b81c49402b1b90b063987fb37972e";
     };
   };
   # vips PECL extension version matrix. Keyed by series tag, parallel to
@@ -751,7 +775,7 @@
   extensionUnavailable = {
     "8.1" = [ "protobuf" ];
     "8.6" = [
-      "apcu" "excimer" "igbinary" "imagick" "msgpack"
+      "apcu" "excimer" "igbinary" "imagick" "memcached" "msgpack"
       "pcov" "protobuf" "redis" "spx" "vips"
     ];
   };

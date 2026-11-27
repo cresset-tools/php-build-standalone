@@ -279,6 +279,25 @@ if [ -f /php/etc/php/conf.d/50-opentelemetry.ini ]; then
     emit "conf.d order OK (last = $last)"
 fi
 
+# 4h. memcached: links bundled libmemcached (C++, static libstdc++ on
+#     Linux), so a bare load proves that store path resolves. The session
+#     handler is asserted too, since it is the main reason anyone
+#     installs it: the memcached.sess_* INI entries only exist under
+#     --enable-memcached-session.
+#     -n for the same reason as 4e. Set MEMCACHED_SO for an explicit path.
+emit "memcached extension"
+_memcached_so="${MEMCACHED_SO:-$ext_dir/memcached.so}"
+if [ -f "$_memcached_so" ]; then
+    out=$("$PHP" -n -dextension="$_memcached_so" \
+                  -r '$h = (new ReflectionExtension("memcached"))->getINIEntries();
+                      echo class_exists("Memcached") && array_key_exists("memcached.sess_prefix", $h) ? "memcached=ok\n" : "memcached=missing\n";') \
+        || die "memcached load failed"
+    printf '%s\n' "$out"
+    [ "$out" = "memcached=ok" ] || die "memcached did not register Memcached + its session handler: $out"
+else
+    emit "NOTICE: memcached.so not found at $_memcached_so — skipping memcached gate"
+fi
+
 # 4b. opcache (zend_extension): on PHP 8.5+ it's built statically into
 #     bin/php and registers automatically. On 8.1–8.4 opcache.so ships
 #     only as a per-ext tarball, so the bare interpreter has no opcache
