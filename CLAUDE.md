@@ -23,7 +23,7 @@ for the distribution wire format see `DISTRIBUTION.md`.
   (musl 1.2.5 via nixpkgs `pkgsMusl`, dynamically linked against system musl —
   runs on Alpine; PHP + extensions only, no service/tool bundles — added 0.2.5),
   and `aarch64-apple-darwin` (macOS 11+). No aarch64-linux yet.
-- **Per-ext tarballs:** xdebug, imagick, redis, memcached, vips *(Linux only)*,
+- **Per-ext tarballs:** xdebug, imagick, redis, vips *(Linux only)*,
   igbinary, msgpack, apcu, pcov, spx, ev, event, uv, excimer,
   opentelemetry, plus every shared
   extension PHP's configure produces (curl, gd, intl, mbstring, mysqli,

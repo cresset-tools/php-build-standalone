@@ -6,10 +6,13 @@
 # with the resulting .so copied into this dep's $out so tarball-extension.nix
 # can package it as a separately addressable extension artifact.
 #
-# No external C library is required — phpredis speaks the redis wire
-# protocol directly. Optional serializer/compression backends (igbinary,
-# msgpack, lzf, zstd, lz4) are intentionally not enabled; they'd each
-# need their own bundled dep and are typically opt-in.
+# Optional backends enabled here (see php/redis.nix for why the
+# serializers igbinary/msgpack stay off):
+#   --enable-redis-zstd      libzstd via pkg-config (--with-libzstd
+#       defaults to yes, which is the pkg-config path).
+#   --enable-redis-lz4       liblz4 via pkg-config; --with-liblz4 has to be
+#       passed explicitly because it defaults to no, and "no" is rejected
+#       with "only system liblz4 is supported".
 
 set -euo pipefail
 
@@ -18,6 +21,8 @@ set -euo pipefail
 : "${PBS_SOURCES:?}"
 : "${PBS_DEPS:?}"
 : "${PBS_DEP_PHP:?redis needs the PHP derivation for phpize/php-config}"
+: "${PBS_DEP_ZSTD:?redis needs the bundled zstd dep}"
+: "${PBS_DEP_LZ4:?redis needs the bundled lz4 dep}"
 
 src_dir="$PBS_SOURCES/redis-${PBS_VER_REDIS}"
 rm -rf "$src_dir"
@@ -25,11 +30,22 @@ mkdir -p "$PBS_SOURCES"
 tar -xf "$PBS_SRC_REDIS" -C "$PBS_SOURCES"
 cd "$src_dir"
 
+export PKG_CONFIG_PATH="$PBS_DEP_ZSTD/lib/pkgconfig:$PBS_DEP_LZ4/lib/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
+
 "$PBS_DEP_PHP/bin/phpize"
 
 ./configure \
   --with-php-config="$PBS_DEP_PHP/bin/php-config" \
-  --enable-redis
+  --enable-redis \
+  --enable-redis-zstd \
+  --enable-redis-lz4 \
+  --with-liblz4
+
+# Guard against a silently dropped flag (a typo'd --enable-* is only a
+# configure warning): every backend must have made it into config.h.
+for def in HAVE_REDIS_ZSTD HAVE_REDIS_LZ4; do
+  grep -q "^#define $def 1" config.h || { echo "FATAL: $def not set in config.h" >&2; exit 1; }
+done
 
 make -j"$NIX_BUILD_CORES"
 

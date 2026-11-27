@@ -118,6 +118,29 @@ else
     emit "NOTICE: imagick.so not found at $_imagick_so — skipping imagick dlopen gate (per-ext tarball not extracted)"
 fi
 
+# 4c'. redis is built with the zstd + lz4 compressors. Under -n (hermetic),
+#      each is round-tripped through _compress / _uncompress, which needs
+#      no server and exercises the bundled libzstd / liblz4 at runtime.
+#      Skips with a NOTICE when redis.so is absent; set REDIS_SO to test an
+#      explicit path.
+emit "redis load"
+_redis_so="${REDIS_SO:-$ext_dir/redis.so}"
+if [ -f "$_redis_so" ]; then
+    out=$("$PHP" -n -dextension="$_redis_so" -r '
+        $r = new Redis();
+        $ok = true;
+        foreach ([Redis::COMPRESSION_ZSTD, Redis::COMPRESSION_LZ4] as $c) {
+            $r->setOption(Redis::OPT_COMPRESSION, $c);
+            $ok = $ok && $r->_uncompress($r->_compress(str_repeat("x", 4096))) === str_repeat("x", 4096);
+        }
+        echo $ok ? "redis=ok\n" : "redis=roundtrip-failed\n";') \
+        || die "redis load failed"
+    printf '%s\n' "$out"
+    [ "$out" = "redis=ok" ] || die "redis zstd/lz4 round-trip failed: $out"
+else
+    emit "NOTICE: redis.so not found at $_redis_so — skipping redis gate (per-ext tarball not extracted)"
+fi
+
 # 4d. spx (php-spx profiler) must dlopen + version-check when its per-ext
 #     tarball has been installed. Like imagick, spx.so is NEVER in the
 #     interpreter tarball — it ships only via its per-ext tarball. spx is a
@@ -277,25 +300,6 @@ if [ -f /php/etc/php/conf.d/50-opentelemetry.ini ]; then
     [ "$last" = "50-opentelemetry.ini" ] || \
         die "50-opentelemetry.ini must sort last in conf.d so check_conflicts() sees every other module; '$last' sorts after it"
     emit "conf.d order OK (last = $last)"
-fi
-
-# 4h. memcached: links bundled libmemcached (C++, static libstdc++ on
-#     Linux), so a bare load proves that store path resolves. The session
-#     handler is asserted too, since it is the main reason anyone
-#     installs it: the memcached.sess_* INI entries only exist under
-#     --enable-memcached-session.
-#     -n for the same reason as 4e. Set MEMCACHED_SO for an explicit path.
-emit "memcached extension"
-_memcached_so="${MEMCACHED_SO:-$ext_dir/memcached.so}"
-if [ -f "$_memcached_so" ]; then
-    out=$("$PHP" -n -dextension="$_memcached_so" \
-                  -r '$h = (new ReflectionExtension("memcached"))->getINIEntries();
-                      echo class_exists("Memcached") && array_key_exists("memcached.sess_prefix", $h) ? "memcached=ok\n" : "memcached=missing\n";') \
-        || die "memcached load failed"
-    printf '%s\n' "$out"
-    [ "$out" = "memcached=ok" ] || die "memcached did not register Memcached + its session handler: $out"
-else
-    emit "NOTICE: memcached.so not found at $_memcached_so — skipping memcached gate"
 fi
 
 # 4b. opcache (zend_extension): on PHP 8.5+ it's built statically into

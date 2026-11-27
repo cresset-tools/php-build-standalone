@@ -143,8 +143,10 @@
             # PECL source and so needs no entry here.
             libevent      = pkgs.callPackage ./shared/libevent.nix      { inherit mkDep openssl; };
             libuv         = pkgs.callPackage ./shared/libuv.nix         { inherit mkDep; };
-            # Backs the `memcached` PECL extension.
-            libmemcached  = pkgs.callPackage ./shared/libmemcached.nix  { inherit mkDep; };
+            # Compression backends for the redis extension
+            # (Redis::COMPRESSION_ZSTD / COMPRESSION_LZ4).
+            zstd          = pkgs.callPackage ./shared/zstd.nix          { inherit mkDep; };
+            lz4           = pkgs.callPackage ./shared/lz4.nix           { inherit mkDep; };
             # NSPR + NSS underpin mkcert's certutil shipment; not linked
             # by anything in the PHP build itself. Kept in the common
             # `rec` block so both Linux and Darwin can pick them up
@@ -243,7 +245,6 @@
               xdebugSpec   = pickFor phpKey "xdebug";
               imagickSpec  = pickFor phpKey "imagick";
               redisSpec    = pickFor phpKey "redis";
-              memcachedSpec = pickFor phpKey "memcached";
               vipsSpec     = pickFor phpKey "vips";
               igbinarySpec = pickFor phpKey "igbinary";
               msgpackSpec  = pickFor phpKey "msgpack";
@@ -279,10 +280,7 @@
               };
               redis = pkgs.callPackage ./php/redis.nix {
                 inherit mkDep php redisSpec;
-              };
-              memcached = pkgs.callPackage ./php/memcached.nix {
-                inherit mkDep php memcachedSpec;
-                inherit (deps) libmemcached zlib;
+                inherit (deps) zstd lz4;
               };
               vips = pkgs.callPackage ./php/vips.nix {
                 inherit mkDep php vipsSpec;
@@ -359,7 +357,6 @@
                     { name = "excimer";       drv = excimer; }
                     { name = "opentelemetry"; drv = opentelemetry; }
                     { name = "protobuf";      drv = protobuf; }
-                    { name = "memcached";     drv = memcached; }
                   ]);
                 inherit toolchain;
                 pbsMusl = musl;
@@ -444,7 +441,7 @@
               #     in explicitly at runtime.
               #   imagick / vips: PECL exts built via phpize, with heavy
               #     C-lib closures (imagemagick + delegates; libvips + glib).
-              #   redis: PECL ext, no external C library.
+              #   redis: PECL ext with the zstd + lz4 compressors.
               #   built-ins (everything else): produced by PHP's own
               #     configure --enable-X=shared / --with-X=shared and live
               #     in tree; each is packaged separately with its closure
@@ -457,10 +454,6 @@
                 xdebug      = mkExt { extDrv = xdebug;   extName = "xdebug";   extVersion = xdebugSpec.version;   confFragment = null; zendExtension = true; };
                 imagick     = mkExt { extDrv = imagick;  extName = "imagick";  extVersion = imagickSpec.version;  confFragment = "extension=imagick"; };
                 redis       = mkExt { extDrv = redis;    extName = "redis";    extVersion = redisSpec.version;    confFragment = "extension=redis"; };
-                # memcached: PECL ext over bundled libmemcached. Its session
-                # handler references ext/session, which is static in bin/php,
-                # so the default 20- prefix is fine (unlike msgpack below).
-                memcached   = mkExt { extDrv = memcached; extName = "memcached"; extVersion = memcachedSpec.version; confFragment = "extension=memcached"; };
                 vips        = mkExt { extDrv = vips;     extName = "vips";     extVersion = vipsSpec.version;     confFragment = "extension=vips"; };
                 igbinary    = mkExt { extDrv = igbinary; extName = "igbinary"; extVersion = igbinarySpec.version; confFragment = "extension=igbinary"; };
                 # confPrefix=40: msgpack 3.0.0's session-serializer integration
