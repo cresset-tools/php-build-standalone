@@ -128,6 +128,10 @@ the toolchain is a thin wrapper around nixpkgs's `clang`. `@rpath/`-relative
   `socket_ce`, a data symbol exported by `sockets.so`, and PHP binds data
   relocations eagerly at `dlopen`, so neither loads without it. `uv` weak-links
   the same symbol and loads standalone.
+- **amqp 2.2.0** as a per-ext download — the RabbitMQ (AMQP 0-9-1) client
+  Magento's queue framework and Symfony Messenger's amqp transport use,
+  linked against bundled librabbitmq (rabbitmq-c 0.18.1) with AMQPS via the
+  interpreter's openssl. Not on PHP 8.6 yet (no 8.6-compatible release).
 - **excimer 1.2.6 / opentelemetry 1.2.1** as per-ext downloads — the
   observability pair. `excimer` is Wikimedia's sampling profiler: unlike
   xdebug (step debugging), pcov (coverage) and spx (flame-graph UI), it is
@@ -191,6 +195,7 @@ fetches the matching per-store-path tarballs on demand:
 | **ev** *(requires sockets)* | — (libev is vendored in the PECL source) |
 | **event** *(requires sockets)* | libevent, openssl, zlib |
 | **uv** | libuv |
+| **amqp** | librabbitmq, openssl, zlib |
 | **excimer** | — (librt/pthread come from libc) |
 | **opentelemetry** *(loads at 50-)* | — |
 | **gettext** *(Linux)* | — (glibc + musl both implement gettext in libc) |
