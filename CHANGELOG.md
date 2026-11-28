@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.2.24](https://github.com/cresset-tools/php-build-standalone/compare/v0.2.23...v0.2.24) (2026-11-28)
+
+
+### Features
+
+* **ext:** add memcached, with bundled libmemcached ([f8ab5a0](https://github.com/cresset-tools/php-build-standalone/commit/f8ab5a025dd149e172d6a9a5cf90ec4061ae7ee5))
+
+
+### Bug Fixes
+
+* **php-runtime:** keep the Mac mini runners off Magic Nix Cache's default ports ([3446e1e](https://github.com/cresset-tools/php-build-standalone/commit/3446e1e95f25b36f69050835e09a8d98c18963b1))
+
 ## [0.2.23](https://github.com/cresset-tools/php-build-standalone/compare/v0.2.22...v0.2.23) (2026-11-24)
 
 
