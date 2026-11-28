@@ -25,7 +25,7 @@ for the distribution wire format see `DISTRIBUTION.md`.
   and `aarch64-apple-darwin` (macOS 11+). No aarch64-linux yet.
 - **Per-ext tarballs:** xdebug, imagick, redis, memcached, vips *(Linux only)*,
   igbinary, msgpack, apcu, pcov, spx, ev, event, uv, excimer,
-  opentelemetry, plus every shared
+  opentelemetry, zstd, lz4, lzf, snappy, plus every shared
   extension PHP's configure produces (curl, gd, intl, mbstring, mysqli,
   pdo_mysql, pdo, pgsql, pdo_pgsql, sqlite3, pdo_sqlite, bz2, zip, soap,
   exif, bcmath, calendar, ftp, shmop, sockets, sysv{msg,sem,shm}, gmp, xsl,
