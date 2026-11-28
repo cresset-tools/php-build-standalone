@@ -110,11 +110,6 @@ the toolchain is a thin wrapper around nixpkgs's `clang`. `@rpath/`-relative
 - **redis 6.3.0** (phpredis) as a per-ext download. No external C-library
   dependency; speaks the redis wire protocol directly. Optional serializer
   backends (igbinary, msgpack, lzf, zstd, lz4) are not enabled.
-- **memcached 3.4.0** (php-memcached) as a per-ext download, linked against
-  bundled libmemcached-awesome 1.2.0. Built with the session handler
-  (`session.save_handler = memcached`) and the JSON serializer; the
-  igbinary / msgpack serializers, SASL and `Memcached\Server` are not
-  enabled. Not yet available on PHP 8.6.
 - **vips 1.0.13** as a per-ext download (Linux only), linked against bundled
   libvips + glib.
 - **ev 1.2.3 / event 3.1.6 / uv 0.3.0** as per-ext downloads — the three
@@ -180,7 +175,6 @@ fetches the matching per-store-path tarballs on demand:
 | **xdebug** | — |
 | **imagick** | imagemagick + libtiff, lcms2, openjpeg, libheif, libde265 |
 | **redis** | — |
-| **memcached** | libmemcached, zlib |
 | **vips** *(Linux)* | libvips, glib, libffi, pcre2, expat |
 | **igbinary** | — |
 | **msgpack** | — |

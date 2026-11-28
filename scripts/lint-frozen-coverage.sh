@@ -29,7 +29,7 @@
 #      `<ext>-<prior>+php`. The tag is filed under whichever PHP minor it
 #      was built for, so the lint accepts a match in any minor file.
 #   5. For each `<tool>Versions.<series>.version` forward bump where
-#      <tool> is a TOOL_VERSION_MAPS member (mysql): same requirement as
+#      <tool> is a TOOL_VERSION_MAPS member (mysql, opensearch): same requirement as
 #      rule 3 — at least one entry in frozen/<tool>.json starting with
 #      `<tool>-<prior>-`. These are tools that happen to ship several
 #      concurrently-pinned series, not PHP-bound extensions.
@@ -273,7 +273,7 @@ check_service_pin mkcert  mkcert
 # coverage check is check_service_frozen_coverage, not the extension one.
 # Listed explicitly because the two map shapes are structurally identical in
 # sources.nix; only the consuming derivation tells them apart.
-TOOL_VERSION_MAPS=(mysql)
+TOOL_VERSION_MAPS=(mysql opensearch)
 
 is_tool_version_map() {
   local name="$1"
