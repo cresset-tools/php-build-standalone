@@ -742,6 +742,55 @@
     };
   };
 
+  # --- Compression ----------------------------------------------------
+  #
+  # zstd / lz4 / lzf expose <name>_compress() and friends, which is the
+  # surface colinmollenhour/cache-backend-redis (Magento's redis cache and
+  # session backend) calls when `compression_lib` names one of them. With
+  # compression_lib unset it picks the first one loaded, in the order
+  # snappy > lz4 > zstd > lzf, and gzip otherwise; entries carry a per-lib
+  # prefix, so old gzip entries stay readable after the switch, but entries
+  # written while an extension was loaded are unreadable once it is
+  # removed. Each source tarball
+  # vendors its library and compiles it in-tree, so none of the three takes
+  # a bundled C-library and every manifest closure is empty.
+  #
+  # Unrelated to phpredis's own Redis::OPT_COMPRESSION, which needs redis.so
+  # rebuilt against the libraries; that is a separate change.
+  #
+  # Nothing auto-updates these: there is no shared/update/<ext>Versions for
+  # them, same as igbinary.
+
+  # zstd extension (kjdev/php-ext-zstd). Vendors libzstd 1.5.7.
+  zstdVersions = {
+    "0.18" = {
+      version = "0.18.0";
+      url = "https://pecl.php.net/get/zstd-0.18.0.tgz";
+      sha256 = "223d0f77eb5a5e73cf5e7a0652dd8fde7ffdcc843e7f30eeb3998283dec847b9";
+    };
+  };
+
+  # lz4 extension (kjdev/php-ext-lz4). Not on PECL; the tarball is the
+  # one attached to the upstream GitHub release. Vendors liblz4 1.10.0.
+  lz4Versions = {
+    "0.8" = {
+      version = "0.8.0";
+      url = "https://github.com/kjdev/php-ext-lz4/releases/download/0.8.0/lz4-0.8.0.tgz";
+      sha256 = "b6fde574f1811ec4bad5c44129aecec38f7800fc39246df0d8b31be9e8a60573";
+    };
+  };
+
+  # lzf PECL extension. Vendors liblzf. The PECL package name is
+  # upper-case, and so are the tarball name and the directory it unpacks
+  # to (LZF-<version>/); the lower-case URL 404s.
+  lzfVersions = {
+    "1.7" = {
+      version = "1.7.0";
+      url = "https://pecl.php.net/get/LZF-1.7.0.tgz";
+      sha256 = "f9a51510ab52da51c2b39ba9329036247a3784b3a32788cbf199326b90f8bc78";
+    };
+  };
+
   # Per-PHP-minor series selection for the <ext>Versions maps above. An
   # extension listed here has more than one series entry; `default` names
   # the series every PHP minor gets unless it has its own key. Extensions
@@ -777,6 +826,9 @@
     "8.6" = [
       "apcu" "excimer" "igbinary" "imagick" "memcached" "msgpack"
       "pcov" "protobuf" "redis" "spx" "vips"
+      # lzf: 8.6 changed php_stream_filter_alloc(); 1.7.0 (2022) is the
+      # latest release and no fix is published.
+      "lzf"
     ];
   };
 

@@ -142,6 +142,15 @@ the toolchain is a thin wrapper around nixpkgs's `clang`. `@rpath/`-relative
   down beside a vendor APM, and a module that has not registered yet is
   invisible to that check — so it has to come last.
 
+- **zstd 0.18.0 / lz4 0.8.0 / lzf 1.7.0** as per-ext downloads — the
+  compressors [cache-backend-redis](https://github.com/colinmollenhour/Cm_Cache_Backend_Redis)
+  (Magento's redis cache and session backend) uses for `compression_lib`.
+  With that option unset it picks the first one loaded (lz4, then zstd,
+  then lzf) over gzip. Each vendors its library, so the closures are empty;
+  lzf has no PHP 8.6-compatible release yet.
+  This is separate from phpredis's own `Redis::OPT_COMPRESSION`, which the
+  shipped `redis` build leaves off.
+
 ### What ships in the interpreter tarball (the core)
 
 Aligned with what `php8.x-cli` provides on Debian Bookworm — the set Composer,
@@ -194,6 +203,9 @@ fetches the matching per-store-path tarballs on demand:
 | **excimer** | — (librt/pthread come from libc) |
 | **opentelemetry** *(loads at 50-)* | — |
 | **gettext** *(Linux)* | — (glibc + musl both implement gettext in libc) |
+| **zstd** | — (libzstd is vendored in the extension source) |
+| **lz4** | — (liblz4 is vendored in the extension source) |
+| **lzf** *(not on 8.6)* | — (liblzf is vendored in the extension source) |
 
 Each per-store-path tarball lives at `store/<name>-<ver>-<hash>/` after
 extraction; PHP and the extensions reach them via per-binary RPATHs that

@@ -263,6 +263,40 @@ else
     emit "NOTICE: opentelemetry.so not found at $_otel_so — skipping opentelemetry gate"
 fi
 
+# 4f2. Compression: zstd / lz4 / lzf. Each vendors its compressor, so a
+#      bare -dextension= load plus a round-trip is the whole contract. The
+#      function names are the ones cache-backend-redis (Magento's redis
+#      cache and session backend) probes with function_exists(); lzf
+#      decompresses with lzf_decompress, not *_uncompress. Each gate skips
+#      with a NOTICE when its .so isn't present; set ZSTD_SO / LZ4_SO /
+#      LZF_SO for an explicit path.
+emit "compression extensions"
+
+for _c in zstd:zstd_compress:zstd_uncompress \
+          lz4:lz4_compress:lz4_uncompress \
+          lzf:lzf_compress:lzf_decompress; do
+    _name=${_c%%:*}
+    _fns=${_c#*:}
+    _comp=${_fns%%:*}
+    _decomp=${_fns#*:}
+    # POSIX sh has no ${!var}; $_var comes from the fixed list above.
+    _var="$(printf '%s' "$_name" | tr '[:lower:]' '[:upper:]')_SO"
+    eval "_so=\${$_var:-}"
+    [ -n "$_so" ] || _so="$ext_dir/$_name.so"
+    if [ -f "$_so" ]; then
+        out=$("$PHP" -n -dextension="$_so" -r '
+                  [, $name, $comp, $decomp] = $argv;
+                  $d = str_repeat("magento cache entry ", 4096);
+                  echo $decomp($comp($d)) === $d ? "$name=ok\n" : "$name=mismatch\n";
+              ' "$_name" "$_comp" "$_decomp") \
+            || die "$_name load failed"
+        printf '%s\n' "$out"
+        [ "$out" = "$_name=ok" ] || die "$_name round-trip failed: $out"
+    else
+        emit "NOTICE: $_name.so not found at $_so — skipping $_name gate"
+    fi
+done
+
 # 4g. conf.d load order: opentelemetry must come last.
 #     PHP parses conf.d in filename order, and opentelemetry's
 #     check_conflicts() inspects the live module registry at MINIT — it can
