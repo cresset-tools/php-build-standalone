@@ -380,16 +380,23 @@
     version = "1.52.1";
   };
 
-  # libmemcached — the awesomized/libmemcached-awesome fork, the maintained
-  # continuation of libmemcached (the original stopped at 1.0.18 in 2014).
-  # Consumed by the `memcached` PECL extension. cmake-based and C++, so it
-  # goes through build-libmemcached.sh with static libstdc++ on Linux, like
-  # ICU. No GitHub release assets — the tag archive is the source, and it
-  # extracts to libmemcached-<version>/.
-  libmemcached = {
-    url = "https://github.com/awesomized/libmemcached/archive/refs/tags/1.2.0.tar.gz";
-    sha256 = "c42a29e9898ae2827b83d81e9a58ae9fa2889d9e72da79886920ba2d7e67df08";
-    version = "1.2.0";
+  # zstd — Zstandard compression library. Consumed only by the redis PECL
+  # extension (--enable-redis-zstd, Redis::COMPRESSION_ZSTD), which links
+  # libzstd and finds it through pkg-config. Plain-Makefile build of lib/
+  # only (no CLI) — see build-zstd.sh.
+  zstd = {
+    url = "https://github.com/facebook/zstd/releases/download/v1.5.7/zstd-1.5.7.tar.gz";
+    sha256 = "eb33e51f49a15e023950cd7825ca74a4a2b43db8354825ac24fc1b7ee09e6fa3";
+    version = "1.5.7";
+  };
+
+  # lz4 — LZ4 compression library. Consumed only by the redis PECL extension
+  # (--enable-redis-lz4, Redis::COMPRESSION_LZ4). Plain-Makefile build of
+  # lib/ only (no CLI) — see build-lz4.sh.
+  lz4 = {
+    url = "https://github.com/lz4/lz4/releases/download/v1.11.1/lz4-1.11.1.tar.gz";
+    sha256 = "683fed08a844ad012196381e40badf80c0bbe4962959761416d41c9e67d77ec7";
+    version = "1.11.1";
   };
 
   # PHP version matrix. Each entry is a PHP major.minor pinned to a specific
@@ -474,28 +481,14 @@
   };
 
   # phpredis (the `redis` PECL extension) version matrix. 6.3.x covers PHP
-  # 8.0 through 8.5. Built with the default feature set: no igbinary,
-  # msgpack, lzf, zstd, or lz4 backends — those would each need their own
-  # bundled dep and are typically opt-in. The wire protocol still works
-  # against any redis-server regardless; the optional backends only affect
-  # SERIALIZER_/COMPRESSION_ choices that user code can request.
+  # 8.0 through 8.5. Built with the zstd + lz4 compressors (bundled `zstd` /
+  # `lz4` deps above). The igbinary/msgpack serializers and lzf stay off —
+  # see php/redis.nix for why igbinary would break older bougie releases.
   redisVersions = {
     "6.3" = {
       version = "6.3.0";
       url = "https://pecl.php.net/get/redis-6.3.0.tgz";
       sha256 = "0d5141f634bd1db6c1ddcda053d25ecf2c4fc1c395430d534fd3f8d51dd7f0b5";
-    };
-  };
-  # memcached PECL extension (php-memcached). libmemcached bindings: the
-  # Memcached class plus a `memcached` session.save_handler. Needs bundled
-  # libmemcached and zlib. 3.4.0 declares <min>7.0.0 with no ceiling.
-  # Built with session + JSON support only — see php/build-memcached.sh for
-  # why the igbinary / msgpack serializers stay off.
-  memcachedVersions = {
-    "3.4" = {
-      version = "3.4.0";
-      url = "https://pecl.php.net/get/memcached-3.4.0.tgz";
-      sha256 = "c163434eb0da97c8f45c7ad41d979d381f8b81c49402b1b90b063987fb37972e";
     };
   };
   # vips PECL extension version matrix. Keyed by series tag, parallel to
@@ -775,7 +768,7 @@
   extensionUnavailable = {
     "8.1" = [ "protobuf" ];
     "8.6" = [
-      "apcu" "excimer" "igbinary" "imagick" "memcached" "msgpack"
+      "apcu" "excimer" "igbinary" "imagick" "msgpack"
       "pcov" "protobuf" "redis" "spx" "vips"
     ];
   };

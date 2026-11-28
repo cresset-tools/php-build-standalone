@@ -107,14 +107,9 @@ the toolchain is a thin wrapper around nixpkgs's `clang`. `@rpath/`-relative
   built-in extension is available as usual.
 - **imagick 3.8.1** as a per-ext download, linked against bundled
   ImageMagick 7. Single pin covers PHP 8.1 through 8.5.
-- **redis 6.3.0** (phpredis) as a per-ext download. No external C-library
-  dependency; speaks the redis wire protocol directly. Optional serializer
-  backends (igbinary, msgpack, lzf, zstd, lz4) are not enabled.
-- **memcached 3.4.0** (php-memcached) as a per-ext download, linked against
-  bundled libmemcached-awesome 1.2.0. Built with the session handler
-  (`session.save_handler = memcached`) and the JSON serializer; the
-  igbinary / msgpack serializers, SASL and `Memcached\Server` are not
-  enabled. Not yet available on PHP 8.6.
+- **redis 6.3.0** (phpredis) as a per-ext download, built with the zstd +
+  lz4 compressors (bundled libzstd / liblz4). The igbinary / msgpack
+  serializers and lzf are not enabled.
 - **vips 1.0.13** as a per-ext download (Linux only), linked against bundled
   libvips + glib.
 - **ev 1.2.3 / event 3.1.6 / uv 0.3.0** as per-ext downloads — the three
@@ -179,8 +174,7 @@ fetches the matching per-store-path tarballs on demand:
 | exif, bcmath, calendar, ftp, pcntl, shmop, sockets, sysv{msg,sem,shm} | — |
 | **xdebug** | — |
 | **imagick** | imagemagick + libtiff, lcms2, openjpeg, libheif, libde265 |
-| **redis** | — |
-| **memcached** | libmemcached, zlib |
+| **redis** | zstd, lz4 |
 | **vips** *(Linux)* | libvips, glib, libffi, pcre2, expat |
 | **igbinary** | — |
 | **msgpack** | — |
