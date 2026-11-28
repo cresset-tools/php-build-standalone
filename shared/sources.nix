@@ -392,6 +392,17 @@
     version = "1.2.0";
   };
 
+  # librabbitmq — rabbitmq-c, the AMQP 0-9-1 client library. Consumed by
+  # the `amqp` PECL extension. cmake-only upstream, so it goes through
+  # build-librabbitmq.sh. There are no release assets; the URL is the
+  # GitHub tag archive, which extracts to rabbitmq-c-<version>/. Built
+  # against bundled openssl for AMQPS.
+  librabbitmq = {
+    url = "https://github.com/alanxz/rabbitmq-c/archive/refs/tags/v0.18.1.tar.gz";
+    sha256 = "0779bd4f00175ff2f722f9dc43b542bea3bc606ed079e7099fa8a18627c2ddc9";
+    version = "0.18.1";
+  };
+
   # PHP version matrix. Each entry is a PHP major.minor pinned to a specific
   # patch release. PHP entries describe PHP and only PHP — extension series
   # pairings live in the per-extension <ext>Versions maps below and are
@@ -742,6 +753,18 @@
     };
   };
 
+  # amqp PECL extension. librabbitmq bindings — the RabbitMQ client
+  # Magento's queue framework and Symfony Messenger's amqp transport use.
+  # Needs bundled librabbitmq, which it locates via pkg-config. 2.x
+  # declares <min>7.4.0; it does not build on 8.6 (extensionUnavailable).
+  amqpVersions = {
+    "2.2" = {
+      version = "2.2.0";
+      url = "https://pecl.php.net/get/amqp-2.2.0.tgz";
+      sha256 = "5ae624bd785e299523f6132c204bd562cc73066dd33a10a12aa96389f55a4de7";
+    };
+  };
+
   # Per-PHP-minor series selection for the <ext>Versions maps above. An
   # extension listed here has more than one series entry; `default` names
   # the series every PHP minor gets unless it has its own key. Extensions
@@ -769,13 +792,15 @@
   # 8.6: removed the XtOffsetOf / zval_dtor / INI_* / WRONG_PARAM_COUNT /
   # EMPTY_SWITCH_DEFAULT_CASE aliases (UPGRADING.INTERNALS), and none of
   # these had a compatible release when 8.6 was added (2026-11). Most have
-  # the fix merged upstream and unreleased; pcov and vips have none. Remove
+  # the fix merged upstream and unreleased; pcov and vips have none.
+  # amqp was listed when it was added (2026-11): 2.2.0 still calls
+  # XtOffsetOf and upstream's `latest` branch has no fix yet. Remove
   # a name once a release builds — via extensionMatrix if the new release
   # should not also move the older minors.
   extensionUnavailable = {
     "8.1" = [ "protobuf" ];
     "8.6" = [
-      "apcu" "excimer" "igbinary" "imagick" "memcached" "msgpack"
+      "amqp" "apcu" "excimer" "igbinary" "imagick" "memcached" "msgpack"
       "pcov" "protobuf" "redis" "spx" "vips"
     ];
   };

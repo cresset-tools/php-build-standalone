@@ -145,6 +145,8 @@
             libuv         = pkgs.callPackage ./shared/libuv.nix         { inherit mkDep; };
             # Backs the `memcached` PECL extension.
             libmemcached  = pkgs.callPackage ./shared/libmemcached.nix  { inherit mkDep; };
+            # rabbitmq-c, behind the `amqp` extension (RabbitMQ client).
+            librabbitmq   = pkgs.callPackage ./shared/librabbitmq.nix   { inherit mkDep openssl; };
             # NSPR + NSS underpin mkcert's certutil shipment; not linked
             # by anything in the PHP build itself. Kept in the common
             # `rec` block so both Linux and Darwin can pick them up
@@ -254,6 +256,7 @@
               evSpec       = pickFor phpKey "ev";
               eventSpec    = pickFor phpKey "event";
               uvSpec       = pickFor phpKey "uv";
+              amqpSpec     = pickFor phpKey "amqp";
               excimerSpec  = pickFor phpKey "excimer";
               opentelemetrySpec = pickFor phpKey "opentelemetry";
 
@@ -321,6 +324,10 @@
                 inherit mkDep php uvSpec;
                 inherit (deps) libuv;
               };
+              amqp = pkgs.callPackage ./php/amqp.nix {
+                inherit mkDep php amqpSpec;
+                inherit (deps) librabbitmq;
+              };
               # Observability: excimer (sampling profiler) and opentelemetry
               # (zend_observer bridge). Neither takes a bundled C-lib input.
               excimer = pkgs.callPackage ./php/excimer.nix {
@@ -360,6 +367,7 @@
                     { name = "opentelemetry"; drv = opentelemetry; }
                     { name = "protobuf";      drv = protobuf; }
                     { name = "memcached";     drv = memcached; }
+                    { name = "amqp";          drv = amqp; }
                   ]);
                 inherit toolchain;
                 pbsMusl = musl;
@@ -527,6 +535,10 @@
                 # and resolves it with DL_FETCH_SYMBOL at MINIT, so uv.so
                 # dlopens standalone. Default 20- prefix applies.
                 uv          = mkExt { extDrv = uv;      extName = "uv";      extVersion = uvSpec.version;      confFragment = "extension=uv"; };
+                # RabbitMQ client. MINIT registers the AMQP* classes and INI
+                # entries and opens no connection, so it auto-loads at the
+                # default 20- prefix.
+                amqp        = mkExt { extDrv = amqp;    extName = "amqp";    extVersion = amqpSpec.version;    confFragment = "extension=amqp"; };
                 # Observability pair. Both are regular `extension=` modules
                 # (STANDARD_MODULE_HEADER + ZEND_GET_MODULE), NOT
                 # zend_extensions — so neither sets zendExtension, same as spx

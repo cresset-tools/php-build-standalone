@@ -223,6 +223,23 @@ else
     emit "NOTICE: event.so not found at $_event_so — skipping ExtEventLoop gate"
 fi
 
+# 4i. amqp (RabbitMQ client, bundled librabbitmq). `--ri amqp` prints
+#     the extension's MINFO, which calls librabbitmq's amqp_version() —
+#     with RTLD_LAZY that is the call that proves the librabbitmq store
+#     path resolves through amqp.so's RPATH, not just that amqp.so
+#     dlopened. No broker is contacted. Runs under -n for the same reason
+#     as the event-loop gates above.
+emit "amqp"
+_amqp_so="${AMQP_SO:-$ext_dir/amqp.so}"
+if [ -f "$_amqp_so" ]; then
+    out=$("$PHP" -n -dextension="$_amqp_so" --ri amqp) || die "amqp load failed"
+    printf '%s\n' "$out" | grep -i 'version'
+    printf '%s\n' "$out" | grep -q '^librabbitmq version => [0-9]' \
+        || die "amqp did not report a librabbitmq version: $out"
+else
+    emit "NOTICE: amqp.so not found at $_amqp_so — skipping amqp gate"
+fi
+
 # 4f. Observability pair: excimer (sampling profiler) and opentelemetry
 #     (zend_observer bridge). Both are regular `extension=` modules with no
 #     bundled C-lib, so a bare -dextension= load is the whole contract.
