@@ -392,6 +392,15 @@
     version = "1.2.0";
   };
 
+  # libssh2 — client-side SSH2 protocol library. Consumed by the `ssh2`
+  # PECL extension. Built against the bundled openssl (crypto backend) and
+  # zlib (transport compression) — see shared/libssh2.nix.
+  libssh2 = {
+    url = "https://github.com/libssh2/libssh2/releases/download/libssh2-1.11.1/libssh2-1.11.1.tar.gz";
+    sha256 = "d9ec76cbe34db98eec3539fe2c899d26b0c837cb3eb466a56b0f109cabf658f7";
+    version = "1.11.1";
+  };
+
   # PHP version matrix. Each entry is a PHP major.minor pinned to a specific
   # patch release. PHP entries describe PHP and only PHP — extension series
   # pairings live in the per-extension <ext>Versions maps below and are
@@ -739,6 +748,20 @@
       version = "0.3.1";
       url = "https://pecl.php.net/get/uv-0.3.1.tgz";
       sha256 = "1b18d961543f76eebae300893987b3f198874d9f039cf472ac6257f85a28db77";
+    };
+  };
+
+  # ssh2 PECL extension. libssh2 bindings: ssh2_connect / ssh2_exec /
+  # ssh2_scp_*, and the ssh2.sftp:// / ssh2.shell:// stream wrappers —
+  # what Magento's SFTP export/import adapters and phpseclib-free deploy
+  # tooling reach for. Needs bundled libssh2 (>= 1.9.0; on >= 1.11.0 it
+  # also enables ssh2_send_signal()). 1.6.x declares <min>8.0.0 with no
+  # ceiling.
+  ssh2Versions = {
+    "1.6" = {
+      version = "1.6.1";
+      url = "https://pecl.php.net/get/ssh2-1.6.1.tgz";
+      sha256 = "2212d8266df54654b282ca681ee9b82f312a776e801b667b288d80f3541741ed";
     };
   };
 

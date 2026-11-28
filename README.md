@@ -102,8 +102,8 @@ the toolchain is a thin wrapper around nixpkgs's `clang`. `@rpath/`-relative
   / 8.3.8). The dep stack below is shared across all six.
 - **xdebug 3.5** as a per-ext download on PHP 8.1 through 8.5, and the
   3.6 prerelease on PHP 8.6 (the first line that supports it).
-- **PHP 8.6 ships a reduced PECL set** — xdebug, opentelemetry, ev, event
-  and uv — until the others publish an 8.6-compatible release. Every
+- **PHP 8.6 ships a reduced PECL set** — xdebug, opentelemetry, ev, event,
+  uv and ssh2 — until the others publish an 8.6-compatible release. Every
   built-in extension is available as usual.
 - **imagick 3.8.1** as a per-ext download, linked against bundled
   ImageMagick 7. Single pin covers PHP 8.1 through 8.5.
@@ -128,6 +128,10 @@ the toolchain is a thin wrapper around nixpkgs's `clang`. `@rpath/`-relative
   `socket_ce`, a data symbol exported by `sockets.so`, and PHP binds data
   relocations eagerly at `dlopen`, so neither loads without it. `uv` weak-links
   the same symbol and loads standalone.
+- **ssh2 1.6.1** as a per-ext download, linked against bundled libssh2
+  1.11.1 (OpenSSL crypto backend, zlib compression). Provides
+  `ssh2_connect()` / `ssh2_exec()` / SCP and the `ssh2.sftp://` stream
+  wrapper. Auto-loads; inert until `ssh2_connect()`.
 - **excimer 1.2.6 / opentelemetry 1.2.1** as per-ext downloads — the
   observability pair. `excimer` is Wikimedia's sampling profiler: unlike
   xdebug (step debugging), pcov (coverage) and spx (flame-graph UI), it is
@@ -193,6 +197,7 @@ fetches the matching per-store-path tarballs on demand:
 | **uv** | libuv |
 | **excimer** | — (librt/pthread come from libc) |
 | **opentelemetry** *(loads at 50-)* | — |
+| **ssh2** | libssh2, openssl, zlib |
 | **gettext** *(Linux)* | — (glibc + musl both implement gettext in libc) |
 
 Each per-store-path tarball lives at `store/<name>-<ver>-<hash>/` after
