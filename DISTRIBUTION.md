@@ -322,6 +322,8 @@ Field semantics:
   blob sha256s.
 - **`yanked`** — see "Yanking" below.
 - **`frozen`** — see "Frozen artifacts" below.
+- **`features`** — optional; wire-format features a client must
+  implement to install this artifact. See "Schema and versioning".
 
 The section's `target` is implicit in its location and stated
 explicitly in the file for self-description; per-row `target` would
@@ -702,11 +704,30 @@ diff between two publishes is meaningful.
 
 ## Schema and versioning
 
-- `schema: 1` is the protocol version. Bump on incompatible changes
-  to root or section structure. The CLI checks this and refuses to
-  parse unknown majors.
-- New fields are additive; clients ignore unknown fields. Field
-  *removal* requires a schema bump.
+Two gates let the index grow without older clients misreading it.
+
+- **`schema`** (root, section, manifest; currently `1`) is the protocol
+  version. Bump it only for a change no older client can safely read
+  past — a restructured root or section, a removed field. A client
+  refuses any document whose `schema` is newer than it understands and
+  tells the user to upgrade, so a bump stops every older client at once.
+- **`features`** (section row and manifest; optional list of strings)
+  names the wire-format additions a client must *act on* to install that
+  one artifact correctly. A client skips a row listing a feature it does
+  not implement and resolves to the newest artifact it can install; if
+  nothing is left it says a newer client would have found a match. The
+  manifest repeats the list so a client that reaches a manifest without
+  its row (a lock file, a stale cache) refuses it too. Known features:
+
+  | feature    | set when                                   | client support |
+  |------------|--------------------------------------------|----------------|
+  | `requires` | an extension manifest's `requires` is non-empty | bougie with feature gates |
+
+- Every other new field is additive and optional: clients ignore
+  unknown fields, so a field that is safe to ignore needs neither gate.
+  One that is *not* safe to ignore needs a `features` entry — clients
+  older than the gates themselves ignore `features` too, so the first
+  artifact that sets one must wait until those clients have aged out.
 - The root `generated` timestamp is informational; the section
   hashes are what gates client behavior.
 
